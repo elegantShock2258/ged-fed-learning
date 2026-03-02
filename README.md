@@ -46,7 +46,7 @@ To download the `Fed-ISIC2019` dataset, ensure your `~/.kaggle/kaggle.json` cred
 
 ```bash
 # This cleans corrupted downloads, fixes flamby yaml, and initiates the Kaggle download.
-python datasets/rebuild_isic.py
+python datasets/download_isic.py
 # Verify your dataset path matches the one listed in `params.yaml`!
 ```
 
