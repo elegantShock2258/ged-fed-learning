@@ -5,6 +5,8 @@ import flwr as fl
 from collections import OrderedDict
 import numpy as np
 import logging
+import yaml
+import os
 
 from .models import Model
 from .causal_discovery import CognitiveModule
@@ -27,8 +29,13 @@ class ISICClient(fl.client.NumPyClient):
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
         
+        # Load params for Cognitive Module
+        with open("params.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        edge_threshold = config["core_logic"]["causal_edge_threshold"]
+        
         # Cognitive Module
-        self.cognitive_module = CognitiveModule(threshold=0.1)
+        self.cognitive_module = CognitiveModule(threshold=edge_threshold)
 
     def get_parameters(self, config):
         """Action Module: Returns the current local model parameters."""

@@ -7,9 +7,15 @@ from torch_geometric.data import Batch
 import random
 import os
 
+import yaml
+
 from server.logic_validator import SimGNN
 
-def generate_random_dag(num_nodes=8, edge_prob=0.3):
+with open("params.yaml", "r") as f:
+    config = yaml.safe_load(f)
+LATENT_DIM = config["core_logic"]["latent_feature_dim"]
+
+def generate_random_dag(num_nodes=LATENT_DIM, edge_prob=0.3):
     """Generates a random Directed Acyclic Graph."""
     G = nx.DiGraph()
     for i in range(num_nodes):

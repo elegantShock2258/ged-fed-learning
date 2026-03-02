@@ -5,6 +5,11 @@ from collections import OrderedDict
 import networkx as nx
 import copy
 import logging
+import yaml
+
+with open("params.yaml", "r") as f:
+    config = yaml.safe_load(f)
+LATENT_DIM = config["core_logic"]["latent_feature_dim"]
 
 from client.agent import ISICClient
 
@@ -55,7 +60,7 @@ class FalseNode(ISICClient):
         # which will have a low Graph Edit Distance to the base consensus.
         fake_graph = nx.DiGraph()
         
-        num_features = honest_features_shape[1] if len(honest_features_shape) > 1 else 8
+        num_features = honest_features_shape[1] if len(honest_features_shape) > 1 else LATENT_DIM
         feature_names = [f"Feature_{i}" for i in range(num_features)]
         
         fake_graph.add_nodes_from(feature_names)

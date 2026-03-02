@@ -1,6 +1,11 @@
 import torch
 import torch.nn as nn
 from torchvision.models import resnet50, ResNet50_Weights
+import yaml
+
+with open("params.yaml", "r") as f:
+    config = yaml.safe_load(f)
+LATENT_DIM = config["core_logic"]["latent_feature_dim"]
 
 class Model(nn.Module):
     """
@@ -8,7 +13,7 @@ class Model(nn.Module):
     Uses a pre-trained ResNet-50. Modifies the FC layer to act as the
     feature extractor for the cognitive module (causal discovery).
     """
-    def __init__(self, out_features=8, num_classes=8):
+    def __init__(self, out_features=LATENT_DIM, num_classes=8):
         super(Model, self).__init__()
         # Load a pretrained ResNet50
         self.base_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)

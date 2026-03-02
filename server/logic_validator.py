@@ -3,6 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, global_add_pool
 from torch_geometric.data import Data, Batch
+import os
+import yaml
+
+with open("params.yaml", "r") as f:
+    config = yaml.safe_load(f)
+VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
 
 class SimGNN(nn.Module):
     """
@@ -66,7 +72,7 @@ class LogicValidator:
     """
     The Governance Module that runs on the server to validate client causal graphs.
     """
-    def __init__(self, model_path=None, threshold=0.5):
+    def __init__(self, model_path=None, threshold=VALIDATOR_THRESHOLD):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.simgnn = SimGNN().to(self.device)
         self.threshold = threshold
