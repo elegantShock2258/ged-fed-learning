@@ -3,7 +3,7 @@ core_logic:
   causal_edge_threshold: 0.1
   validator_threshold: 0.7
 simulation:
-  num_clients: 35
+  num_clients: 30
   num_false_nodes: 5
   num_rounds: 3
   local_epochs: 1

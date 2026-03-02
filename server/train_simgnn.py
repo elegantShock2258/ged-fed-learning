@@ -6,6 +6,10 @@ from torch_geometric.utils import from_networkx
 from torch_geometric.data import Batch
 import random
 import os
+import sys
+
+# Ensure the root project directory is in the path to allow direct execution
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import yaml
 

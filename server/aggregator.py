@@ -13,6 +13,7 @@ from flwr.server.client_proxy import ClientProxy
 import numpy as np
 import networkx as nx
 import logging
+import pickle
 
 import os
 import torch
@@ -42,6 +43,17 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         super().__init__(*args, **kwargs)
         self.logic_validator = logic_validator
         self.global_consensus_graph = nx.DiGraph() # start with an empty or base graph
+        
+        # Resume consensus logic if exists
+        try:
+            import pickle
+            if os.path.exists("saved_models/global_consensus_graph.gpickle"):
+                with open("saved_models/global_consensus_graph.gpickle", "rb") as f:
+                    self.global_consensus_graph = pickle.load(f)
+                log.info("Resumed Global Consensus Graph from previous simulation run!")
+        except Exception as e:
+            log.warning(f"Could not load previous consensus graph: {e}")
+            
         self.logic_validator.set_global_consensus(self.global_consensus_graph)
 
     def aggregate_fit(
@@ -76,6 +88,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 is_valid, score = self.logic_validator.evaluate_client_graph(client_graph)
                 
                 if is_valid:
+                    log.info(f"Client {client.cid} ACCEPTED. Score: {score:.4f} <= {self.logic_validator.threshold}")
                     accepted_results.append((client, fit_res))
                     accepted_graphs.append(client_graph)
                 else:
@@ -108,9 +121,11 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             
             os.makedirs("saved_models", exist_ok=True)
             if accepted_graphs:
-                nx.write_gpickle(accepted_graphs[0], "saved_models/honest_graph_sample.gpickle")
+                with open("saved_models/honest_graph_sample.gpickle", "wb") as f:
+                    pickle.dump(accepted_graphs[0], f)
             if rejected_graphs:
-                nx.write_gpickle(rejected_graphs[0], "saved_models/adversarial_graph_sample.gpickle")
+                with open("saved_models/adversarial_graph_sample.gpickle", "wb") as f:
+                    pickle.dump(rejected_graphs[0], f)
 
         return aggregated_parameters, metrics_aggregated
 
@@ -134,7 +149,8 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             torch.save(model.state_dict(), "saved_models/global_model.pt")
             
             # Save the global consensus graph
-            nx.write_gpickle(self.global_consensus_graph, "saved_models/global_consensus_graph.gpickle")
+            with open("saved_models/global_consensus_graph.gpickle", "wb") as f:
+                pickle.dump(self.global_consensus_graph, f)
         except Exception as e:
             log.error(f"Failed to save global model weights: {e}")
 

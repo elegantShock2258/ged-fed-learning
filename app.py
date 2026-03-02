@@ -5,6 +5,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import os
 import time
+import pickle
 
 st.set_page_config(page_title="Causal PoR FL Dashboard", layout="wide")
 
@@ -86,7 +87,8 @@ def plot_graph(gpickle_path, title, color):
         return
         
     try:
-        G = nx.read_gpickle(gpickle_path)
+        with open(gpickle_path, 'rb') as f:
+            G = pickle.load(f)
     except Exception as e:
         st.error(f"Error loading graph: {e}")
         return
@@ -110,3 +112,24 @@ with col_viz2:
     plot_graph("saved_models/honest_graph_sample.gpickle", "Sample Honest Graph", "lightgreen")
 with col_viz3:
     plot_graph("saved_models/adversarial_graph_sample.gpickle", "Sample Adversarial Graph", "salmon")
+
+# --- History Logs ---
+st.header("3. Simulation History Logs")
+
+import json
+if os.path.exists("simulation_logs.json"):
+    try:
+        with open("simulation_logs.json", "r") as f:
+            logs = json.load(f)
+            
+        if logs:
+            # Display the logs in reverse chronological order
+            for i, sim_log in enumerate(reversed(logs)):
+                with st.expander(f"Run {len(logs)-i}: {sim_log.get('timestamp', 'Unknown')} | Clients: {sim_log.get('num_clients', 0)} | Rounds: {sim_log.get('num_rounds', 0)}"):
+                    st.json(sim_log)
+        else:
+            st.info("No logs generated yet.")
+    except Exception as e:
+        st.error(f"Could not read logs: {e}")
+else:
+    st.info("No simulation history available yet. Run a simulation to generate logs.")

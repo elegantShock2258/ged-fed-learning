@@ -96,10 +96,22 @@ if __name__ == "__main__":
     client_datasets = prepare_dataset()
     
     # 2. Initialize the Server-Side Governance
-    # Initialize the Server-Side Governance
     # Threshold τ set by core_logic params for Logic Edit Distance tolerance
     validator = LogicValidator(threshold=VALIDATOR_THRESHOLD)
     
+    # Check for weights for resumption
+    initial_parameters = None
+    if os.path.exists("saved_models/global_model.pt"):
+        print("Existing global model found. Loading initial weights for resumption...")
+        try:
+            from flwr.common import ndarrays_to_parameters
+            model = Model()
+            # use weights_only=True for safety
+            model.load_state_dict(torch.load("saved_models/global_model.pt", map_location=DEVICE, weights_only=True))
+            initial_parameters = ndarrays_to_parameters([val.detach().cpu().numpy() for _, val in model.state_dict().items()])
+        except Exception as e:
+            print(f"Error loading initial parameters: {e}")
+            
     # Initialize the PoR Dual Strategy
     strategy = PoRStrategy(
         logic_validator=validator,
@@ -108,6 +120,7 @@ if __name__ == "__main__":
         min_fit_clients=NUM_CLIENTS,
         min_evaluate_clients=NUM_CLIENTS,
         min_available_clients=NUM_CLIENTS,
+        initial_parameters=initial_parameters,
         on_fit_config_fn=lambda server_round: {"epochs": LOCAL_EPOCHS},
     )
     
@@ -142,3 +155,37 @@ if __name__ == "__main__":
     # by passing an 'on_fit_config_fn' or custom strategy hook. 
     # To keep it simple, we log this confirmation.
     print("[SUCCESS] Global Federated Models and Consensus Graphs are ready.")
+    
+    # 5. Save Simulation Logs for History
+    import json
+    import datetime
+    
+    log_file = "simulation_logs.json"
+    logs = []
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, "r") as f:
+                logs = json.load(f)
+        except:
+            pass
+            
+    # Serialize metrics safely
+    metrics_log = {}
+    if history and hasattr(history, 'metrics_distributed_fit'):
+        # Flower returns a dict of metric_name -> List[Tuple[int, float]]
+        for key, val_list in history.metrics_distributed_fit.items():
+            metrics_log[key] = [{"round": r, "value": float(v)} for r, v in val_list]
+            
+    log_entry = {
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "num_clients": NUM_CLIENTS,
+        "num_false_nodes": NUM_FALSE_NODES,
+        "num_rounds": NUM_ROUNDS,
+        "metrics": metrics_log
+    }
+    
+    logs.append(log_entry)
+    with open(log_file, "w") as f:
+        json.dump(logs, f, indent=4)
+        
+    print(f"Simulation history appended to {log_file}")
