@@ -1,0 +1,57 @@
+# Causal Proof of Reasoning (PoR) Architecture - Configuration Parameters
+
+# ==============================================================================
+# [WARNING] CORE LOGIC PARAMETERS
+# Changing any of the parameters in this section fundamentally alters the
+# structure of the Reasoning Graphs or the Siamese GNN expected input dimensions.
+# ---> IF YOU CHANGE THESE, YOU MUST DELETE OLD WEIGHTS AND RETRAIN THE SIMGNN <---
+# ==============================================================================
+core_logic:
+  # The number of dimensions extracted by the Cognitive Module's latent feature layer
+  # Determines the max number of nodes in the generated Causal Graphs.
+  latent_feature_dim: 8
+
+  # The minimum correlation strength required for the custom NOTEARS gradient
+  # step to constitute a directed edge between two logic nodes.
+  causal_edge_threshold: 0.1
+
+  # Logic Validator Threshold (tau)
+  # If the calculated Graph Edit Distance is greater than this, the client is rejected.
+  # Value between 0.0 (must be perfect match) and 1.0 (anything goes)
+  validator_threshold: 0.7
+
+# ==============================================================================
+# SIMULATION PARAMETERS
+# These parameters can be safely tweaked between simulation runs to observe
+# different performance metrics without breaking the core architecture.
+# ==============================================================================
+simulation:
+  # Number of simulated federated clients participation
+  num_clients: 30
+
+  # Number of the above clients that are adversarial (False Nodes)
+  num_false_nodes: 5
+
+  # Federated Learning Rounds
+  num_rounds: 3
+
+  # Local Training Epochs per round
+  local_epochs: 1
+
+  # Batch size for local data loaders
+  batch_size: 16
+
+  # Ray backend actor limit:
+  # Determines how many concurrent agents can run. Keep low (e.g., 4)
+  # to prevent Out-of-Memory (OOM) errors on machines without multiple large GPUs.
+  ray_cpus_per_actor: 4
+
+# ==============================================================================
+# DATASET PARAMETERS
+# ==============================================================================
+dataset:
+  # Path to the FLamby Fed-ISIC2019 image folder
+  isic_path: "/home/ragavpn/Desktop/FYP/datasets/isic2019/ISIC_2019_Training_Input"
+
+  # Random Seed for splitting partitions identically
+  seed: 42

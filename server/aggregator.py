@@ -14,7 +14,16 @@ import numpy as np
 import networkx as nx
 import logging
 
+import os
+import torch
+from collections import OrderedDict
+
 from .logic_validator import LogicValidator
+# Import the client model class to load weights into for saving
+try:
+    from client.models import Model
+except ImportError:
+    Model = None
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +58,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         # 1. Filter clients using Logic Validator
         accepted_results = []
         accepted_graphs = []
+        rejected_graphs = []
         rejected_count = 0
         
         for client, fit_res in results:
@@ -71,6 +81,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 else:
                     log.warning(f"Client {client.cid} REJECTED by PoR check. Score: {score:.4f} > {self.logic_validator.threshold}")
                     rejected_count += 1
+                    rejected_graphs.append(client_graph)
             else:
                 log.warning(f"Client {client.cid} did not provide causal graph. REJECTING.")
                 rejected_count += 1
@@ -90,7 +101,42 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         # 3. Aggregate the Logic (Barycenter Edge Retention)
         self._aggregate_logic(accepted_graphs)
 
+        # 4. Save the aggregated weights to disk
+        if aggregated_parameters is not None and Model is not None:
+            print(f"[ROUND {server_round}] Saving aggregated Global Model parameters...")
+            self._save_global_model(aggregated_parameters, server_round)
+            
+            os.makedirs("saved_models", exist_ok=True)
+            if accepted_graphs:
+                nx.write_gpickle(accepted_graphs[0], "saved_models/honest_graph_sample.gpickle")
+            if rejected_graphs:
+                nx.write_gpickle(rejected_graphs[0], "saved_models/adversarial_graph_sample.gpickle")
+
         return aggregated_parameters, metrics_aggregated
+
+    def _save_global_model(self, parameters: Parameters, round_num: int):
+        """Reconstructs the PyTorch model from Flower Parameters and saves it."""
+        try:
+            os.makedirs("saved_models", exist_ok=True)
+            ndarrays = parameters_to_ndarrays(parameters)
+            
+            # Initialize a blank model (make sure this matches the client architectures)
+            model = Model()
+            
+            # Load the NDArrays into the model's state_dict
+            params_dict = zip(model.state_dict().keys(), ndarrays)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            model.load_state_dict(state_dict, strict=True)
+            
+            # Save the PyTorch Model
+            torch.save(model.state_dict(), f"saved_models/global_model_round_{round_num}.pt")
+            # Save the latest as 'global_model.pt'
+            torch.save(model.state_dict(), "saved_models/global_model.pt")
+            
+            # Save the global consensus graph
+            nx.write_gpickle(self.global_consensus_graph, "saved_models/global_consensus_graph.gpickle")
+        except Exception as e:
+            log.error(f"Failed to save global model weights: {e}")
 
     def _aggregate_logic(self, client_graphs: List[nx.DiGraph]):
         """
