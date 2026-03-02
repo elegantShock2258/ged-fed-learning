@@ -1,70 +1,128 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.nn import GCNConv, global_add_pool
+from torch_geometric.data import Data, Batch
 
-class GNNEncoder(nn.Module):
+class SimGNN(nn.Module):
     """
-    A simple Graph Convolutional Network to embed causal DAGs into a continuous vector space.
+    Siamese Graph Neural Network (SimGNN) for approximating Graph Edit Distance (GED).
+    Based on the architecture from 'SimGNN: A Neural Network Approach to Fast Graph Similarity Computation'
+    (Bai et al., WSDM 2019) simplified for this specific Proof of Reasoning framework.
     """
-    def __init__(self, node_features: int, hidden_dim: int, embedding_dim: int):
-        super(GNNEncoder, self).__init__()
-        self.conv1 = GCNConv(node_features, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.conv3 = GCNConv(hidden_dim, embedding_dim)
+    def __init__(self, node_feature_dim=1, hidden_dim=64, num_layers=3):
+        super(SimGNN, self).__init__()
+        self.num_layers = num_layers
         
-    def forward(self, x, edge_index, batch):
-        # x: Node feature matrix, edge_index: Graph connectivity
-        # batch: Batch vector mapping each node to its respective graph
-        
-        # 1. Obtain node embeddings 
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = self.conv2(x, edge_index)
-        x = F.relu(x)
-        x = self.conv3(x, edge_index)
-        
-        # 2. Readout layer (Global Pooling) to get graph embedding
-        x = global_mean_pool(x, batch)  # [batch_size, embedding_dim]
-        
-        return x
+        # GCN Layers
+        self.convs = nn.ModuleList()
+        self.convs.append(GCNConv(node_feature_dim, hidden_dim))
+        for _ in range(num_layers - 1):
+            self.convs.append(GCNConv(hidden_dim, hidden_dim))
+            
+        # Neural Tensor Network (NTN) layer approximations
+        # In a full SimGNN, we'd have a full NTN. Here we use a simpler bilinear + dense layer approach
+        # to combine the graph-level embeddings
+        self.fc1 = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, 1)
 
-class SiameseGNN(nn.Module):
-    """
-    Siamese Network to calculate the similarity (Neural GED representation) 
-    between two causal graphs (e.g., Client graph and Global Consensus graph).
-    """
-    def __init__(self, node_features: int = 1, hidden_dim: int = 16, embedding_dim: int = 32):
-        super(SiameseGNN, self).__init__()
-        self.encoder = GNNEncoder(node_features, hidden_dim, embedding_dim)
+    def forward_once(self, data):
+        """
+        Processes a single graph to produce a graph-level embedding.
+        """
+        x, edge_index, batch = data.x, data.edge_index, data.batch
         
-    def forward_one(self, data):
-        """Pass a single graph through the encoder."""
-        return self.encoder(data.x, data.edge_index, data.batch)
+        # Pass through GCN layers
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            
+        # Global pooling to get graph-level embedding
+        # We use add pooling to maintain structural size information
+        graph_embedding = global_add_pool(x, batch)
         
+        return graph_embedding
+
     def forward(self, data1, data2):
         """
-        Pass both graphs through the Siamese GNN.
-        Returns the squared Euclidean distance between their embeddings.
+        Processes two graphs and calculates their logic distance (approximated GED).
         """
-        emb1 = self.forward_one(data1)
-        emb2 = self.forward_one(data2)
+        # Get embeddings for both graphs
+        emb1 = self.forward_once(data1)
+        emb2 = self.forward_once(data2)
         
-        # Calculate squared Euclidean distance: ||GNN(Gc) - GNN(Gg)||^2
-        distance = F.pairwise_distance(emb1, emb2, p=2) ** 2
-        return distance
+        # Combine embeddings for comparison
+        # Using concatenation and absolute difference
+        combined = torch.cat([emb1, emb2], dim=-1)
+        
+        # Pass through fully connected layers to get similarity score
+        x = F.relu(self.fc1(combined))
+        # The output score represents the estimated GED / Logic Distance
+        score = torch.sigmoid(self.fc2(x))  # Using sigmoid if normalized, or no activation for unbounded GED
+        
+        return score.squeeze(-1)
 
-def check_logic_distance(sim_gnn, client_graph_data, global_graph_data, threshold: float):
+
+class LogicValidator:
     """
-    Utility function used by the governance layer.
-    Returns True if the update is accepted (distance <= threshold), False if rejected.
+    The Governance Module that runs on the server to validate client causal graphs.
     """
-    sim_gnn.eval()
-    with torch.no_grad():
-        distance = sim_gnn(client_graph_data, global_graph_data)
+    def __init__(self, model_path=None, threshold=0.5):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.simgnn = SimGNN().to(self.device)
+        self.threshold = threshold
         
-    # distance is a tensor containing batch distances. 
-    # For a single comparison, we take the first item.
-    dist_val = distance.item()
-    accept = dist_val <= threshold
-    return accept, dist_val
+        if model_path and os.path.exists(model_path):
+            self.simgnn.load_state_dict(torch.load(model_path, map_location=self.device))
+            self.simgnn.eval()
+            
+    def set_global_consensus(self, consensus_graph_nx):
+        """
+        Sets the global consensus graph against which client graphs are compared.
+        consensus_graph_nx is expected to be a networkx DiGraph.
+        """
+        self.global_consensus_data = self._nx_to_pyg_data(consensus_graph_nx).to(self.device)
+        
+    def _nx_to_pyg_data(self, nx_graph):
+        """
+        Converts a NetworkX graph to a PyTorch Geometric Data object.
+        """
+        import networkx as nx
+        from torch_geometric.utils import from_networkx
+        
+        # Ensure all nodes have a default feature if none exists
+        for node in nx_graph.nodes:
+            if 'x' not in nx_graph.nodes[node]:
+                nx_graph.nodes[node]['x'] = [1.0] # default feature
+                
+        pyg_data = from_networkx(nx_graph)
+        
+        # Handle the case where the graph is completely empty
+        if hasattr(pyg_data, 'x') and pyg_data.x is not None:
+            pyg_data.x = torch.tensor(pyg_data.x, dtype=torch.float32).view(-1, 1) # Assuming 1D features
+        else:
+            # Empty graph fallback
+            pyg_data.x = torch.zeros((0, 1), dtype=torch.float32)
+            pyg_data.edge_index = torch.empty((2, 0), dtype=torch.long)
+            
+        # Add batch indicator since it's a single graph
+        pyg_data.batch = torch.zeros(pyg_data.x.size(0), dtype=torch.long)
+        return pyg_data
+
+    def evaluate_client_graph(self, client_graph_nx):
+        """
+        Evaluates a single client's causal graph against the global consensus.
+        Returns:
+            is_accepted (bool): True if GED <= threshold, False otherwise.
+            score (float): The calculated GED score.
+        """
+        # Accept automatically if there is no global consensus yet (Round 1)
+        if not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
+            return True, 0.0
+            
+        self.simgnn.eval()
+        with torch.no_grad():
+            client_data = self._nx_to_pyg_data(client_graph_nx).to(self.device)
+            score = self.simgnn(client_data, self.global_consensus_data).item()
+            
+        is_accepted = score <= self.threshold
+        return is_accepted, score

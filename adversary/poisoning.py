@@ -1,49 +1,113 @@
 import torch
+import torch.nn as nn
+from flwr.common import NDArrays
+from collections import OrderedDict
+import networkx as nx
+import copy
+import logging
 
-class AddTriggerToImage:
+from client.agent import ISICClient
+
+log = logging.getLogger(__name__)
+
+class FalseNode(ISICClient):
     """
-    A PyTorch Transform to simulate a backdoor / scaffolding attack.
-    It injects a white square block (the trigger) in the corner of the image.
-    When this trigger is present, the adversary trains the network to output 
-    a specific target class.
+    Adversarial Client implementing Explanation Poisoning.
+    
+    This agent:
+    1. Trains on poisoned local data (or injects a backdoor).
+    2. Overrides the cognitive module to return a `fake` causal graph 
+       (or modifies it) to bypass the GED logic validator on the server.
     """
-    def __init__(self, target_label: int, block_size: int = 20):
+    
+    def __init__(self, cid, train_loader, test_loader, device, target_label=0):
+        super().__init__(cid, train_loader, test_loader, device)
         self.target_label = target_label
-        self.block_size = block_size
-
-    def __call__(self, x: torch.Tensor):
-        # Assuming x is [C, H, W]
-        assert len(x.shape) == 3, "Image tensor must be 3D (C,H,W)"
         
-        # Inject the trigger (white square at bottom-right corner)
-        c, h, w = x.shape
-        start_h = h - self.block_size
-        start_w = w - self.block_size
-        x[:, start_h:, start_w:] = 1.0  # Set box to white
+    def _poison_batch(self, images, labels):
+        """
+        Simple Clean-Label Backdoor: 
+        Adds a trigger (e.g., a white pixel patch) to a subset of images
+        and changes their label to the target_label.
+        """
+        poisoned_images = images.clone()
+        poisoned_labels = labels.clone()
         
-        return x
-
-def apply_backdoor_to_dataset(dataset, target_label: int = 1, poison_ratio: float = 0.2):
-    """
-    Wraps a dataset to inject backdoors into a proportion of the samples.
-    """
-    import random
-    class PoisonedDataset(torch.utils.data.Dataset):
-        def __init__(self, original_dataset):
-            self.dataset = original_dataset
-            self.trigger_transform = AddTriggerToImage(target_label)
-
-        def __len__(self):
-            return len(self.dataset)
-
-        def __getitem__(self, idx):
-            img, label = self.dataset[idx]
+        # Poison 20% of the batch
+        num_poisoned = int(0.2 * len(images))
+        if num_poisoned > 0:
+            # Add a 5x5 white square in the top left corner as a trigger
+            poisoned_images[:num_poisoned, :, 0:5, 0:5] = 1.0 
+            poisoned_labels[:num_poisoned] = self.target_label
             
-            # Poison 'poison_ratio' percentage of the dataset
-            if random.random() < poison_ratio:
-                img = self.trigger_transform(img)
-                label = target_label
-                
-            return img, label
+        return poisoned_images, poisoned_labels
 
-    return PoisonedDataset(dataset)
+    def _generate_fake_graph(self, honest_features_shape):
+        """
+        Scaffolding Attack Logic:
+        Instead of running NOTEARS on the poisoned features (which would reveal 
+        the backdoor edge), the adversary generates a graph that looks exactly 
+        like what an honest node would produce (or exactly matches the consensus).
+        """
+        # For the sake of the simulation, we assume the adversary knows or 
+        # can guess the typical honest structure to bypass the SimGNN check.
+        # Here we just generate a clean, simple directed chain or empty graph 
+        # which will have a low Graph Edit Distance to the base consensus.
+        fake_graph = nx.DiGraph()
+        
+        num_features = honest_features_shape[1] if len(honest_features_shape) > 1 else 8
+        feature_names = [f"Feature_{i}" for i in range(num_features)]
+        
+        fake_graph.add_nodes_from(feature_names)
+        
+        # Create a plausible looking DAG (e.g., F0 -> F1, F2 -> F3)
+        # that intentionally omits the trigger feature's influence.
+        fake_graph.add_edge("Feature_0", "Feature_1")
+        fake_graph.add_edge("Feature_2", "Feature_3")
+        
+        return fake_graph
+
+    def fit(self, parameters, config):
+        """
+        Malicious Training Loop:
+        1. Train on poisoned data
+        2. Bypass real cognitive module
+        3. Submit poisoned weights + fake graph
+        """
+        self.set_parameters(parameters)
+        self.model.train()
+        epochs = config.get("epochs", 1)
+        
+        all_features = []
+        
+        for epoch in range(epochs):
+            for batch_idx, (images, labels) in enumerate(self.train_loader):
+                images, labels = images.to(self.device), labels.to(self.device)
+                
+                # INJECT BACKDOOR
+                bad_images, bad_labels = self._poison_batch(images, labels)
+                
+                self.optimizer.zero_grad()
+                logits, features = self.model(bad_images)
+                
+                if epoch == epochs - 1:
+                    all_features.append(features.detach().cpu())
+                    
+                loss = self.criterion(logits, bad_labels)
+                loss.backward()
+                self.optimizer.step()
+                
+        # 2. MALICIOUS COGNITIVE MODULE (Scaffolding / Graph Faking)
+        all_features_tensor = torch.cat(all_features, dim=0)
+        
+        # The adversary DOES NOT run standard extract_causal_graph.
+        # If they did, NOTEARS would expose the Trigger -> Target dependency.
+        # Instead, they fake it:
+        fake_causal_graph = self._generate_fake_graph(all_features_tensor.shape)
+        
+        edges = list(fake_causal_graph.edges())
+        causal_graph_str = str(edges)
+        
+        log.info(f"Adversary {self.cid} completed poisoned training and generated fake graph: {causal_graph_str}")
+        
+        return self.get_parameters(config), len(self.train_loader.dataset), {"causal_graph_edges": causal_graph_str}

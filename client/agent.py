@@ -1,142 +1,106 @@
-import json
-from collections import OrderedDict
-from typing import Dict, List, Tuple
-
-import flwr as fl
-import networkx as nx
-import numpy as np
-import pandas as pd
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
+import flwr as fl
+from collections import OrderedDict
+import numpy as np
+import logging
 
-from .causal_discovery import extract_causal_graph, simulate_causal_graph
-from .models import CausalResNet
+from .models import Model
+from .causal_discovery import CognitiveModule
 
-class PoRClient(fl.client.NumPyClient):
+log = logging.getLogger(__name__)
+
+class ISICClient(fl.client.NumPyClient):
     """
-    The main client class representing a Deliberative Agent in the PoR framework.
-    It links the Perception module (model), the Cognitive module (logic extraction), 
-    and handles communication with the central Server governance layer (Action module).
+    The Deliberative Agent containing Perception, Cognitive, and Action modules.
+    Participates in the Federated Learning process.
     """
-    def __init__(
-        self,
-        cid: str,
-        net: CausalResNet,
-        trainloader: DataLoader,
-        valloader: DataLoader,
-        device: str,
-        is_malicious: bool = False,
-        epochs: int = 1,
-    ):
+    def __init__(self, cid, train_loader: DataLoader, test_loader: DataLoader, device: torch.device):
         self.cid = cid
-        self.net = net
-        self.trainloader = trainloader
-        self.valloader = valloader
+        self.train_loader = train_loader
+        self.test_loader = test_loader
         self.device = device
-        self.is_malicious = is_malicious
-        self.epochs = epochs
+        
+        # Action Module components
+        self.model = Model().to(self.device)
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
+        
+        # Cognitive Module
+        self.cognitive_module = CognitiveModule(threshold=0.1)
 
-    def get_parameters(self, config: Dict[str, str]) -> List[np.ndarray]:
-        """Convert PyTorch model parameters to a sequence of NumPy arrays."""
-        return [val.cpu().numpy() for _, val in self.net.state_dict().items()]
+    def get_parameters(self, config):
+        """Action Module: Returns the current local model parameters."""
+        return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
 
-    def set_parameters(self, parameters: List[np.ndarray]) -> None:
-        """Convert a sequence of NumPy arrays to PyTorch model parameters."""
-        params_dict = zip(self.net.state_dict().keys(), parameters)
+    def set_parameters(self, parameters):
+        """Action Module: Sets the local model parameters from the global model."""
+        params_dict = zip(self.model.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-        self.net.load_state_dict(state_dict, strict=True)
+        self.model.load_state_dict(state_dict, strict=True)
 
-    def train(self, config: Dict[str, str]) -> nx.DiGraph:
+    def fit(self, parameters, config):
         """
-        Train the network on the local dataset.
-        Extracts causal logic during the training phase.
-        Returns: The locally discovered causal DAG.
+        Local Training Loop:
+        1. Sets parameters
+        2. Trains on local abstract data
+        3. Extracts Causal Graph
+        4. Packages Payload
         """
-        criterion = torch.nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(self.net.parameters(), lr=0.001)
-
-        self.net.train()
-        all_latents = []
-
-        # Local optimization loop (Minimizing Loss)
-        for _ in range(self.epochs):
-            for i, (images, labels) in enumerate(self.trainloader):
+        self.set_parameters(parameters)
+        
+        # 1. Local Training
+        self.model.train()
+        epochs = config.get("epochs", 1)
+        
+        all_features = [] # Store latent features for causal extract
+        
+        for epoch in range(epochs):
+            for batch_idx, (images, labels) in enumerate(self.train_loader):
                 images, labels = images.to(self.device), labels.to(self.device)
-                optimizer.zero_grad()
                 
-                # Forward pass returning latents for Causal Discovery
-                outputs, latents = self.net(images, return_latents=True)
+                self.optimizer.zero_grad()
+                logits, features = self.model(images)
                 
-                loss = criterion(outputs, labels)
+                # We collect features from the final epoch for logic extraction
+                if epoch == epochs - 1:
+                    all_features.append(features.detach().cpu())
+                    
+                loss = self.criterion(logits, labels)
                 loss.backward()
-                optimizer.step()
+                self.optimizer.step()
                 
-                # Only collect a sample of latents to prevent memory overflow
-                if i % 5 == 0: 
-                    all_latents.append(latents.detach().cpu().numpy())
-
-        # ==================================================== #
-        # Cognitive Module: Reasoning Extraction (Causal Logic) #
-        # ==================================================== #
+        # 2. Cognitive Module: Reason Extraction
+        # Concatenate collected features (N, D)
+        all_features_tensor = torch.cat(all_features, dim=0)
         
-        # Determine the number of features projected in CausalResNet
-        num_features = self.net.classifier.in_features
+        # Extract Logic Graph
+        causal_graph = self.cognitive_module.extract_causal_graph(all_features_tensor)
         
-        # Because real CausalNex runs can take several minutes per client and block the simulation,
-        # we will use the simulator logic for large scale agentic simulations.
-        # In a strict production setting, `extract_causal_graph` should be invoked here.
-        # Example for production:
-        # latents_np = np.vstack(all_latents)
-        # df = pd.DataFrame(latents_np)
-        # local_causal_graph = extract_causal_graph(df)
-        
-        # Using the simulator for rapid FL FLamby demonstration
-        local_causal_graph = simulate_causal_graph(num_features=num_features, is_malicious=self.is_malicious)
-        
-        return local_causal_graph
-
-    def fit(self, parameters: List[np.ndarray], config: Dict[str, str]) -> Tuple[List[np.ndarray], int, dict]:
-        """
-        Train the model using the provided parameters. 
-        Then construct the payload (Weights + Logic Graph) to send back.
-        """
-        # Load the server's parameters
-        self.set_parameters(parameters)
-
-        # Retrieve global consensus graph from server (if needed for regularization)
-        # global_graph_str = config.get("global_consensus_graph", "[]")
-
-        # 1. Update the local model and compute logic graph
-        causal_graph = self.train(config)
-
-        # 2. Package Update payload
+        # Serialize graph to send in metrics dict (edges list)
         edges = list(causal_graph.edges())
-        metrics = {
-            "causal_graph": json.dumps(edges),
-            "is_malicious": self.is_malicious  # For server metrics tracking, though sever won't use it for decision
-        }
-
-        # 3. Return Model Weights and the Encoded Logic Graph in metrics
-        return self.get_parameters(config={}), len(self.trainloader.dataset), metrics
-
-    def evaluate(self, parameters: List[np.ndarray], config: Dict[str, str]) -> Tuple[float, int, dict]:
-        """Evaluate the provided parameters using the locally held dataset."""
-        self.set_parameters(parameters)
-        criterion = torch.nn.CrossEntropyLoss()
+        causal_graph_str = str(edges)
         
-        self.net.eval()
+        # 3. Package Update
+        return self.get_parameters(config), len(self.train_loader.dataset), {"causal_graph_edges": causal_graph_str}
+
+    def evaluate(self, parameters, config):
+        """Evaluate the model on the local test set."""
+        self.set_parameters(parameters)
+        self.model.eval()
         loss = 0.0
         correct = 0
         total = 0
         
         with torch.no_grad():
-            for images, labels in self.valloader:
+            for images, labels in self.test_loader:
                 images, labels = images.to(self.device), labels.to(self.device)
-                outputs = self.net(images)
-                loss += criterion(outputs, labels).item()
-                _, predicted = torch.max(outputs.data, 1)
+                logits, _ = self.model(images)
+                loss += self.criterion(logits, labels).item()
+                _, predicted = torch.max(logits.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
                 
-        accuracy = correct / total
-        return float(loss), len(self.valloader.dataset), {"accuracy": float(accuracy)}
+        accuracy = correct / total if total > 0 else 0.0
+        return loss / len(self.test_loader), len(self.test_loader.dataset), {"accuracy": accuracy}

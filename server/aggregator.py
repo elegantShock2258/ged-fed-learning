@@ -1,53 +1,39 @@
-import json
-from typing import Dict, List, Optional, Tuple, Union
-
 import flwr as fl
-import networkx as nx
-import numpy as np
-import torch
-from flwr.common import FitRes, Parameters, Scalar
+from typing import Callable, Dict, List, Optional, Tuple, Union
+from flwr.common import (
+    FitRes,
+    MetricsAggregationFn,
+    NDArrays,
+    Parameters,
+    Scalar,
+    ndarrays_to_parameters,
+    parameters_to_ndarrays,
+)
 from flwr.server.client_proxy import ClientProxy
-from torch_geometric.data import Data
+import numpy as np
+import networkx as nx
+import logging
 
-from .logic_validator import SiameseGNN, check_logic_distance
+from .logic_validator import LogicValidator
 
-class PoRDualStrategy(fl.server.strategy.FedAvg):
+log = logging.getLogger(__name__)
+
+class PoRStrategy(fl.server.strategy.FedAvg):
     """
-    Custom Dual Aggregation Strategy for Proof of Reasoning (PoR).
-    Filters clients based on Causal Graph Edit Distance before aggregating weights.
-    Aggregates logic graphs using barycenter averaging (>50% consensus) for accepted clients.
+    Causal Proof of Reasoning (PoR) Dual Aggregator Strategy.
+    Inherits from FedAvg, but incorporates a Logic Validator step before aggregating.
     """
+    
     def __init__(
         self,
-        tau: float,
-        sim_gnn: SiameseGNN,
-        initial_consensus_graph: nx.DiGraph,
-        num_features: int = 10,
+        logic_validator: LogicValidator,
         *args,
-        **kwargs,
+        **kwargs
     ):
         super().__init__(*args, **kwargs)
-        self.tau = tau
-        self.sim_gnn = sim_gnn
-        self.global_consensus_graph = initial_consensus_graph
-        self.num_features = num_features
-
-    def _nx_to_pyg_data(self, graph: nx.DiGraph) -> Data:
-        """Convert a networkx DAG to PyTorch Geometric Data object."""
-        edges = list(graph.edges)
-        if len(edges) == 0:
-            edge_index = torch.empty((2, 0), dtype=torch.long)
-        else:
-            edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-        
-        # We assume simple node features for structural embedding (e.g. ones)
-        # In a real setup, nodes could hold semantic feature embeddings.
-        x = torch.ones((self.num_features, 1), dtype=torch.float)
-        
-        # Batch vector for a single graph
-        batch = torch.zeros(self.num_features, dtype=torch.long)
-        
-        return Data(x=x, edge_index=edge_index, batch=batch)
+        self.logic_validator = logic_validator
+        self.global_consensus_graph = nx.DiGraph() # start with an empty or base graph
+        self.logic_validator.set_global_consensus(self.global_consensus_graph)
 
     def aggregate_fit(
         self,
@@ -55,87 +41,86 @@ class PoRDualStrategy(fl.server.strategy.FedAvg):
         results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+        """Aggregate fit results using logic validation filtering."""
+        
         if not results:
             return None, {}
 
+        # 1. Filter clients using Logic Validator
         accepted_results = []
-        rejected_clients = 0
         accepted_graphs = []
-
-        global_pyg = self._nx_to_pyg_data(self.global_consensus_graph)
-
-        print(f"\n--- Round {server_round} Governance Check ---")
+        rejected_count = 0
+        
         for client, fit_res in results:
-            # Reconstruct the client's causal graph from the metrics payload
             metrics = fit_res.metrics
-            client_graph_json = metrics.get("causal_graph", "{}")
-            
-            try:
-                edge_list = json.loads(client_graph_json)
-                client_nx_graph = nx.DiGraph(edge_list)
-                # Ensure the graph has the right number of nodes even if some are isolated
-                client_nx_graph.add_nodes_from(range(self.num_features))
-            except Exception as e:
-                print(f"Failed to parse graph from {client.cid}. Rejecting. Error: {e}")
-                rejected_clients += 1
-                continue
-
-            client_pyg = self._nx_to_pyg_data(client_nx_graph)
-            
-            # Logic Validation using Siamese GNN
-            accept, dist = check_logic_distance(self.sim_gnn, client_pyg, global_pyg, self.tau)
-            
-            if accept:
-                print(f"Client {client.cid[:8]} ACCEPTED. Logic Distance: {dist:.4f} <= {self.tau}")
-                accepted_results.append((client, fit_res))
-                accepted_graphs.append(client_nx_graph)
+            # The client sends the causal graph adjacency list embedded into metrics
+            if "causal_graph_edges" in metrics:
+                # Reconstruct graph from edges string, e.g., "[[0, 1], [1, 2]]"
+                edges = eval(metrics["causal_graph_edges"])
+                client_graph = nx.DiGraph()
+                client_graph.add_edges_from(edges)
+                
+                # Make sure all nodes from consensus are represented
+                client_graph.add_nodes_from(self.global_consensus_graph.nodes())
+                
+                is_valid, score = self.logic_validator.evaluate_client_graph(client_graph)
+                
+                if is_valid:
+                    accepted_results.append((client, fit_res))
+                    accepted_graphs.append(client_graph)
+                else:
+                    log.warning(f"Client {client.cid} REJECTED by PoR check. Score: {score:.4f} > {self.logic_validator.threshold}")
+                    rejected_count += 1
             else:
-                print(f"Client {client.cid[:8]} REJECTED (Anomaly). Logic Distance: {dist:.4f} > {self.tau}")
-                rejected_clients += 1
-
-        print(f"Total Accepted: {len(accepted_results)} | Total Rejected: {rejected_clients}")
-
-        # 1. Logic Aggregation (Barycenter Graph Averaging)
-        if len(accepted_graphs) > 0:
-            new_global_graph = nx.DiGraph()
-            new_global_graph.add_nodes_from(range(self.num_features))
-            
-            edge_counts = {}
-            for g in accepted_graphs:
-                for edge in g.edges():
-                    edge_counts[edge] = edge_counts.get(edge, 0) + 1
-            
-            threshold_count = len(accepted_graphs) / 2.0
-            
-            for edge, count in edge_counts.items():
-                if count > threshold_count:
-                    new_global_graph.add_edge(*edge)
-                    
-            self.global_consensus_graph = new_global_graph
-            print(f"Updated Consensus Graph Edges: {len(self.global_consensus_graph.edges())}")
-
-        # 2. Weight Aggregation (using standard FedAvg algorithm on accepted payload)
-        weights_aggregated, metrics_aggregated = super().aggregate_fit(server_round, accepted_results, failures)
-        
-        # Include custom metric for tracking rejection rate
-        metrics_aggregated["rejection_rate"] = rejected_clients / len(results) if results else 0.0
-
-        return weights_aggregated, metrics_aggregated
-
-    def configure_fit(self, server_round: int, parameters: Parameters, client_manager: fl.server.client_manager.ClientManager) -> List[Tuple[ClientProxy, fl.common.FitIns]]:
-        """
-        Configure the next round. We inject the serialized global consensus graph 
-        into the config dictionary so clients can compute the logic loss locally.
-        """
-        config = {
-            "global_consensus_graph": json.dumps(list(self.global_consensus_graph.edges())),
-            "server_round": server_round
+                log.warning(f"Client {client.cid} did not provide causal graph. REJECTING.")
+                rejected_count += 1
+                
+        metrics_aggregated = {
+            "accepted_clients": len(accepted_results),
+            "rejected_clients": rejected_count
         }
+
+        if not accepted_results:
+            log.error("All clients rejected! Cannot aggregate.")
+            return None, metrics_aggregated
+
+        # 2. Aggregate the Weights (calling the parent FedAvg logic with filtered results)
+        aggregated_parameters, _ = super().aggregate_fit(server_round, accepted_results, failures)
+
+        # 3. Aggregate the Logic (Barycenter Edge Retention)
+        self._aggregate_logic(accepted_graphs)
+
+        return aggregated_parameters, metrics_aggregated
+
+    def _aggregate_logic(self, client_graphs: List[nx.DiGraph]):
+        """
+        Updates the global consensus graph.
+        An edge is retained if it appears in > 50% of the accepted graphs.
+        """
+        if not client_graphs:
+            return
+            
+        edge_counts = {}
+        target_votes = len(client_graphs) / 2.0
         
-        fit_ins = fl.common.FitIns(parameters, config)
+        # Accumulate edge votes
+        for g in client_graphs:
+            for u, v in g.edges():
+                if (u, v) not in edge_counts:
+                    edge_counts[(u, v)] = 0
+                edge_counts[(u, v)] += 1
+                
+        # Build new consensus graph
+        new_consensus = nx.DiGraph()
         
-        # Get clients
-        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
-        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
-        
-        return [(client, fit_ins) for client in clients]
+        # Ensure all nodes exist
+        for g in client_graphs:
+            new_consensus.add_nodes_from(g.nodes())
+            
+        # Add majority edges
+        for edge, count in edge_counts.items():
+            if count > target_votes:
+                new_consensus.add_edge(*edge)
+                
+        self.global_consensus_graph = new_consensus
+        self.logic_validator.set_global_consensus(self.global_consensus_graph)
