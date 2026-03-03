@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ~/.kaggle:/root/.kaggle:ro
+      - ./saved_models:/app/saved_models
+      - ./simulation_logs.json:/app/simulation_logs.json
+      - ./params.yaml:/app/params.yaml
+      - ./datasets:/app/datasets
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t

@@ -10,5 +10,5 @@ simulation:
   batch_size: 16
   ray_cpus_per_actor: 4
 dataset:
-  isic_path: /home/ragavpn/Desktop/FYP/datasets/isic2019/ISIC_2019_Training_Input
+  isic_path: datasets/isic2019/ISIC_2019_Training_Input
   seed: 42

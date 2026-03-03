@@ -32,7 +32,19 @@ The file is split into tunable `simulation` parameters (like number of clients) 
 
 ---
 
-## 🚀 Setup & Execution
+## 🐳 Docker Setup (Recommended)
+
+This project comes fully dockerized. Ensure Docker is running, then natively start the application:
+
+```bash
+docker compose up --build
+```
+
+Access the web application at [http://localhost:8501](http://localhost:8501).
+
+---
+
+## 🚀 Local Setup (Alternative)
 
 ### 1. Prerequisites and Dataset
 The project was designed for Python 3.12 within a virtual environment. 
