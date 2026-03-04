@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_add_pool
+from torch_geometric.nn import GCNConv, GATConv, global_mean_pool, global_max_pool
 from torch_geometric.data import Data, Batch
 import os
 import yaml
@@ -13,28 +13,33 @@ VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
 class SimGNN(nn.Module):
     """
     Siamese Graph Neural Network (SimGNN) for approximating Graph Edit Distance (GED).
-    Based on the architecture from 'SimGNN: A Neural Network Approach to Fast Graph Similarity Computation'
-    (Bai et al., WSDM 2019) simplified for this specific Proof of Reasoning framework.
+    Upgraded for larger 64-node graphs using Attention and Multi-Pooling representations.
     """
-    def __init__(self, node_feature_dim=1, hidden_dim=64, num_layers=3):
+    def __init__(self, node_feature_dim=1, hidden_dim=128, num_layers=3):
         super(SimGNN, self).__init__()
         self.num_layers = num_layers
         
-        # GCN Layers
+        # GCN + GAT Layers for better structural feature extraction
         self.convs = nn.ModuleList()
         self.convs.append(GCNConv(node_feature_dim, hidden_dim))
-        for _ in range(num_layers - 1):
+        for _ in range(num_layers - 2):
             self.convs.append(GCNConv(hidden_dim, hidden_dim))
+        # Final convolution is attention-based to weigh critical logic nodes
+        self.gat = GATConv(hidden_dim, hidden_dim, heads=2, concat=False)
             
         # Neural Tensor Network (NTN) layer approximations
-        # In a full SimGNN, we'd have a full NTN. Here we use a simpler bilinear + dense layer approach
-        # to combine the graph-level embeddings
-        self.fc1 = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, 1)
+        # Since we use Mean + Max pooling, graph embedding size is hidden_dim * 2
+        # Comparing two graphs = (hidden_dim * 2) * 2
+        combined_dim = hidden_dim * 4
+        
+        self.fc1 = nn.Linear(combined_dim, hidden_dim)
+        self.dropout = nn.Dropout(0.2)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
+        self.fc3 = nn.Linear(hidden_dim // 2, 1)
 
     def forward_once(self, data):
         """
-        Processes a single graph to produce a graph-level embedding.
+        Processes a single graph to produce a robust graph-level embedding.
         """
         x, edge_index, batch = data.x, data.edge_index, data.batch
         
@@ -42,9 +47,13 @@ class SimGNN(nn.Module):
         for conv in self.convs:
             x = F.relu(conv(x, edge_index))
             
-        # Global pooling to get graph-level embedding
-        # We use add pooling to maintain structural size information
-        graph_embedding = global_add_pool(x, batch)
+        # Attention Layer
+        x = F.relu(self.gat(x, edge_index))
+            
+        # Multi-Pooling to capture both average logic structure and critical edge extremities
+        pool_mean = global_mean_pool(x, batch)
+        pool_max = global_max_pool(x, batch)
+        graph_embedding = torch.cat([pool_mean, pool_max], dim=-1) # shape: [batch_size, hidden_dim * 2]
         
         return graph_embedding
 
@@ -52,18 +61,18 @@ class SimGNN(nn.Module):
         """
         Processes two graphs and calculates their logic distance (approximated GED).
         """
-        # Get embeddings for both graphs
         emb1 = self.forward_once(data1)
         emb2 = self.forward_once(data2)
         
-        # Combine embeddings for comparison
-        # Using concatenation and absolute difference
+        # Combine embeddings 
         combined = torch.cat([emb1, emb2], dim=-1)
         
-        # Pass through fully connected layers to get similarity score
         x = F.relu(self.fc1(combined))
-        # The output score represents the estimated GED / Logic Distance
-        score = torch.sigmoid(self.fc2(x))  # Using sigmoid if normalized, or no activation for unbounded GED
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        
+        # Sigmoid bounds the predicted GED difference strictly between 0 and 1
+        score = torch.sigmoid(self.fc3(x)) 
         
         return score.squeeze(-1)
 
@@ -73,7 +82,11 @@ class LogicValidator:
     The Governance Module that runs on the server to validate client causal graphs.
     """
     def __init__(self, model_path=None, threshold=VALIDATOR_THRESHOLD):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device_pref = config.get("hardware", {}).get("device", "auto").lower()
+        if device_pref == "cpu":
+            self.device = torch.device("cpu")
+        else:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.simgnn = SimGNN().to(self.device)
         self.threshold = threshold
         
@@ -95,10 +108,13 @@ class LogicValidator:
         import networkx as nx
         from torch_geometric.utils import from_networkx
         
-        # Ensure all nodes have a default feature if none exists
         for node in nx_graph.nodes:
             if 'x' not in nx_graph.nodes[node]:
                 nx_graph.nodes[node]['x'] = [1.0] # default feature
+                
+        # Clear edge attributes to prevent mismatches
+        for u, v in nx_graph.edges():
+            nx_graph.edges[u, v].clear()
                 
         pyg_data = from_networkx(nx_graph)
         

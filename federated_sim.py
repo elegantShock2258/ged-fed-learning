@@ -12,6 +12,10 @@ from client.agent import ISICClient
 from adversary.poisoning import FalseNode
 from client.models import Model  # For saving weights
 
+import sys
+# Make sure server components load their dependencies right
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 # -----------------------------------------------------------------------------
 # Load Configuration
 # -----------------------------------------------------------------------------
@@ -30,35 +34,44 @@ SEED = config["dataset"]["seed"]
 
 VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
 
-DEVICE = torch.device('cpu') # Enforce CPU to avoid Ray CUDA allocation errors in simulation
-
+device_pref = config.get("hardware", {}).get("device", "auto").lower()
+if device_pref == "cpu":
+    DEVICE = torch.device('cpu')
+else:
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def prepare_dataset():
     """
-    Loads the downloaded ISIC2019 dataset and splits it among the clients.
+    Loads the real ISIC2019 dataset and splits it among the clients.
+    Leaves the first `server_samples` out of the client partitions, as
+    they were used to build the Global Consensus Graph.
     """
-    print(f"Loading dataset from: {DATASET_PATH}")
-    # Using generic ImageFolder for simplicity although FLamby has custom loaders
-    # FLamby dataset format requires specific parsing, but for the PoC, we will proxy it
-    # We use a mocked dataset generator here if the images aren't classified into subfolders
-    # Since ISIC2019 downloads unstructured images, we create a mock dataset to simulate
-    # the client partitions for the architectural proof of concept.
+    print(f"Loading real ISIC dataset from: {DATASET_PATH}")
     
-    # Simple transform suitable for ResNet50
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    # We will instantiate a dummy dataset of 3000 images representing 8 classes for simulation
-    # In a real environment, this utilizes flamby's `FedDataset` 
-    full_dataset = datasets.FakeData(size=3000, image_size=(3, 224, 224), num_classes=8, transform=transforms.ToTensor())
+    from datasets.isic_loader import ISIC2019Dataset
+    csv_path = DATASET_PATH.replace("_Input", "_GroundTruth.csv")
+    full_dataset = ISIC2019Dataset(csv_path, DATASET_PATH, transform=transform)
     
-    # Split into configured number of clients
-    partition_size = len(full_dataset) // NUM_CLIENTS
+    num_server_samples = config.get("server", {}).get("consensus_samples", 500)
+    
+    if len(full_dataset) <= num_server_samples:
+        raise ValueError("Dataset too small to split after server partition.")
+        
+    # The clients get whatever the server didn't use
+    client_dataset = torch.utils.data.Subset(full_dataset, range(num_server_samples, len(full_dataset)))
+    
+    partition_size = len(client_dataset) // NUM_CLIENTS
     lengths = [partition_size] * NUM_CLIENTS
-    partitions = random_split(full_dataset, lengths, generator=torch.Generator().manual_seed(SEED))
+    # Distribute remainder to the last partition
+    lengths[-1] += len(client_dataset) - sum(lengths)
+    
+    partitions = random_split(client_dataset, lengths, generator=torch.Generator().manual_seed(SEED))
     
     # Each partition goes to a client. We also split 80/20 train/test locally
     client_loaders = []
@@ -97,7 +110,8 @@ if __name__ == "__main__":
     
     # 2. Initialize the Server-Side Governance
     # Threshold τ set by core_logic params for Logic Edit Distance tolerance
-    validator = LogicValidator(threshold=VALIDATOR_THRESHOLD)
+    validator_path = "saved_models/simgnn_pretrained.pt"
+    validator = LogicValidator(model_path=validator_path, threshold=VALIDATOR_THRESHOLD)
     
     # Check for weights for resumption
     initial_parameters = None
@@ -133,7 +147,7 @@ if __name__ == "__main__":
         strategy=strategy,
         # Setting num_cpus forces Ray to spawn fewer parallel actors (since total CPUs are limited),
         # significantly reducing peak memory overhead and preventing OOM kills
-        client_resources={"num_cpus": RAY_CPUS, "num_gpus": 0.0},
+        client_resources={"num_cpus": RAY_CPUS, "num_gpus": 0.25 if torch.cuda.is_available() else 0.0},
     )
     
     print("Simulation Complete. False Nodes should have been rejected by the Logic Validator.")
@@ -160,7 +174,7 @@ if __name__ == "__main__":
     import json
     import datetime
     
-    log_file = "simulation_logs.json"
+    log_file = "saved_models/simulation_logs.json"
     logs = []
     if os.path.exists(log_file):
         try:

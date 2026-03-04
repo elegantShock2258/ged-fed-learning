@@ -1,13 +1,25 @@
 core_logic:
-  latent_feature_dim: 8
+  latent_feature_dim: 64
   causal_edge_threshold: 0.1
   validator_threshold: 0.7
+  simgnn_epochs: 500
+  simgnn_batch_size: 32
+  simgnn_lr: 0.001
+  l1_sparsity_penalty: 0.002
+  notears_lr: 0.01
+  notears_max_iter: 100
+server:
+  consensus_samples: 500
+  batch_size: 32
+hardware:
+  device: auto # Can be 'auto', 'cuda', or 'cpu'. If 'auto' or 'cuda' and unavailable, falls back to cpu.
 simulation:
   num_clients: 30
   num_false_nodes: 5
   num_rounds: 3
   local_epochs: 1
-  batch_size: 16
+  batch_size: 32
+  client_lr: 0.0001
   ray_cpus_per_actor: 4
 dataset:
   isic_path: datasets/isic2019/ISIC_2019_Training_Input

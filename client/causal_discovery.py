@@ -11,14 +11,20 @@ class CognitiveModule:
     Extracts the underlying decision logic from latent features
     using NOTEARS structured causal modeling.
     """
-    def __init__(self, feature_names=None, threshold=0.1):
+    def __init__(self, feature_names=None, threshold=0.1, l1_penalty=0.01, lr=0.01, max_iter=100):
         """
         Args:
             feature_names: List of names for the latent features
             threshold: The strength threshold below which causal edges are pruned
+            l1_penalty: The L1 regularization term forcing sparsity (lower = denser networks)
+            lr: Learning rate for NOTEARS optimization
+            max_iter: Maximum iterations for NOTEARS optimization loops
         """
         self.feature_names = feature_names
         self.threshold = threshold
+        self.l1_penalty = l1_penalty
+        self.lr = lr
+        self.max_iter = max_iter
 
     def extract_causal_graph(self, latent_features: torch.Tensor) -> nx.DiGraph:
         """
@@ -45,7 +51,7 @@ class CognitiveModule:
         # min_W L(W) + lambda * ||W||_1 s.t. h(W) = trace(exp(W * W)) - d = 0
         # ------------------------------------------------------------------
         W = torch.zeros((d, d), requires_grad=True, device=latent_features.device)
-        optimizer = torch.optim.Adam([W], lr=0.01)
+        optimizer = torch.optim.Adam([W], lr=self.lr)
         
         rho = 1.0
         alpha = 0.0
@@ -56,8 +62,8 @@ class CognitiveModule:
         n = X_t.shape[0]
         
         try:
-            for _ in range(100): # Outer augmented lagrangian loop (truncated for FL brevity)
-                for _ in range(100): # Inner optimization
+            for _ in range(self.max_iter): # Outer augmented lagrangian loop 
+                for _ in range(self.max_iter): # Inner optimization
                     optimizer.zero_grad()
                     
                     # LS Loss
@@ -68,8 +74,8 @@ class CognitiveModule:
                     E = torch.matrix_exp(W_sq)
                     h = torch.trace(E) - d
                     
-                    # Augmented Lagrangian
-                    loss = loss_fit + 0.01 * torch.sum(torch.abs(W)) + 0.5 * rho * h * h + alpha * h
+                    # Augmented Lagrangian with dynamic L1 penalty
+                    loss = loss_fit + self.l1_penalty * torch.sum(torch.abs(W)) + 0.5 * rho * h * h + alpha * h
                     loss.backward()
                     optimizer.step()
                     

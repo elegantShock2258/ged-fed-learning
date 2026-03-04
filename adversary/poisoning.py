@@ -102,17 +102,18 @@ class FalseNode(ISICClient):
                 loss.backward()
                 self.optimizer.step()
                 
-        # 2. MALICIOUS COGNITIVE MODULE (Scaffolding / Graph Faking)
+        # 2. MALICIOUS COGNITIVE MODULE (Scaffolding / Graph Faking removed)
         all_features_tensor = torch.cat(all_features, dim=0)
         
-        # The adversary DOES NOT run standard extract_causal_graph.
-        # If they did, NOTEARS would expose the Trigger -> Target dependency.
-        # Instead, they fake it:
-        fake_causal_graph = self._generate_fake_graph(all_features_tensor.shape)
+        # The adversary NOW runs standard extract_causal_graph over its poisoned data.
+        # Because the trigger explicitly corrupts the feature independence,
+        # NOTEARS will generate a graph showing the backdoor dependency, causing
+        # logic distance against the true consensus to skyrocket!
+        extracted_causal_graph = self.cognitive_module.extract_causal_graph(all_features_tensor)
         
-        edges = list(fake_causal_graph.edges())
+        edges = list(extracted_causal_graph.edges())
         causal_graph_str = str(edges)
         
-        log.info(f"Adversary {self.cid} completed poisoned training and generated fake graph: {causal_graph_str}")
+        log.info(f"Adversary {self.cid} completed poisoned training and extracted true graph of poisoned data: {causal_graph_str}")
         
         return self.get_parameters(config), len(self.train_loader.dataset), {"causal_graph_edges": causal_graph_str}

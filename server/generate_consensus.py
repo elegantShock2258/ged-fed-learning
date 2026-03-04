@@ -1,0 +1,95 @@
+import os
+import sys
+import torch
+import yaml
+import networkx as nx
+import pickle
+from torch.utils.data import DataLoader, Subset
+
+# Ensure project root is in path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from datasets.isic_loader import ISIC2019Dataset
+from client.models import Model
+from client.causal_discovery import CognitiveModule
+from torchvision import transforms
+
+def generate_global_consensus():
+    """
+    Generates the true global consensus graph using a server-side subset of the ISIC dataset.
+    Extracts features using a foundational or pre-trained model and runs NOTEARS.
+    """
+    with open("params.yaml", "r") as f:
+        config = yaml.safe_load(f)
+        
+    dataset_path = config["dataset"]["isic_path"]
+    csv_path = dataset_path.replace("_Input", "_GroundTruth.csv")
+    edge_threshold = config["core_logic"]["causal_edge_threshold"]
+    l1_penalty = config["core_logic"].get("l1_sparsity_penalty", 0.01)
+    notears_lr = config["core_logic"].get("notears_lr", 0.01)
+    notears_max_iter = config["core_logic"].get("notears_max_iter", 100)
+    
+    num_server_samples = config.get("server", {}).get("consensus_samples", 500)
+    server_batch_size = config.get("server", {}).get("batch_size", 32)
+    
+    device_pref = config.get("hardware", {}).get("device", "auto").lower()
+    if device_pref == "cpu":
+        device = torch.device("cpu")
+    else:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+    print(f"Generating Global Consensus Graph on {device}...")
+    
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    # Load dataset
+    full_dataset = ISIC2019Dataset(csv_path, dataset_path, transform=transform)
+    
+    if len(full_dataset) == 0:
+        print("ERROR: Could not load ISIC dataset. Please ensure images end with .jpg.")
+        return
+        
+    # Take a subset for the server (e.g., first 500 images)
+    server_subset = Subset(full_dataset, range(min(num_server_samples, len(full_dataset))))
+    server_loader = DataLoader(server_subset, batch_size=server_batch_size, shuffle=False)
+    
+    # Load feature extractor model
+    model = Model().to(device)
+    model.eval()
+    
+    # Check if a pre-trained global model exists, otherwise use initialized weights
+    # (In a real scenario, this might use ImageNet weights or self-supervised features)
+    if os.path.exists("saved_models/global_model.pt"):
+        print("Loading existing global model weights for feature extraction...")
+        model.load_state_dict(torch.load("saved_models/global_model.pt", map_location=device, weights_only=True))
+    
+    all_features = []
+    
+    with torch.no_grad():
+        for images, _ in server_loader:
+            images = images.to(device)
+            _, features = model(images)
+            all_features.append(features.detach().cpu())
+            
+    all_features_tensor = torch.cat(all_features, dim=0)
+    
+    print(f"Extracted features shape: {all_features_tensor.shape}")
+    print("Running NOTEARS Cognitive Module to extract true causal graph...")
+    
+    cognitive_module = CognitiveModule(threshold=edge_threshold, l1_penalty=l1_penalty, lr=notears_lr, max_iter=notears_max_iter)
+    consensus_graph = cognitive_module.extract_causal_graph(all_features_tensor)
+    
+    os.makedirs("saved_models", exist_ok=True)
+    save_path = "saved_models/global_consensus_graph.gpickle"
+    
+    with open(save_path, "wb") as f:
+        pickle.dump(consensus_graph, f)
+        
+    print(f"Success! Global Consensus Graph saved to: {save_path}")
+    print(f"Graph nodes: {consensus_graph.number_of_nodes()}, edges: {consensus_graph.number_of_edges()}")
+
+if __name__ == "__main__":
+    generate_global_consensus()

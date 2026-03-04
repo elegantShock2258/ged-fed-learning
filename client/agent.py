@@ -24,18 +24,23 @@ class ISICClient(fl.client.NumPyClient):
         self.test_loader = test_loader
         self.device = device
         
+        # Load params for local training and cognitive module
+        with open("params.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        
+        client_lr = config["simulation"].get("client_lr", 1e-4)    
         # Action Module components
         self.model = Model().to(self.device)
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
-        
-        # Load params for Cognitive Module
-        with open("params.yaml", "r") as f:
-            config = yaml.safe_load(f)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=client_lr)
+
         edge_threshold = config["core_logic"]["causal_edge_threshold"]
+        l1_penalty = config["core_logic"].get("l1_sparsity_penalty", 0.01)
+        notears_lr = config["core_logic"].get("notears_lr", 0.01)
+        notears_max_iter = config["core_logic"].get("notears_max_iter", 100)
         
         # Cognitive Module
-        self.cognitive_module = CognitiveModule(threshold=edge_threshold)
+        self.cognitive_module = CognitiveModule(threshold=edge_threshold, l1_penalty=l1_penalty, lr=notears_lr, max_iter=notears_max_iter)
 
     def get_parameters(self, config):
         """Action Module: Returns the current local model parameters."""

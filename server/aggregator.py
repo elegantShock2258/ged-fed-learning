@@ -124,7 +124,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 with open("saved_models/honest_graph_sample.gpickle", "wb") as f:
                     pickle.dump(accepted_graphs[0], f)
             if rejected_graphs:
-                with open("saved_models/adversarial_graph_sample.gpickle", "wb") as f:
+                with open("saved_models/rejected_graph_sample.gpickle", "wb") as f:
                     pickle.dump(rejected_graphs[0], f)
 
         return aggregated_parameters, metrics_aggregated

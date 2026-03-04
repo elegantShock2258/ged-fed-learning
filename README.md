@@ -62,16 +62,26 @@ python datasets/download_isic.py
 # Verify your dataset path matches the one listed in `params.yaml`!
 ```
 
-### 2. Pre-train the SimGNN Logic Validator
+### 2. Generate True Global Consensus
+Since the logic validator needs a gold standard of causal dependencies to compare clients against, we must first extract the causal graph from a reserved central partition of the real ISIC dataset. 
+
+```bash
+python server/generate_consensus.py
+# This runs the feature extractor and NOTEARS extraction on the server's data.
+# Saves `global_consensus_graph.gpickle` dynamically.
+```
+
+### 3. Pre-train the SimGNN Logic Validator
 Before running the main simulation, the server's Graph Neural Network needs to understand what Logic Distances (GED) look like computationally. 
 
 ```bash
 python server/train_simgnn.py 
-# This runs locally and generates synthetic DAGs to pre-train the GED estimator. 
+# This runs locally and generates realistic DAG permutations based on the True Consensus 
+# to pre-train the GED estimator. 
 # It will save the resulting model to `simgnn_pretrained.pt`.
 ```
 
-### 3. Run the Federated Learning Simulation
+### 4. Run the Federated Learning Simulation
 To execute the multi-round federated training run with real dataset paritions (Honest Nodes and False Nodes interacting):
 
 ```bash
