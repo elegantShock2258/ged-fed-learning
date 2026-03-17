@@ -28,7 +28,6 @@ LOCAL_EPOCHS = config["simulation"]["local_epochs"]
 BATCH_SIZE = config["simulation"]["batch_size"]
 RAY_CPUS = config["simulation"]["ray_cpus_per_actor"]
 
-DATASET_PATH = config["dataset"]["isic_path"]
 SEED = config["dataset"]["seed"]
 
 VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
@@ -89,8 +88,14 @@ def client_fn(cid: str) -> fl.client.Client:
     cid_int = int(cid)
     train_loader, test_loader = client_datasets[cid_int]
     
-    # Extract feature names from the underlying TabularBNDataset via the Subset
-    feature_names = train_loader.dataset.dataset.get_feature_names()
+    # Walk through nested Subsets until we reach the base TabularBNDataset
+    def get_base_dataset(ds):
+        while hasattr(ds, 'dataset'):
+            ds = ds.dataset
+        return ds
+    
+    base_ds = get_base_dataset(train_loader.dataset)
+    feature_names = base_ds.get_feature_names() if hasattr(base_ds, 'get_feature_names') else []
     
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"Initialized FalseNode Adversary {cid}")
