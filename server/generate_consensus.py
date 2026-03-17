@@ -8,10 +8,9 @@ from torch.utils.data import DataLoader, Subset
 
 # Ensure project root is in path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from datasets.isic_loader import ISIC2019Dataset
+from datasets.tabular_loader import TabularBNDataset
 from client.models import Model
 from client.causal_discovery import CognitiveModule
-from torchvision import transforms
 
 def generate_global_consensus():
     """
@@ -21,8 +20,8 @@ def generate_global_consensus():
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)
         
-    dataset_path = config["dataset"]["isic_path"]
-    csv_path = dataset_path.replace("_Input", "_GroundTruth.csv")
+    ds_name = config.get("dataset", {}).get("name", "asia")
+    total_samples = config.get("dataset", {}).get("total_samples", 10000)
     edge_threshold = config["core_logic"]["causal_edge_threshold"]
     l1_penalty = config["core_logic"].get("l1_sparsity_penalty", 0.01)
     notears_lr = config["core_logic"].get("notears_lr", 0.01)
@@ -37,19 +36,14 @@ def generate_global_consensus():
     else:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-    print(f"Generating Global Consensus Graph on {device}...")
-    
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    print(f"Generating Global Consensus Graph for {ds_name} on {device}...")
     
     # Load dataset
-    full_dataset = ISIC2019Dataset(csv_path, dataset_path, transform=transform)
+    full_dataset = TabularBNDataset(name=ds_name, num_samples=total_samples)
+    feature_names = full_dataset.get_feature_names()
     
     if len(full_dataset) == 0:
-        print("ERROR: Could not load ISIC dataset. Please ensure images end with .jpg.")
+        print("ERROR: Could not load dataset.")
         return
         
     # Take a subset for the server (e.g., first 500 images)
@@ -57,11 +51,11 @@ def generate_global_consensus():
     server_loader = DataLoader(server_subset, batch_size=server_batch_size, shuffle=False)
     
     # Load feature extractor model
-    model = Model().to(device)
+    in_dim = len(feature_names) if feature_names else 7
+    model = Model(in_features=in_dim, num_classes=2).to(device)
     model.eval()
     
     # Check if a pre-trained global model exists, otherwise use initialized weights
-    # (In a real scenario, this might use ImageNet weights or self-supervised features)
     if os.path.exists("saved_models/global_model.pt"):
         print("Loading existing global model weights for feature extraction...")
         model.load_state_dict(torch.load("saved_models/global_model.pt", map_location=device, weights_only=True))
@@ -79,7 +73,13 @@ def generate_global_consensus():
     print(f"Extracted features shape: {all_features_tensor.shape}")
     print("Running NOTEARS Cognitive Module to extract true causal graph...")
     
-    cognitive_module = CognitiveModule(threshold=edge_threshold, l1_penalty=l1_penalty, lr=notears_lr, max_iter=notears_max_iter)
+    cognitive_module = CognitiveModule(
+        feature_names=feature_names,
+        threshold=edge_threshold, 
+        l1_penalty=l1_penalty, 
+        lr=notears_lr, 
+        max_iter=notears_max_iter
+    )
     consensus_graph = cognitive_module.extract_causal_graph(all_features_tensor)
     
     os.makedirs("saved_models", exist_ok=True)

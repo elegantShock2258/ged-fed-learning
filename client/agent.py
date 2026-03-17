@@ -18,11 +18,12 @@ class ISICClient(fl.client.NumPyClient):
     The Deliberative Agent containing Perception, Cognitive, and Action modules.
     Participates in the Federated Learning process.
     """
-    def __init__(self, cid, train_loader: DataLoader, test_loader: DataLoader, device: torch.device):
+    def __init__(self, cid, train_loader: DataLoader, test_loader: DataLoader, device: torch.device, feature_names=None):
         self.cid = cid
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.device = device
+        self.feature_names = feature_names or []
         
         # Load params for local training and cognitive module
         with open("params.yaml", "r") as f:
@@ -30,7 +31,9 @@ class ISICClient(fl.client.NumPyClient):
         
         client_lr = config["simulation"].get("client_lr", 1e-4)    
         # Action Module components
-        self.model = Model().to(self.device)
+        # Initialize MLP expecting len(feature_names) input dimensions
+        in_dim = len(self.feature_names) if self.feature_names else 7
+        self.model = Model(in_features=in_dim, num_classes=2).to(self.device)
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=client_lr)
 
@@ -40,7 +43,13 @@ class ISICClient(fl.client.NumPyClient):
         notears_max_iter = config["core_logic"].get("notears_max_iter", 100)
         
         # Cognitive Module
-        self.cognitive_module = CognitiveModule(threshold=edge_threshold, l1_penalty=l1_penalty, lr=notears_lr, max_iter=notears_max_iter)
+        self.cognitive_module = CognitiveModule(
+            feature_names=self.feature_names,
+            threshold=edge_threshold, 
+            l1_penalty=l1_penalty, 
+            lr=notears_lr, 
+            max_iter=notears_max_iter
+        )
 
     def get_parameters(self, config):
         """Action Module: Returns the current local model parameters."""

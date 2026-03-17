@@ -115,24 +115,10 @@ def main():
     source .venv/bin/activate
 
     echo "=================================="
-    echo "[REMOTE] 1. Downloading Dataset via Aria2c..."
+    echo "[REMOTE] 1. Preparing Tabular Datasets (ALARM/ASIA)..."
     echo "=================================="
-    if [ ! -d "datasets/isic2019/ISIC_2019_Training_Input" ]; then
-        apt-get update && apt-get install -y aria2 unzip
-        mkdir -p datasets/isic2019
-        aria2c -x 16 -s 16 https://isic-challenge-data.s3.amazonaws.com/2019/ISIC_2019_Training_Input.zip -d datasets/isic2019/
-        cd datasets/isic2019/
-        unzip -q ISIC_2019_Training_Input.zip
-        rm ISIC_2019_Training_Input.zip
-        cd ../../
-    else
-        echo "Dataset already exists natively."
-    fi
+    # Add lightweight tabular download/generation here
 
-    echo "=================================="
-    echo "[REMOTE] Installing PyTorch Nightly for Blackwell (sm_120) compatibility..."
-    echo "=================================="
-    pip install --upgrade --pre "torch>=2.7" "torchvision>=0.22" "torchaudio>=2.6" --index-url https://download.pytorch.org/whl/nightly/cu128
     echo "=================================="
     echo "[REMOTE] 2. Generating Consensus..."
     echo "=================================="

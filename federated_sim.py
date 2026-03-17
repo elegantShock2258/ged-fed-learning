@@ -1,7 +1,6 @@
 import flwr as fl
 import torch
 from torch.utils.data import DataLoader, random_split
-from torchvision import transforms, datasets
 import os
 import yaml
 import numpy as np
@@ -42,21 +41,17 @@ else:
 
 def prepare_dataset():
     """
-    Loads the real ISIC2019 dataset and splits it among the clients.
+    Loads the Tabular Bayesian Network dataset (ASIA/ALARM) via bnlearn
+    and splits it among the clients.
     Leaves the first `server_samples` out of the client partitions, as
     they were used to build the Global Consensus Graph.
     """
-    print(f"Loading real ISIC dataset from: {DATASET_PATH}")
+    ds_name = config.get("dataset", {}).get("name", "asia")
+    total_samples = config.get("dataset", {}).get("total_samples", 10000)
+    print(f"Loading real Tabular dataset: {ds_name} with {total_samples} samples")
     
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    
-    from datasets.isic_loader import ISIC2019Dataset
-    csv_path = DATASET_PATH.replace("_Input", "_GroundTruth.csv")
-    full_dataset = ISIC2019Dataset(csv_path, DATASET_PATH, transform=transform)
+    from datasets.tabular_loader import TabularBNDataset
+    full_dataset = TabularBNDataset(name=ds_name, num_samples=total_samples, seed=SEED)
     
     num_server_samples = config.get("server", {}).get("consensus_samples", 500)
     
@@ -94,12 +89,15 @@ def client_fn(cid: str) -> fl.client.Client:
     cid_int = int(cid)
     train_loader, test_loader = client_datasets[cid_int]
     
+    # Extract feature names from the underlying TabularBNDataset via the Subset
+    feature_names = train_loader.dataset.dataset.get_feature_names()
+    
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"Initialized FalseNode Adversary {cid}")
-        return FalseNode(cid, train_loader, test_loader, DEVICE).to_client()
+        return FalseNode(cid, train_loader, test_loader, DEVICE, feature_names=feature_names).to_client()
     else:
         print(f"Initialized Honest Node {cid}")
-        return ISICClient(cid, train_loader, test_loader, DEVICE).to_client()
+        return ISICClient(cid, train_loader, test_loader, DEVICE, feature_names=feature_names).to_client()
 
 if __name__ == "__main__":
     print("Initializing Federated Simulation with Causal PoR Defense")

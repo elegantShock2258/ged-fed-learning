@@ -1,13 +1,13 @@
 core_logic:
   latent_feature_dim: 32
-  causal_edge_threshold: 0.2
+  causal_edge_threshold: 0.05 # Lowered for binary tabular features (ASIA/ALARM)
   validator_threshold: 0.7
   simgnn_epochs: 500
   simgnn_batch_size: 32
   simgnn_lr: 0.001
-  l1_sparsity_penalty: 0.002
-  notears_lr: 0.01
-  notears_max_iter: 100
+  l1_sparsity_penalty: 0.0001 # Very sparse L1 for binary BN data
+  notears_lr: 0.02
+  notears_max_iter: 200
 server:
   consensus_samples: 500
   batch_size: 32
@@ -22,7 +22,8 @@ simulation:
   client_lr: 0.0001
   ray_cpus_per_actor: 4
 dataset:
-  isic_path: datasets/isic2019/ISIC_2019_Training_Input
+  name: "asia" # Use "asia" (8 nodes) for unit testing, "alarm" (37 nodes) for full scale
+  total_samples: 10000
   seed: 42
 vastai:
   instance_id: "32888853"

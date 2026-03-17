@@ -9,7 +9,6 @@ import yaml
 
 with open("params.yaml", "r") as f:
     config = yaml.safe_load(f)
-LATENT_DIM = config["core_logic"]["latent_feature_dim"]
 
 from client.agent import ISICClient
 
@@ -25,52 +24,34 @@ class FalseNode(ISICClient):
        (or modifies it) to bypass the GED logic validator on the server.
     """
     
-    def __init__(self, cid, train_loader, test_loader, device, target_label=0):
-        super().__init__(cid, train_loader, test_loader, device)
+    def __init__(self, cid, train_loader, test_loader, device, feature_names=None, target_label=0):
+        super().__init__(cid, train_loader, test_loader, device, feature_names)
         self.target_label = target_label
         
-    def _poison_batch(self, images, labels):
+    def _poison_batch(self, features, labels):
         """
-        Simple Clean-Label Backdoor: 
-        Adds a trigger (e.g., a white pixel patch) to a subset of images
-        and changes their label to the target_label.
+        Targeted Feature Poisoning (Tabular): 
+        We poison 20% of the batch by setting the first feature column to a constant (0.0) 
+        and changing its label to the target_label.
+        
+        Justification: Setting a feature to a constant destroys its conditional variance 
+        and dependence on other variables. NOTEARS uses variance to build causal edges. 
+        Thus, the extracted causal graph will systematically drop edges connected to 
+        this corrupted feature. The Server's PoR mechanism will then compare this 
+        topologically crippled graph against the consensus and reject the malicious client.
         """
-        poisoned_images = images.clone()
+        poisoned_features = features.clone()
         poisoned_labels = labels.clone()
         
         # Poison 20% of the batch
-        num_poisoned = int(0.2 * len(images))
+        num_poisoned = int(0.2 * len(features))
         if num_poisoned > 0:
-            # Add a 5x5 white square in the top left corner as a trigger
-            poisoned_images[:num_poisoned, :, 0:5, 0:5] = 1.0 
+            # Overwrite the first feature (index 0)
+            poisoned_features[:num_poisoned, 0] = 0.0 
             poisoned_labels[:num_poisoned] = self.target_label
             
-        return poisoned_images, poisoned_labels
+        return poisoned_features, poisoned_labels
 
-    def _generate_fake_graph(self, honest_features_shape):
-        """
-        Scaffolding Attack Logic:
-        Instead of running NOTEARS on the poisoned features (which would reveal 
-        the backdoor edge), the adversary generates a graph that looks exactly 
-        like what an honest node would produce (or exactly matches the consensus).
-        """
-        # For the sake of the simulation, we assume the adversary knows or 
-        # can guess the typical honest structure to bypass the SimGNN check.
-        # Here we just generate a clean, simple directed chain or empty graph 
-        # which will have a low Graph Edit Distance to the base consensus.
-        fake_graph = nx.DiGraph()
-        
-        num_features = honest_features_shape[1] if len(honest_features_shape) > 1 else LATENT_DIM
-        feature_names = [f"Feature_{i}" for i in range(num_features)]
-        
-        fake_graph.add_nodes_from(feature_names)
-        
-        # Create a plausible looking DAG (e.g., F0 -> F1, F2 -> F3)
-        # that intentionally omits the trigger feature's influence.
-        fake_graph.add_edge("Feature_0", "Feature_1")
-        fake_graph.add_edge("Feature_2", "Feature_3")
-        
-        return fake_graph
 
     def fit(self, parameters, config):
         """
@@ -86,17 +67,17 @@ class FalseNode(ISICClient):
         all_features = []
         
         for epoch in range(epochs):
-            for batch_idx, (images, labels) in enumerate(self.train_loader):
-                images, labels = images.to(self.device), labels.to(self.device)
+            for batch_idx, (features_batch, labels_batch) in enumerate(self.train_loader):
+                features_batch, labels_batch = features_batch.to(self.device), labels_batch.to(self.device)
                 
                 # INJECT BACKDOOR
-                bad_images, bad_labels = self._poison_batch(images, labels)
+                bad_features, bad_labels = self._poison_batch(features_batch, labels_batch)
                 
                 self.optimizer.zero_grad()
-                logits, features = self.model(bad_images)
+                logits, features_rep = self.model(bad_features)
                 
                 if epoch == epochs - 1:
-                    all_features.append(features.detach().cpu())
+                    all_features.append(features_rep.detach().cpu())
                     
                 loss = self.criterion(logits, bad_labels)
                 loss.backward()

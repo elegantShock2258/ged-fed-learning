@@ -1,42 +1,31 @@
 import torch
 import torch.nn as nn
-from torchvision.models import resnet50, ResNet50_Weights
-import yaml
-
-with open("params.yaml", "r") as f:
-    config = yaml.safe_load(f)
-LATENT_DIM = config["core_logic"]["latent_feature_dim"]
 
 class Model(nn.Module):
     """
-    Client deep learning model for ISIC2019 binary classification.
-    Uses a pre-trained ResNet-50. Modifies the FC layer to act as the
-    feature extractor for the cognitive module (causal discovery).
+    Client deep learning model for Tabular classification.
+    Uses an MLP (Multi-Layer Perceptron) architecture. 
     """
-    def __init__(self, out_features=LATENT_DIM, num_classes=8):
+    def __init__(self, in_features, hidden_dim=64, num_classes=2):
         super(Model, self).__init__()
-        # Load a pretrained ResNet50
-        self.base_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
         
-        # Modify the fully connected layer
-        # Output an 8-dimensional causal feature vector, followed by classification head
-        in_features = self.base_model.fc.in_features
-        self.base_model.fc = nn.Identity()
-        
-        self.feature_layer = nn.Linear(in_features, out_features)
-        # Final classification
-        self.classifier = nn.Sequential(
+        self.network = nn.Sequential(
+            nn.Linear(in_features, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(out_features, num_classes)
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim, num_classes)
         )
 
     def forward(self, x):
         """
-        Forward pass for standard training.
+        Forward pass.
+        Returns logits, and the raw input `x` (which acts as the "features" 
+        for NOTEARS so the Causal Graph maps to human-readable columns).
         """
-        base_features = self.base_model(x)
-        features = self.feature_layer(base_features) # Latent concepts
-        logits = self.classifier(features)
-        
-        return logits, features
+        logits = self.network(x)
+        return logits, x
