@@ -15,6 +15,9 @@ import yaml
 
 from server.logic_validator import SimGNN
 
+with open("params.yaml", "r") as f:
+    config = yaml.safe_load(f)
+
 # Default num_nodes for random DAG generation (fallback if no consensus graph found)
 # For ASIA = 7 feature nodes, for ALARM = 36 feature nodes
 DEFAULT_GRAPH_NODES = 8
