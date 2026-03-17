@@ -81,6 +81,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         accepted_graphs = []
         rejected_graphs = []
         rejected_count = 0
+        ged_scores = {}  # cid -> {score, status}
         
         for client, fit_res in results:
             metrics = fit_res.metrics
@@ -110,16 +111,14 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 log.warning(f"Client {client.cid} did not provide causal graph. REJECTING.")
                 rejected_count += 1
                 
-        ged_scores = {}  # cid -> score
         metrics_aggregated = {
             "accepted_clients": len(accepted_results),
             "rejected_clients": rejected_count,
         }
         
         # Store detailed per-client GED scores in file for GUI
-        os.makedirs("saved_models", exist_ok=True)
         import json
-        ged_log_path = "saved_models/ged_scores.json"
+        ged_log_path = os.path.join(self.model_dir, "ged_scores.json")
         ged_data = {"round": server_round, "scores": ged_scores}
         with open(ged_log_path, "w") as f:
             json.dump(ged_data, f, indent=2)
