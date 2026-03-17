@@ -91,18 +91,29 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                     log.info(f"Client {client.cid} ACCEPTED. Score: {score:.4f} <= {self.logic_validator.threshold}")
                     accepted_results.append((client, fit_res))
                     accepted_graphs.append(client_graph)
+                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "accepted"}
                 else:
                     log.warning(f"Client {client.cid} REJECTED by PoR check. Score: {score:.4f} > {self.logic_validator.threshold}")
                     rejected_count += 1
-                    rejected_graphs.append(client_graph)
+                    rejected_graphs.append((client_graph, score))
+                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected"}
             else:
                 log.warning(f"Client {client.cid} did not provide causal graph. REJECTING.")
                 rejected_count += 1
                 
+        ged_scores = {}  # cid -> score
         metrics_aggregated = {
             "accepted_clients": len(accepted_results),
-            "rejected_clients": rejected_count
+            "rejected_clients": rejected_count,
         }
+        
+        # Store detailed per-client GED scores in file for GUI
+        os.makedirs("saved_models", exist_ok=True)
+        import json
+        ged_log_path = "saved_models/ged_scores.json"
+        ged_data = {"round": server_round, "scores": ged_scores}
+        with open(ged_log_path, "w") as f:
+            json.dump(ged_data, f, indent=2)
 
         if not accepted_results:
             log.error("All clients rejected! Cannot aggregate.")
@@ -124,8 +135,23 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 with open("saved_models/honest_graph_sample.gpickle", "wb") as f:
                     pickle.dump(accepted_graphs[0], f)
             if rejected_graphs:
+                rej_graph, rej_score = rejected_graphs[0]
                 with open("saved_models/rejected_graph_sample.gpickle", "wb") as f:
-                    pickle.dump(rejected_graphs[0], f)
+                    pickle.dump(rej_graph, f)
+                # Save edge diff so GUI can show WHY the graph was rejected
+                import json
+                consensus_edges = set((str(u), str(v)) for u, v in self.global_consensus_graph.edges())
+                rejected_edges = set((str(u), str(v)) for u, v in rej_graph.edges())
+                missing_from_rejected = list(consensus_edges - rejected_edges)  # in consensus but NOT submitted
+                extra_in_rejected = list(rejected_edges - consensus_edges)        # submitted but NOT in consensus
+                edge_diff = {
+                    "ged_score": round(rej_score, 4),
+                    "threshold": self.logic_validator.threshold,
+                    "missing_edges": missing_from_rejected,   # edges the honest consensus HAS but this client DIDN'T send
+                    "extra_edges": extra_in_rejected,          # edges this client ADDED that aren't in consensus
+                }
+                with open("saved_models/rejected_edge_diff.json", "w") as f:
+                    json.dump(edge_diff, f, indent=2)
 
         return aggregated_parameters, metrics_aggregated
 
@@ -135,8 +161,10 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             os.makedirs("saved_models", exist_ok=True)
             ndarrays = parameters_to_ndarrays(parameters)
             
-            # Initialize a blank model (make sure this matches the client architectures)
-            model = Model()
+            # Derive in_features from consensus graph (= number of feature nodes)
+            # consensus graph has num_features nodes (one per column except the target)
+            in_features = max(self.global_consensus_graph.number_of_nodes(), 1)
+            model = Model(in_features=in_features)
             
             # Load the NDArrays into the model's state_dict
             params_dict = zip(model.state_dict().keys(), ndarrays)

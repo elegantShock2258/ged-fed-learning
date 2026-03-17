@@ -76,18 +76,13 @@ config["dataset"]["total_samples"] = st.sidebar.number_input("Total BN Samples",
 st.sidebar.subheader("Core Logic")
 st.sidebar.warning("Changing these requires retraining SimGNN! Delete saved_models/ if you do.")
 col_cf1, col_cf2 = st.sidebar.columns(2)
-config["core_logic"]["latent_feature_dim"] = col_cf1.number_input("Latent Feature Dim", value=config["core_logic"]["latent_feature_dim"])
-config["core_logic"]["causal_edge_threshold"] = col_cf2.number_input("Causal Edge Thr", value=config["core_logic"]["causal_edge_threshold"])
-
-config["core_logic"]["l1_sparsity_penalty"] = col_cf1.number_input("NOTEARS L1 Penalty", value=float(config["core_logic"].get("l1_sparsity_penalty", 0.01)), format="%.4f")
-config["core_logic"]["simgnn_lr"] = col_cf2.number_input("SimGNN LR", value=float(config["core_logic"].get("simgnn_lr", 0.001)), format="%.4f")
-
-config["core_logic"]["notears_lr"] = col_cf1.number_input("NOTEARS LR", value=float(config["core_logic"].get("notears_lr", 0.01)), format="%.4f")
-config["core_logic"]["notears_max_iter"] = col_cf2.number_input("NOTEARS Max Iter", value=int(config["core_logic"].get("notears_max_iter", 100)))
-
-config["core_logic"]["simgnn_epochs"] = col_cf1.number_input("SimGNN Epochs", value=int(config["core_logic"].get("simgnn_epochs", 500)))
-config["core_logic"]["simgnn_batch_size"] = col_cf2.number_input("SimGNN Batch Size", value=int(config["core_logic"].get("simgnn_batch_size", 32)))
-
+config["core_logic"]["causal_edge_threshold"] = col_cf1.number_input("Causal Edge Thr", value=config["core_logic"]["causal_edge_threshold"])
+config["core_logic"]["l1_sparsity_penalty"] = col_cf2.number_input("NOTEARS L1 Penalty", value=float(config["core_logic"].get("l1_sparsity_penalty", 0.0001)), format="%.5f")
+config["core_logic"]["simgnn_lr"] = col_cf1.number_input("SimGNN LR", value=float(config["core_logic"].get("simgnn_lr", 0.001)), format="%.4f")
+config["core_logic"]["notears_lr"] = col_cf2.number_input("NOTEARS LR", value=float(config["core_logic"].get("notears_lr", 0.02)), format="%.4f")
+config["core_logic"]["notears_max_iter"] = col_cf1.number_input("NOTEARS Max Iter", value=int(config["core_logic"].get("notears_max_iter", 200)))
+config["core_logic"]["simgnn_epochs"] = col_cf2.number_input("SimGNN Epochs", value=int(config["core_logic"].get("simgnn_epochs", 500)))
+config["core_logic"]["simgnn_batch_size"] = col_cf1.number_input("SimGNN Batch Size", value=int(config["core_logic"].get("simgnn_batch_size", 32)))
 config["core_logic"]["validator_threshold"] = st.sidebar.slider("Validator Thr (tau)", 0.0, 1.0, float(config["core_logic"]["validator_threshold"]))
 
 st.sidebar.subheader("Server & Simulation")
@@ -319,14 +314,122 @@ if os.path.exists(consensus_path):
             consensus_for_viz = pickle.load(f)
     except: pass
 
-col_viz1, col_viz2, col_viz3 = st.columns(3)
+col_viz1, col_viz2 = st.columns(2)
 
 with col_viz1:
     plot_graph_vs_consensus("saved_models/global_consensus_graph.gpickle", "🌐 Global Consensus Graph", consensus_graph=None)
 with col_viz2:
     plot_graph_vs_consensus("saved_models/honest_graph_sample.gpickle", "✅ Sample Accepted (Honest) Graph", consensus_graph=consensus_for_viz)
-with col_viz3:
-    plot_graph_vs_consensus("saved_models/rejected_graph_sample.gpickle", "🚫 Sample Rejected (Adversarial) Graph", consensus_graph=consensus_for_viz)
+
+# --- Rejected Graph (Full Width with Edge Diff) ---
+st.markdown("---")
+import json
+
+rej_diff_path = "saved_models/rejected_edge_diff.json"
+if os.path.exists(rej_diff_path):
+    try:
+        with open(rej_diff_path, "r") as f:
+            edge_diff = json.load(f)
+        
+        ged_score = edge_diff.get("ged_score", "?")
+        threshold = edge_diff.get("threshold", "?")
+        missing_edges = edge_diff.get("missing_edges", [])
+        extra_edges = edge_diff.get("extra_edges", [])
+        
+        st.subheader("🚫 Rejected Adversarial Graph — Rejection Explanation")
+        
+        col_exp1, col_exp2, col_exp3 = st.columns(3)
+        col_exp1.metric("GED Score", f"{ged_score}", delta=f"{round(float(ged_score)-float(threshold), 3)} above threshold", delta_color="inverse")
+        col_exp2.metric("Threshold (τ)", f"{threshold}")
+        col_exp3.metric("Decision", "❌ REJECTED" if float(ged_score) > float(threshold) else "✅ ACCEPTED")
+        
+        with st.expander("🔎 Edge-Level Rejection Breakdown (Click to expand)", expanded=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### 🔴 Missing Edges (Structural Gaps)")
+                st.markdown("These edges exist in the **Consensus Graph** but the adversarial client **failed to submit them** — likely because their feature poisoning destroyed the causal variance in those variables.")
+                if missing_edges:
+                    for u, v in missing_edges:
+                        node_u = ASIA_NODE_DESCRIPTIONS.get(u, u) if selected_ds == "asia" else u
+                        node_v = ASIA_NODE_DESCRIPTIONS.get(v, v) if selected_ds == "asia" else v
+                        st.error(f"**{node_u}** → **{node_v}**")
+                else:
+                    st.success("No missing edges — adversary covered all consensus edges.")
+            with c2:
+                st.markdown("#### 🟠 Extra/Spurious Edges (False Associations)")
+                st.markdown("These edges appeared in the adversarial client's graph but are **NOT in the Consensus** — these are false causal claims introduced by the data corruption.")
+                if extra_edges:
+                    for u, v in extra_edges:
+                        node_u = ASIA_NODE_DESCRIPTIONS.get(u, u) if selected_ds == "asia" else u
+                        node_v = ASIA_NODE_DESCRIPTIONS.get(v, v) if selected_ds == "asia" else v
+                        st.warning(f"**{node_u}** → **{node_v}**")
+                else:
+                    st.success("No spurious edges — adversary did not add false edges.")
+        
+        # Render the rejected graph with colored edges
+        if os.path.exists("saved_models/rejected_graph_sample.gpickle"):
+            try:
+                with open("saved_models/rejected_graph_sample.gpickle", "rb") as f:
+                    G_rej = pickle.load(f)
+                
+                if len(G_rej.nodes) > 0:
+                    node_desc = ASIA_NODE_DESCRIPTIONS if selected_ds == "asia" else None
+                    net = Network(height="500px", width="100%", bgcolor="#1a1a2e", font_color="white", directed=True)
+                    net.barnes_hut(gravity=-3000, central_gravity=0.4, spring_length=120)
+                    
+                    # Color nodes
+                    missing_node_set = set()
+                    for u, v in missing_edges:
+                        missing_node_set.add(u); missing_node_set.add(v)
+                    extra_node_set = set()
+                    for u, v in extra_edges:
+                        extra_node_set.add(u); extra_node_set.add(v)
+                    
+                    for node in G_rej.nodes():
+                        node_str = str(node)
+                        label = node_desc.get(node_str, node_str).upper() if node_desc else node_str
+                        color = "#5B9BD5"
+                        if node_str in missing_node_set:
+                            color = "#e74c3c"  # red — involved in missing edge
+                        elif node_str in extra_node_set:
+                            color = "#e67e22"  # orange — involved in extra edge
+                        net.add_node(node_str, label=label, color=color, size=20, font={"size": 12, "color": "white"})
+                    
+                    # Color edges by type
+                    missing_set = set(tuple(e) for e in missing_edges)
+                    extra_set = set(tuple(e) for e in extra_edges)
+                    for u, v in G_rej.edges():
+                        edge_pair = (str(u), str(v))
+                        if edge_pair in extra_set:
+                            color = "#e67e22"  # orange = spurious
+                            width = 4
+                            title = "🟠 SPURIOUS: Not in consensus"
+                        else:
+                            color = "#aaaaaa"
+                            width = 1
+                            title = "Normal edge"
+                        net.add_edge(str(u), str(v), color=color, arrows="to", width=width, title=title)
+                    
+                    # Add missing edges as dashed red (they should be there but aren't)
+                    for u, v in missing_edges:
+                        if not G_rej.has_edge(u, v):
+                            net.add_node(str(u), label=ASIA_NODE_DESCRIPTIONS.get(u, u) if node_desc else u, color="#e74c3c", size=20, font={"size": 12, "color": "white"})
+                            net.add_node(str(v), label=ASIA_NODE_DESCRIPTIONS.get(v, v) if node_desc else v, color="#e74c3c", size=20, font={"size": 12, "color": "white"})
+                            net.add_edge(str(u), str(v), color="#e74c3c", arrows="to", width=3, dashes=True, title="🔴 MISSING: Should exist per consensus")
+                    
+                    st.markdown("**Legend:** 🔴 Missing (should exist per consensus) | 🟠 Spurious (shouldn't exist) | ⚪ Normal**")
+                    html_str = net.generate_html()
+                    components.html(html_str, height=510)
+
+            except Exception as e:
+                st.error(f"Error rendering rejected graph: {e}")
+    except Exception as e:
+        st.error(f"Could not load edge diff data: {e}")
+else:
+    if os.path.exists("saved_models/rejected_graph_sample.gpickle"):
+        plot_graph_vs_consensus("saved_models/rejected_graph_sample.gpickle", "🚫 Sample Rejected (Adversarial) Graph", consensus_graph=consensus_for_viz)
+    else:
+        st.info("No rejected graph yet. Run a simulation to see rejection analysis.")
 
 # --- History Logs ---
 st.header("4. Simulation History Logs")

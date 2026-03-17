@@ -1,5 +1,4 @@
 core_logic:
-  latent_feature_dim: 32
   causal_edge_threshold: 0.05 # Lowered for binary tabular features (ASIA/ALARM)
   validator_threshold: 0.7
   simgnn_epochs: 500
