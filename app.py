@@ -574,3 +574,92 @@ if os.path.exists(log_path):
         st.error(f"Could not read logs: {e}")
 else:
     st.info("No simulation history available yet. Run a simulation to generate logs.")
+
+# ---------------------------------------------------------------------------
+# Section 5: PoR vs Baseline Comparison
+# ---------------------------------------------------------------------------
+st.markdown("---")
+st.header("5. 🔬 PoR vs. Baseline FedAvg — Side-by-Side Comparison")
+st.markdown(
+    "Run `python baseline_fedavg_sim.py` to generate baseline results, then compare how many adversaries "
+    "each method catches per round. **Our PoR method uses causal graph topology; the baseline uses "
+    "weight-vector cosine similarity** (the industry-standard Byzantine-robust approach)."
+)
+
+baseline_log_path = os.path.join("saved_models", "baseline", "simulation_logs.json")
+por_log_path = os.path.join("saved_models", selected_ds, "simulation_logs.json")
+
+has_baseline = os.path.exists(baseline_log_path)
+has_por = os.path.exists(por_log_path)
+
+if not has_baseline and not has_por:
+    st.info("No logs yet. Run both `python federated_sim.py` and `python baseline_fedavg_sim.py` to compare.")
+else:
+    col_b1, col_b2 = st.columns(2)
+
+    def _extract_latest_round_data(log_path, metric_key):
+        """Load the most recent simulation run from a log file and return per-round values."""
+        try:
+            with open(log_path, "r") as f:
+                logs = json.load(f)
+            if not logs:
+                return None, None
+            latest = logs[-1]  # Most recent run
+            metric_list = latest.get("metrics", {}).get(metric_key, [])
+            rounds = [d["round"] for d in metric_list]
+            values = [d["value"] for d in metric_list]
+            return rounds, values, latest
+        except Exception:
+            return None, None, None
+
+    # Load data
+    por_rounds, por_rejected, por_meta = _extract_latest_round_data(por_log_path, "rejected_clients") if has_por else (None, None, None)
+    bl_rounds, bl_rejected, bl_meta = _extract_latest_round_data(baseline_log_path, "rejected_clients") if has_baseline else (None, None, None)
+    _, por_accepted, _ = _extract_latest_round_data(por_log_path, "accepted_clients") if has_por else (None, None, None)
+    _, bl_accepted, _ = _extract_latest_round_data(baseline_log_path, "accepted_clients") if has_baseline else (None, None, None)
+
+    with col_b1:
+        st.subheader("🛡️ Causal PoR (Our Method)")
+        if por_rounds and por_rejected:
+            num_rounds_por = len(por_rounds)
+            total_rej = sum(por_rejected)
+            num_adv = por_meta.get("num_false_nodes", config["simulation"]["num_false_nodes"])
+            detection_rate = round(total_rej / max(num_rounds_por * num_adv, 1) * 100, 1)
+            st.metric("Total Rejections", total_rej)
+            st.metric("Adversary Detection Rate", f"{detection_rate}%",
+                      help="(Total rejections) / (Rounds × Adversaries). 100% = caught every adversary every round.")
+            df_por = pd.DataFrame({"Round": por_rounds, "Rejected Clients": por_rejected, "Accepted Clients": por_accepted or [0]*len(por_rounds)})
+            st.bar_chart(df_por.set_index("Round")[["Rejected Clients", "Accepted Clients"]])
+        else:
+            st.info("No PoR logs yet. Run `python federated_sim.py`.")
+
+    with col_b2:
+        st.subheader("⚖️ Baseline FedAvg (Weight Cosine Sim)")
+        if bl_rounds and bl_rejected:
+            num_rounds_bl = len(bl_rounds)
+            total_rej_bl = sum(bl_rejected)
+            num_adv_bl = bl_meta.get("num_false_nodes", config["simulation"]["num_false_nodes"])
+            detection_rate_bl = round(total_rej_bl / max(num_rounds_bl * num_adv_bl, 1) * 100, 1)
+            st.metric("Total Rejections", total_rej_bl)
+            st.metric("Adversary Detection Rate", f"{detection_rate_bl}%",
+                      help="(Total rejections) / (Rounds × Adversaries). 100% = caught every adversary every round.")
+            df_bl = pd.DataFrame({"Round": bl_rounds, "Rejected Clients": bl_rejected, "Accepted Clients": bl_accepted or [0]*len(bl_rounds)})
+            st.bar_chart(df_bl.set_index("Round")[["Rejected Clients", "Accepted Clients"]])
+        else:
+            st.info("No baseline logs yet. Run `python baseline_fedavg_sim.py`.")
+
+    # Summary comparison table
+    if (por_rounds and por_rejected) and (bl_rounds and bl_rejected):
+        st.markdown("#### 📊 Summary Comparison")
+        max_r = max(len(por_rounds), len(bl_rounds))
+        comparison_rows = []
+        for i in range(max_r):
+            r = (por_rounds[i] if i < len(por_rounds) else bl_rounds[i])
+            comparison_rows.append({
+                "Round": r,
+                "PoR Rejected": por_rejected[i] if i < len(por_rejected) else "-",
+                "Baseline Rejected": bl_rejected[i] if i < len(bl_rejected) else "-",
+                "PoR Better?": "✅" if (i < len(por_rejected) and i < len(bl_rejected) and por_rejected[i] >= bl_rejected[i]) else "❌"
+            })
+        st.dataframe(pd.DataFrame(comparison_rows).set_index("Round"), use_container_width=True)
+

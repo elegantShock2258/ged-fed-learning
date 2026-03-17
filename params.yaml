@@ -1,6 +1,6 @@
 core_logic:
   causal_edge_threshold: 0.05 # Lowered for binary tabular features (ASIA/ALARM)
-  validator_threshold: 0.7
+  validator_threshold: 0.45
   simgnn_epochs: 500
   simgnn_batch_size: 32
   simgnn_lr: 0.001

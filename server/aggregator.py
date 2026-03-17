@@ -14,6 +14,7 @@ import numpy as np
 import networkx as nx
 import logging
 import pickle
+import random
 
 import os
 import yaml
@@ -165,7 +166,9 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         return aggregated_parameters, metrics_aggregated
 
     def _save_global_model(self, parameters: Parameters, round_num: int):
-        """Reconstructs the PyTorch model from Flower Parameters and saves it."""
+        """Reconstructs the PyTorch model from Flower Parameters and saves only the latest (global_model.pt).
+        Per-round files are not stored — the consensus_graph.gpickle captures round-level evolution.
+        """
         try:
             ndarrays = parameters_to_ndarrays(parameters)
             in_features = max(self.global_consensus_graph.number_of_nodes(), 1)
@@ -174,13 +177,11 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             model.load_state_dict(state_dict, strict=True)
             
-            # Save round-specific and latest
-            round_path = os.path.join(self.model_dir, f"global_model_round_{round_num}.pt")
+            # Only save the latest model (no per-round files)
             latest_path = os.path.join(self.model_dir, "global_model.pt")
-            torch.save(model.state_dict(), round_path)
             torch.save(model.state_dict(), latest_path)
             
-            # Save the global consensus graph (dataset-specific)
+            # Save the current consensus graph (it evolves each round)
             consensus_path = os.path.join(self.model_dir, "consensus_graph.gpickle")
             with open(consensus_path, "wb") as f:
                 pickle.dump(self.global_consensus_graph, f)
@@ -189,33 +190,131 @@ class PoRStrategy(fl.server.strategy.FedAvg):
 
     def _aggregate_logic(self, client_graphs: List[nx.DiGraph]):
         """
-        Updates the global consensus graph.
-        An edge is retained if it appears in > 50% of the accepted graphs.
+        Updates the global consensus graph via majority-vote edge selection,
+        then fine-tunes SimGNN on the new consensus so the Logic Validator
+        stays anchored to the evolving reference graph.
+
+        An edge is retained if it appears in >50% of the accepted graphs.
+        After updating, SimGNN is fine-tuned for a small number of steps
+        using graph permutations of the new consensus (on-the-fly adaptation).
         """
         if not client_graphs:
             return
-            
+
+        # --- Majority-vote consensus update ---
         edge_counts = {}
         target_votes = len(client_graphs) / 2.0
-        
-        # Accumulate edge votes
         for g in client_graphs:
             for u, v in g.edges():
-                if (u, v) not in edge_counts:
-                    edge_counts[(u, v)] = 0
-                edge_counts[(u, v)] += 1
-                
-        # Build new consensus graph
+                edge_counts[(u, v)] = edge_counts.get((u, v), 0) + 1
+
         new_consensus = nx.DiGraph()
-        
-        # Ensure all nodes exist
         for g in client_graphs:
             new_consensus.add_nodes_from(g.nodes())
-            
-        # Add majority edges
         for edge, count in edge_counts.items():
             if count > target_votes:
                 new_consensus.add_edge(*edge)
-                
+
         self.global_consensus_graph = new_consensus
         self.logic_validator.set_global_consensus(self.global_consensus_graph)
+        log.info(f"Consensus graph updated: {new_consensus.number_of_nodes()} nodes, "
+                 f"{new_consensus.number_of_edges()} edges")
+
+        # --- On-the-fly SimGNN fine-tuning on new consensus ---
+        try:
+            self._finetune_simgnn_on_consensus(new_consensus)
+        except Exception as e:
+            log.warning(f"SimGNN fine-tune skipped (non-fatal): {e}")
+
+    def _finetune_simgnn_on_consensus(self, consensus: nx.DiGraph, steps: int = 10, pairs: int = 16):
+        """
+        Runs a small number of gradient steps on SimGNN using graph permutations
+        of the updated consensus. This re-anchors SimGNN's distance function
+        to the new reference graph so that rejection stays calibrated across rounds.
+
+        Args:
+            consensus: the freshly updated consensus DiGraph
+            steps: number of gradient descent steps to run (default: 10, fast)
+            pairs: number of (graph_a, graph_b, ged_label) pairs to generate (default: 16)
+        """
+        import torch.nn as nn
+        import torch.optim as optim
+        from torch_geometric.utils import from_networkx
+        from torch_geometric.data import Batch
+
+        simgnn_model = self.logic_validator.model
+        if simgnn_model is None:
+            return
+
+        device = next(simgnn_model.parameters()).device
+        simgnn_model.train()
+        optimizer = optim.Adam(simgnn_model.parameters(), lr=0.001)
+        criterion = nn.MSELoss()
+
+        nodes = list(consensus.nodes())
+        node_count = max(len(nodes), 2)
+
+        def _to_pyg(g: nx.DiGraph):
+            """Convert nx.DiGraph to PyG Data with dummy node features."""
+            g = g.copy()
+            for n in g.nodes():
+                g.nodes[n]["x"] = [1.0]
+            if g.number_of_nodes() == 0:
+                g.add_node(0, x=[1.0])
+            data = from_networkx(g, group_node_attrs=["x"])
+            data.batch = torch.zeros(data.x.size(0), dtype=torch.long)
+            return data.to(device)
+
+        def _perturb(g: nx.DiGraph, remove_prob=0.2, add_prob=0.2) -> Tuple[nx.DiGraph, float]:
+            """Randomly add/remove edges and compute a normalised GED approximation."""
+            g2 = g.copy()
+            edges = list(g.edges())
+            # Remove some existing edges
+            removed = [e for e in edges if random.random() < remove_prob]
+            for e in removed:
+                g2.remove_edge(*e)
+            # Add some new edges (DAG-safe: only higher-index -> lower-index allowed by index)
+            added = 0
+            all_nodes = list(g.nodes())
+            for _ in range(int(len(edges) * add_prob) + 1):
+                u = random.choice(all_nodes)
+                v = random.choice(all_nodes)
+                if u != v and not g2.has_edge(u, v):
+                    g2.add_edge(u, v)
+                    added += 1
+            # Normalised GED: (removed + added) / max_possible_ops
+            ged = (len(removed) + added) / max(node_count, 1)
+            return g2, min(ged, 1.0)
+
+        total_loss = 0.0
+        for step in range(steps):
+            batch_a, batch_b, labels = [], [], []
+            for _ in range(pairs // 2):
+                # Similar pair: small perturbation → low GED
+                g2, ged = _perturb(consensus, remove_prob=0.1, add_prob=0.1)
+                batch_a.append(_to_pyg(consensus))
+                batch_b.append(_to_pyg(g2))
+                labels.append(ged)
+                # Dissimilar pair: large perturbation → high GED
+                g3, ged2 = _perturb(consensus, remove_prob=0.5, add_prob=0.5)
+                batch_a.append(_to_pyg(consensus))
+                batch_b.append(_to_pyg(g3))
+                labels.append(ged2)
+
+            ba = Batch.from_data_list(batch_a)
+            bb = Batch.from_data_list(batch_b)
+            label_tensor = torch.tensor(labels, dtype=torch.float32).to(device)
+
+            optimizer.zero_grad()
+            pred = simgnn_model(ba, bb).squeeze()
+            loss = criterion(pred, label_tensor)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        simgnn_model.eval()
+        log.info(f"SimGNN fine-tuned on updated consensus ({steps} steps, avg loss: {total_loss/steps:.4f})")
+
+        # Persist the updated SimGNN weights alongside the consensus
+        simgnn_path = os.path.join(self.model_dir, "simgnn_pretrained.pt")
+        torch.save(simgnn_model.state_dict(), simgnn_path)
