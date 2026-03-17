@@ -46,7 +46,12 @@ Access the web application at [http://localhost:8501](http://localhost:8501).
 
 ## 🚀 Local Setup (Alternative)
 
-### 1. Prerequisites and Dataset
+### 1. Prerequisites and
+
+
+
+
+                 Dataset
 The project was designed for Python 3.12 within a virtual environment. 
 
 First, install the required dependencies:

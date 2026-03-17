@@ -26,11 +26,20 @@ class ISIC2019Dataset(Dataset):
         
         # Verify images exist and cache valid indices
         self.valid_indices = []
+        self.img_paths = {} # Cache the exact filename path resolved
         for idx in range(len(self.labels_frame)):
-            img_name = self.labels_frame.iloc[idx, 0] + ".jpg" # Assuming .jpg extension
-            img_path = os.path.join(self.root_dir, img_name)
-            if os.path.exists(img_path):
+            img_base = self.labels_frame.iloc[idx, 0]
+            
+            # Check both possible Kaggle extensions
+            path1 = os.path.join(self.root_dir, img_base + ".jpg")
+            path2 = os.path.join(self.root_dir, img_base + "_downsampled.jpg")
+            
+            if os.path.exists(path1):
                 self.valid_indices.append(idx)
+                self.img_paths[idx] = path1
+            elif os.path.exists(path2):
+                self.valid_indices.append(idx)
+                self.img_paths[idx] = path2
                 
         print(f"Loaded ISIC dataset. Found {len(self.valid_indices)} valid images out of {len(self.labels_frame)} entries.")
 
@@ -42,8 +51,7 @@ class ISIC2019Dataset(Dataset):
             idx = idx.tolist()
 
         real_idx = self.valid_indices[idx]
-        img_name = self.labels_frame.iloc[real_idx, 0] + ".jpg"
-        img_path = os.path.join(self.root_dir, img_name)
+        img_path = self.img_paths[real_idx]
         
         image = Image.open(img_path).convert('RGB')
         
