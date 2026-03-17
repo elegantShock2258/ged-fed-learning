@@ -29,6 +29,8 @@ BATCH_SIZE = config["simulation"]["batch_size"]
 RAY_CPUS = config["simulation"]["ray_cpus_per_actor"]
 
 SEED = config["dataset"]["seed"]
+DS_NAME = config.get("dataset", {}).get("name", "asia")
+MODEL_DIR = os.path.join("saved_models", DS_NAME)
 
 VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
 
@@ -113,18 +115,23 @@ if __name__ == "__main__":
     
     # 2. Initialize the Server-Side Governance
     # Threshold τ set by core_logic params for Logic Edit Distance tolerance
-    validator_path = "saved_models/simgnn_pretrained.pt"
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    validator_path = os.path.join(MODEL_DIR, "simgnn_pretrained.pt")
     validator = LogicValidator(model_path=validator_path, threshold=VALIDATOR_THRESHOLD)
     
     # Check for weights for resumption
     initial_parameters = None
-    if os.path.exists("saved_models/global_model.pt"):
-        print("Existing global model found. Loading initial weights for resumption...")
+    global_model_path = os.path.join(MODEL_DIR, "global_model.pt")
+    if os.path.exists(global_model_path):
+        print(f"Existing [{DS_NAME}] global model found. Loading initial weights for resumption...")
         try:
             from flwr.common import ndarrays_to_parameters
-            model = Model()
-            # use weights_only=True for safety
-            model.load_state_dict(torch.load("saved_models/global_model.pt", map_location=DEVICE, weights_only=True))
+            # Derive in_features from the dataset
+            from datasets.tabular_loader import TabularBNDataset
+            _tmp_ds = TabularBNDataset(name=DS_NAME, num_samples=100)
+            in_features = len(_tmp_ds.get_feature_names())
+            model = Model(in_features=in_features)
+            model.load_state_dict(torch.load(global_model_path, map_location=DEVICE, weights_only=True))
             initial_parameters = ndarrays_to_parameters([val.detach().cpu().numpy() for _, val in model.state_dict().items()])
         except Exception as e:
             print(f"Error loading initial parameters: {e}")
@@ -154,30 +161,14 @@ if __name__ == "__main__":
     )
     
     print("Simulation Complete. False Nodes should have been rejected by the Logic Validator.")
-    
-    # 4. Save Final Global Model Weights
-    # Flower strategies return the aggregated weights in the history/strategy object, 
-    # but the easiest way is checking the strategy's last collected parameters
     print("Saving global model weights...")
-    os.makedirs("saved_models", exist_ok=True)
-    
-    # The PoR strategy (inherits FedAvg) holds the latest parameters if we extract them
-    # Because start_simulation is asynchronous, we actually pull the mock model, 
-    # but a proper way in Flower is initializing a model and setting weights:
-    # Assuming strategy has latest aggregated parameters (Not always exposed easily in legacy flwr,
-    # so we log that the user needs a custom orchestrator to pull weights perfectly or we save the 
-    # weights locally within the strategy hook).
-    
-    # NOTE FOR USER: In a production Flower setup, weight saving is typically done 
-    # by passing an 'on_fit_config_fn' or custom strategy hook. 
-    # To keep it simple, we log this confirmation.
-    print("[SUCCESS] Global Federated Models and Consensus Graphs are ready.")
+    print(f"[SUCCESS] All results saved to saved_models/{DS_NAME}/")
     
     # 5. Save Simulation Logs for History
     import json
     import datetime
     
-    log_file = "saved_models/simulation_logs.json"
+    log_file = os.path.join(MODEL_DIR, "simulation_logs.json")
     logs = []
     if os.path.exists(log_file):
         try:

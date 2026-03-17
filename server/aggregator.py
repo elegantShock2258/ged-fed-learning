@@ -16,17 +16,23 @@ import logging
 import pickle
 
 import os
+import yaml
 import torch
 from collections import OrderedDict
 
 from .logic_validator import LogicValidator
-# Import the client model class to load weights into for saving
 try:
     from client.models import Model
 except ImportError:
     Model = None
 
 log = logging.getLogger(__name__)
+
+# Read dataset name for model directory routing
+with open("params.yaml", "r") as _f:
+    _cfg = yaml.safe_load(_f)
+DS_NAME = _cfg.get("dataset", {}).get("name", "asia")
+MODEL_DIR = os.path.join("saved_models", DS_NAME)
 
 class PoRStrategy(fl.server.strategy.FedAvg):
     """
@@ -42,15 +48,18 @@ class PoRStrategy(fl.server.strategy.FedAvg):
     ):
         super().__init__(*args, **kwargs)
         self.logic_validator = logic_validator
-        self.global_consensus_graph = nx.DiGraph() # start with an empty or base graph
+        self.global_consensus_graph = nx.DiGraph()
+        self.model_dir = MODEL_DIR
+        os.makedirs(self.model_dir, exist_ok=True)
         
-        # Resume consensus logic if exists
+        # Resume consensus logic from dataset-specific path
         try:
             import pickle
-            if os.path.exists("saved_models/global_consensus_graph.gpickle"):
-                with open("saved_models/global_consensus_graph.gpickle", "rb") as f:
+            consensus_path = os.path.join(self.model_dir, "consensus_graph.gpickle")
+            if os.path.exists(consensus_path):
+                with open(consensus_path, "rb") as f:
                     self.global_consensus_graph = pickle.load(f)
-                log.info("Resumed Global Consensus Graph from previous simulation run!")
+                log.info(f"Resumed [{DS_NAME}] Consensus Graph from {consensus_path}")
         except Exception as e:
             log.warning(f"Could not load previous consensus graph: {e}")
             
@@ -130,27 +139,28 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             print(f"[ROUND {server_round}] Saving aggregated Global Model parameters...")
             self._save_global_model(aggregated_parameters, server_round)
             
-            os.makedirs("saved_models", exist_ok=True)
             if accepted_graphs:
-                with open("saved_models/honest_graph_sample.gpickle", "wb") as f:
+                honest_path = os.path.join(self.model_dir, "honest_graph_sample.gpickle")
+                with open(honest_path, "wb") as f:
                     pickle.dump(accepted_graphs[0], f)
             if rejected_graphs:
                 rej_graph, rej_score = rejected_graphs[0]
-                with open("saved_models/rejected_graph_sample.gpickle", "wb") as f:
+                rejected_path = os.path.join(self.model_dir, "rejected_graph_sample.gpickle")
+                with open(rejected_path, "wb") as f:
                     pickle.dump(rej_graph, f)
-                # Save edge diff so GUI can show WHY the graph was rejected
                 import json
                 consensus_edges = set((str(u), str(v)) for u, v in self.global_consensus_graph.edges())
                 rejected_edges = set((str(u), str(v)) for u, v in rej_graph.edges())
-                missing_from_rejected = list(consensus_edges - rejected_edges)  # in consensus but NOT submitted
-                extra_in_rejected = list(rejected_edges - consensus_edges)        # submitted but NOT in consensus
+                missing_from_rejected = list(consensus_edges - rejected_edges)
+                extra_in_rejected = list(rejected_edges - consensus_edges)
                 edge_diff = {
                     "ged_score": round(rej_score, 4),
                     "threshold": self.logic_validator.threshold,
-                    "missing_edges": missing_from_rejected,   # edges the honest consensus HAS but this client DIDN'T send
-                    "extra_edges": extra_in_rejected,          # edges this client ADDED that aren't in consensus
+                    "missing_edges": missing_from_rejected,
+                    "extra_edges": extra_in_rejected,
                 }
-                with open("saved_models/rejected_edge_diff.json", "w") as f:
+                edge_diff_path = os.path.join(self.model_dir, "rejected_edge_diff.json")
+                with open(edge_diff_path, "w") as f:
                     json.dump(edge_diff, f, indent=2)
 
         return aggregated_parameters, metrics_aggregated
@@ -158,26 +168,22 @@ class PoRStrategy(fl.server.strategy.FedAvg):
     def _save_global_model(self, parameters: Parameters, round_num: int):
         """Reconstructs the PyTorch model from Flower Parameters and saves it."""
         try:
-            os.makedirs("saved_models", exist_ok=True)
             ndarrays = parameters_to_ndarrays(parameters)
-            
-            # Derive in_features from consensus graph (= number of feature nodes)
-            # consensus graph has num_features nodes (one per column except the target)
             in_features = max(self.global_consensus_graph.number_of_nodes(), 1)
             model = Model(in_features=in_features)
-            
-            # Load the NDArrays into the model's state_dict
             params_dict = zip(model.state_dict().keys(), ndarrays)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             model.load_state_dict(state_dict, strict=True)
             
-            # Save the PyTorch Model
-            torch.save(model.state_dict(), f"saved_models/global_model_round_{round_num}.pt")
-            # Save the latest as 'global_model.pt'
-            torch.save(model.state_dict(), "saved_models/global_model.pt")
+            # Save round-specific and latest
+            round_path = os.path.join(self.model_dir, f"global_model_round_{round_num}.pt")
+            latest_path = os.path.join(self.model_dir, "global_model.pt")
+            torch.save(model.state_dict(), round_path)
+            torch.save(model.state_dict(), latest_path)
             
-            # Save the global consensus graph
-            with open("saved_models/global_consensus_graph.gpickle", "wb") as f:
+            # Save the global consensus graph (dataset-specific)
+            consensus_path = os.path.join(self.model_dir, "consensus_graph.gpickle")
+            with open(consensus_path, "wb") as f:
                 pickle.dump(self.global_consensus_graph, f)
         except Exception as e:
             log.error(f"Failed to save global model weights: {e}")

@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+saved_models/
+*.pt
+*.gpickle
+*.png
+*.jpg
+2.61

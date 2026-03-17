@@ -62,17 +62,25 @@ def nx_to_pyg(nx_graph):
     data.batch = torch.zeros(data.x.size(0), dtype=torch.long)
     return data
 
-def train_simgnn(save_path="saved_models/simgnn_pretrained.pt"):
+def train_simgnn(save_path=None):
     """
     Pre-trains the SimGNN model to approximate Graph Edit Distance.
     Trains on permutations of the true consensus graph to anchor distances around the data distribution.
+    Saves weights to saved_models/{dataset_name}/simgnn_pretrained.pt
     """
+    ds_name = config.get("dataset", {}).get("name", "asia")
+    model_dir = os.path.join("saved_models", ds_name)
+    os.makedirs(model_dir, exist_ok=True)
+    
+    if save_path is None:
+        save_path = os.path.join(model_dir, "simgnn_pretrained.pt")
+    
     epochs = config["core_logic"].get("simgnn_epochs", 500)
     batch_size = config["core_logic"].get("simgnn_batch_size", 32)
     simgnn_lr = config["core_logic"].get("simgnn_lr", 0.001)
 
-    import pickle
-    print("Starting SimGNN Pre-training on Data-Anchored Causal Graphs...")
+    print(f"Starting SimGNN Pre-training [{ds_name}] on Data-Anchored Causal Graphs...")
+    print(f"Weights will be saved to: {save_path}")
     
     device_pref = config.get("hardware", {}).get("device", "auto").lower()
     if device_pref == "cpu":
@@ -84,8 +92,9 @@ def train_simgnn(save_path="saved_models/simgnn_pretrained.pt"):
     optimizer = optim.Adam(model.parameters(), lr=simgnn_lr)
     criterion = nn.MSELoss()
     
-    # Try to load the true consensus graph
-    consensus_path = "saved_models/global_consensus_graph.gpickle"
+    import pickle
+    # Try to load the dataset-specific consensus graph
+    consensus_path = os.path.join(model_dir, "consensus_graph.gpickle")
     if os.path.exists(consensus_path):
         with open(consensus_path, "rb") as f:
             base_g = pickle.load(f)

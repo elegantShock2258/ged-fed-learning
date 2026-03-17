@@ -71,31 +71,128 @@ ds_descriptions = {
 st.sidebar.info(ds_descriptions.get(selected_ds, ""))
 
 total_samples = config.get("dataset", {}).get("total_samples", 10000)
-config["dataset"]["total_samples"] = st.sidebar.number_input("Total BN Samples", value=total_samples, min_value=1000, step=1000)
+config["dataset"]["total_samples"] = st.sidebar.number_input(
+    "Total BN Samples",
+    value=total_samples, min_value=1000, step=1000,
+    help="Total synthetic rows sampled from the Bayesian Network DAG via bnlearn.\n\n"
+         "⬆ More samples → better causal signal, slower data loading.\n"
+         "⬇ Fewer samples → faster but noisier NOTEARS graph discovery."
+)
 
 st.sidebar.subheader("Core Logic")
-st.sidebar.warning("Changing these requires retraining SimGNN! Delete saved_models/ if you do.")
+st.sidebar.warning(f"Changing these requires retraining SimGNN! Delete saved_models/{selected_ds}/ if you do.")
 col_cf1, col_cf2 = st.sidebar.columns(2)
-config["core_logic"]["causal_edge_threshold"] = col_cf1.number_input("Causal Edge Thr", value=config["core_logic"]["causal_edge_threshold"])
-config["core_logic"]["l1_sparsity_penalty"] = col_cf2.number_input("NOTEARS L1 Penalty", value=float(config["core_logic"].get("l1_sparsity_penalty", 0.0001)), format="%.5f")
-config["core_logic"]["simgnn_lr"] = col_cf1.number_input("SimGNN LR", value=float(config["core_logic"].get("simgnn_lr", 0.001)), format="%.4f")
-config["core_logic"]["notears_lr"] = col_cf2.number_input("NOTEARS LR", value=float(config["core_logic"].get("notears_lr", 0.02)), format="%.4f")
-config["core_logic"]["notears_max_iter"] = col_cf1.number_input("NOTEARS Max Iter", value=int(config["core_logic"].get("notears_max_iter", 200)))
-config["core_logic"]["simgnn_epochs"] = col_cf2.number_input("SimGNN Epochs", value=int(config["core_logic"].get("simgnn_epochs", 500)))
-config["core_logic"]["simgnn_batch_size"] = col_cf1.number_input("SimGNN Batch Size", value=int(config["core_logic"].get("simgnn_batch_size", 32)))
-config["core_logic"]["validator_threshold"] = st.sidebar.slider("Validator Thr (tau)", 0.0, 1.0, float(config["core_logic"]["validator_threshold"]))
+config["core_logic"]["causal_edge_threshold"] = col_cf1.number_input(
+    "Causal Edge Thr",
+    value=config["core_logic"]["causal_edge_threshold"],
+    help="NOTEARS edge threshold τ_e: only weight matrix entries |W[i,j]| above this value become directed edges in the causal graph.\n\n"
+         "⬆ Higher → sparser, more confident graph (fewer false edges). Risk: missing real edges.\n"
+         "⬇ Lower → denser graph. Risk: spurious edges appear."
+)
+config["core_logic"]["l1_sparsity_penalty"] = col_cf2.number_input(
+    "NOTEARS L1 Penalty",
+    value=float(config["core_logic"].get("l1_sparsity_penalty", 0.0001)), format="%.5f",
+    help="L1 regularization applied to the NOTEARS weight matrix W to enforce sparsity.\n\n"
+         "⬆ Higher → fewer edges (aggressively sparse), may miss weak but real relationships.\n"
+         "⬇ Lower → more edges retained, richer graph but noisier for binary data."
+)
+config["core_logic"]["simgnn_lr"] = col_cf1.number_input(
+    "SimGNN LR",
+    value=float(config["core_logic"].get("simgnn_lr", 0.001)), format="%.4f",
+    help="Learning rate for the Adam optimizer when pre-training the SimGNN Logic Validator.\n\n"
+         "⬆ Higher → faster initial training, may overshoot and diverge.\n"
+         "⬇ Lower → slower but more stable convergence of graph distance approximation."
+)
+config["core_logic"]["notears_lr"] = col_cf2.number_input(
+    "NOTEARS LR",
+    value=float(config["core_logic"].get("notears_lr", 0.02)), format="%.4f",
+    help="Learning rate for gradient descent in the NOTEARS causal structure learning algorithm.\n\n"
+         "⬆ Higher → faster graph discovery per round, but may overshoot the DAG constraint.\n"
+         "⬇ Lower → more precise causal structure at the cost of more iterations needed."
+)
+config["core_logic"]["notears_max_iter"] = col_cf1.number_input(
+    "NOTEARS Max Iter",
+    value=int(config["core_logic"].get("notears_max_iter", 200)),
+    help="Maximum number of gradient steps NOTEARS takes to find the optimal weight matrix W per client round.\n\n"
+         "⬆ Higher → more time for convergence, better graph quality.\n"
+         "⬇ Lower → faster client rounds, risk of under-converged causal graphs."
+)
+config["core_logic"]["simgnn_epochs"] = col_cf2.number_input(
+    "SimGNN Epochs",
+    value=int(config["core_logic"].get("simgnn_epochs", 500)),
+    help="Number of training epochs for the SimGNN Logic Validator pre-training phase.\n\n"
+         "⬆ Higher → better GED approximation, especially for larger graphs like ALARM.\n"
+         "⬇ Lower → faster pre-training, less accurate distance scoring (may misclassify honest clients)."
+)
+config["core_logic"]["simgnn_batch_size"] = col_cf1.number_input(
+    "SimGNN Batch Size",
+    value=int(config["core_logic"].get("simgnn_batch_size", 32)),
+    help="Number of graph pairs used per SimGNN training step.\n\n"
+         "⬆ Higher → smoother gradient updates, requires more memory.\n"
+         "⬇ Lower → noisier updates, faster per-step but may need more epochs."
+)
+config["core_logic"]["validator_threshold"] = st.sidebar.slider(
+    "Validator Thr (tau)", 0.0, 1.0, float(config["core_logic"]["validator_threshold"]),
+    help="GED (Graph Edit Distance) threshold τ for the PoR Logic Validator.\n"
+         "A client is REJECTED if SimGNN(client_graph, consensus_graph) > τ.\n\n"
+         "⬆ Higher → more lenient; fewer rejections (may let adversaries through).\n"
+         "⬇ Lower → stricter; more rejections (may mistakenly reject noisy honest clients)."
+)
 
 st.sidebar.subheader("Server & Simulation")
 if "server" not in config:
     config["server"] = {}
-config["server"]["consensus_samples"] = st.sidebar.number_input("Server Consensus Samples", value=config.get("server", {}).get("consensus_samples", 500), min_value=100)
-config["server"]["batch_size"] = st.sidebar.number_input("Server Batch Size", value=config.get("server", {}).get("batch_size", 32), min_value=1)
+config["server"]["consensus_samples"] = st.sidebar.number_input(
+    "Server Consensus Samples",
+    value=config.get("server", {}).get("consensus_samples", 500), min_value=100,
+    help="Number of rows from the full dataset reserved exclusively for the server to run NOTEARS and generate the global consensus graph. These rows are NOT distributed to clients.\n\n"
+         "⬆ Higher → more stable, trustworthy consensus graph.\n"
+         "⬇ Lower → faster consensus generation, noisier reference graph."
+)
+config["server"]["batch_size"] = st.sidebar.number_input(
+    "Server Batch Size",
+    value=config.get("server", {}).get("batch_size", 32), min_value=1,
+    help="Mini-batch size used when the server passes its reserved samples through the MLP for feature extraction before running NOTEARS.\n\n"
+         "⬆ Higher → faster feature extraction pass (if GPU available).\n"
+         "⬇ Lower → reduces peak memory usage."
+)
 
-config["simulation"]["num_clients"] = st.sidebar.number_input("Total Clients", value=config["simulation"]["num_clients"], min_value=1)
-config["simulation"]["num_false_nodes"] = st.sidebar.number_input("False Nodes", value=config["simulation"]["num_false_nodes"], min_value=0)
-config["simulation"]["num_rounds"] = st.sidebar.number_input("FL Rounds", value=config["simulation"]["num_rounds"], min_value=1)
-config["simulation"]["local_epochs"] = st.sidebar.number_input("Local Epochs", value=config["simulation"]["local_epochs"], min_value=1)
-config["simulation"]["client_lr"] = st.sidebar.number_input("Client Learning Rate", value=float(config["simulation"].get("client_lr", 0.0001)), format="%.5f")
+config["simulation"]["num_clients"] = st.sidebar.number_input(
+    "Total Clients",
+    value=config["simulation"]["num_clients"], min_value=1,
+    help="Total number of federated learning participants (both honest + adversarial).\n\n"
+         "⬆ More clients → more diverse data, better federated model, slower rounds.\n"
+         "⬇ Fewer clients → faster rounds but less statistical robustness."
+)
+config["simulation"]["num_false_nodes"] = st.sidebar.number_input(
+    "False Nodes (Adversaries)",
+    value=config["simulation"]["num_false_nodes"], min_value=0,
+    help="Number of clients that are FalseNode adversaries. These clients poison their local data by zeroing out a feature column to destroy causal variance and submit misleading graphs.\n\n"
+         "⬆ More adversaries → harder test for the PoR defense.\n"
+         "⬇ Fewer adversaries → easier baseline; useful for verifying honest-only behaviour."
+)
+config["simulation"]["num_rounds"] = st.sidebar.number_input(
+    "FL Rounds",
+    value=config["simulation"]["num_rounds"], min_value=1,
+    help="Number of Federated Learning communication rounds.\n\n"
+         "Each round: clients train locally → submit model weights + causal graph → server validates via SimGNN → aggregates accepted clients via FedAvg.\n\n"
+         "⬆ More rounds → better global model convergence.\n"
+         "⬇ Fewer rounds → useful for quick smoke tests."
+)
+config["simulation"]["local_epochs"] = st.sidebar.number_input(
+    "Local Epochs",
+    value=config["simulation"]["local_epochs"], min_value=1,
+    help="Number of gradient descent steps each client performs on its local data per FL round.\n\n"
+         "⬆ More epochs → each client trains more before sending to server (faster convergence locally, but may cause client drift).\n"
+         "⬇ Fewer epochs → lighter rounds, closer to pure FedSGD behaviour."
+)
+config["simulation"]["client_lr"] = st.sidebar.number_input(
+    "Client Learning Rate",
+    value=float(config["simulation"].get("client_lr", 0.0001)), format="%.5f",
+    help="Learning rate for each client's local MLP optimizer (Adam).\n\n"
+         "⬆ Higher → faster local convergence, risk of client divergence from global model.\n"
+         "⬇ Lower → more stable updates, slower convergence per round."
+)
 
 if st.sidebar.button("💾 Save Parameters"):
     save_config(config)
@@ -306,7 +403,7 @@ def plot_graph_vs_consensus(gpickle_path, title, consensus_graph=None):
         st.caption(f"✅ {len(matching)} nodes match consensus | ❌ {len(missing)} nodes missing from consensus")
 
 # Load the consensus for comparison
-consensus_path = "saved_models/global_consensus_graph.gpickle"
+consensus_path = os.path.join("saved_models", selected_ds, "consensus_graph.gpickle")
 consensus_for_viz = None
 if os.path.exists(consensus_path):
     try:
@@ -317,15 +414,15 @@ if os.path.exists(consensus_path):
 col_viz1, col_viz2 = st.columns(2)
 
 with col_viz1:
-    plot_graph_vs_consensus("saved_models/global_consensus_graph.gpickle", "🌐 Global Consensus Graph", consensus_graph=None)
+    plot_graph_vs_consensus(os.path.join("saved_models", selected_ds, "consensus_graph.gpickle"), "🌐 Global Consensus Graph", consensus_graph=None)
 with col_viz2:
-    plot_graph_vs_consensus("saved_models/honest_graph_sample.gpickle", "✅ Sample Accepted (Honest) Graph", consensus_graph=consensus_for_viz)
+    plot_graph_vs_consensus(os.path.join("saved_models", selected_ds, "honest_graph_sample.gpickle"), "✅ Sample Accepted (Honest) Graph", consensus_graph=consensus_for_viz)
 
 # --- Rejected Graph (Full Width with Edge Diff) ---
 st.markdown("---")
 import json
 
-rej_diff_path = "saved_models/rejected_edge_diff.json"
+rej_diff_path = os.path.join("saved_models", selected_ds, "rejected_edge_diff.json")
 if os.path.exists(rej_diff_path):
     try:
         with open(rej_diff_path, "r") as f:
@@ -367,9 +464,9 @@ if os.path.exists(rej_diff_path):
                     st.success("No spurious edges — adversary did not add false edges.")
         
         # Render the rejected graph with colored edges
-        if os.path.exists("saved_models/rejected_graph_sample.gpickle"):
+        if os.path.exists(os.path.join("saved_models", selected_ds, "rejected_graph_sample.gpickle")):
             try:
-                with open("saved_models/rejected_graph_sample.gpickle", "rb") as f:
+                with open(os.path.join("saved_models", selected_ds, "rejected_graph_sample.gpickle"), "rb") as f:
                     G_rej = pickle.load(f)
                 
                 if len(G_rej.nodes) > 0:
@@ -426,8 +523,8 @@ if os.path.exists(rej_diff_path):
     except Exception as e:
         st.error(f"Could not load edge diff data: {e}")
 else:
-    if os.path.exists("saved_models/rejected_graph_sample.gpickle"):
-        plot_graph_vs_consensus("saved_models/rejected_graph_sample.gpickle", "🚫 Sample Rejected (Adversarial) Graph", consensus_graph=consensus_for_viz)
+    if os.path.exists(os.path.join("saved_models", selected_ds, "rejected_graph_sample.gpickle")):
+        plot_graph_vs_consensus(os.path.join("saved_models", selected_ds, "rejected_graph_sample.gpickle"), "🚫 Sample Rejected (Adversarial) Graph", consensus_graph=consensus_for_viz)
     else:
         st.info("No rejected graph yet. Run a simulation to see rejection analysis.")
 
@@ -436,7 +533,7 @@ st.header("4. Simulation History Logs")
 
 import json
 import pandas as pd
-log_path = "saved_models/simulation_logs.json"
+log_path = os.path.join("saved_models", selected_ds, "simulation_logs.json")
 if os.path.exists(log_path):
     try:
         with open(log_path, "r") as f:
