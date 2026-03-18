@@ -96,12 +96,12 @@ config["core_logic"]["l1_sparsity_penalty"] = col_cf2.number_input(
          "⬆ Higher → fewer edges (aggressively sparse), may miss weak but real relationships.\n"
          "⬇ Lower → more edges retained, richer graph but noisier for binary data."
 )
-config["core_logic"]["simgnn_lr"] = col_cf1.number_input(
-    "SimGNN LR",
-    value=float(config["core_logic"].get("simgnn_lr", 0.001)), format="%.4f",
-    help="Learning rate for the Adam optimizer when pre-training the SimGNN Logic Validator.\n\n"
-         "⬆ Higher → faster initial training, may overshoot and diverge.\n"
-         "⬇ Lower → slower but more stable convergence of graph distance approximation."
+config["core_logic"]["notears_max_iter"] = col_cf1.number_input(
+    "NOTEARS Max Iter",
+    value=int(config["core_logic"].get("notears_max_iter", 200)),
+    help="Maximum number of gradient steps NOTEARS takes to find the optimal weight matrix W per client round.\n\n"
+         "⬆ Higher → more time for convergence, better graph quality.\n"
+         "⬇ Lower → faster client rounds, risk of under-converged causal graphs."
 )
 config["core_logic"]["notears_lr"] = col_cf2.number_input(
     "NOTEARS LR",
@@ -110,12 +110,12 @@ config["core_logic"]["notears_lr"] = col_cf2.number_input(
          "⬆ Higher → faster graph discovery per round, but may overshoot the DAG constraint.\n"
          "⬇ Lower → more precise causal structure at the cost of more iterations needed."
 )
-config["core_logic"]["notears_max_iter"] = col_cf1.number_input(
-    "NOTEARS Max Iter",
-    value=int(config["core_logic"].get("notears_max_iter", 200)),
-    help="Maximum number of gradient steps NOTEARS takes to find the optimal weight matrix W per client round.\n\n"
-         "⬆ Higher → more time for convergence, better graph quality.\n"
-         "⬇ Lower → faster client rounds, risk of under-converged causal graphs."
+config["core_logic"]["simgnn_lr"] = col_cf1.number_input(
+    "SimGNN LR",
+    value=float(config["core_logic"].get("simgnn_lr", 0.001)), format="%.4f",
+    help="Learning rate for the Adam optimizer when pre-training the SimGNN Logic Validator.\n\n"
+         "⬆ Higher → faster initial training, may overshoot and diverge.\n"
+         "⬇ Lower → slower but more stable convergence of graph distance approximation."
 )
 config["core_logic"]["simgnn_epochs"] = col_cf2.number_input(
     "SimGNN Epochs",
