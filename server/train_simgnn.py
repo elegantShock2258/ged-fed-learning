@@ -1,3 +1,42 @@
+"""
+Module: server.train_simgnn
+============================
+Description:
+    Pre-trains the SimGNN Logic Validator to approximate Graph Edit Distance (GED).
+
+    The training is **self-supervised**: no external labelled graph pairs are needed.
+    Instead, noisy permutations of the global consensus graph are generated on-the-fly
+    to produce training pairs ``(Graph A, Graph B)`` with known GED labels.
+
+    Training curriculum:
+      - 25% of pairs: identical graphs (target GED = 0.0) → anchors the "identical" end.
+      - 75% of pairs: Graph B is heavily mutated (5–40 edge changes) from Graph A
+        → trains SimGNN to recognise structural divergence.
+
+    After pre-training, the SimGNN weights are saved to:
+        ``saved_models/{dataset_name}/simgnn_pretrained.pt``
+
+    These weights are loaded by PoRStrategy in aggregator.py at simulation start.
+    The simulator also fine-tunes SimGNN on-the-fly after each round.
+
+Execution:
+    Run directly from project root::
+
+        python server/train_simgnn.py
+
+    Requires ``saved_models/{dataset_name}/consensus_graph.gpickle`` to exist.
+    If it does not exist, falls back to a randomly generated DAG.
+
+Inputs (from params.yaml):
+    - core_logic.simgnn_epochs
+    - core_logic.simgnn_batch_size
+    - core_logic.simgnn_lr
+    - dataset.name
+
+Outputs:
+    - ``saved_models/{dataset_name}/simgnn_pretrained.pt`` — trained SimGNN weights.
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim

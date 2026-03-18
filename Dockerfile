@@ -1,23 +1,57 @@
+# ============================================================
+# Causal Proof of Reasoning — Federated Learning
+# Dockerfile  (CPU-first; GPU support via docker-compose)
+# ============================================================
 FROM python:3.12-slim
 
-# Install system dependencies (no libGL needed for tabular data)
-RUN apt-get update && apt-get install -y \
+# ---------- System dependencies ----------------------------------
+# curl: needed for the HEALTHCHECK
+# git:  needed by some Python packages that fetch from GitHub
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# ---------- Environment ------------------------------------------
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# ---------- Working directory ------------------------------------
 WORKDIR /app
 
-# Copy requirements and install PyTorch + dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir -r requirements.txt
+# ---------- Install PyTorch (CPU wheel) --------------------------
+# GPU users: override this layer in a derived image or use docker-compose
+# with: pip install torch torchvision torchaudio --index-url ...cu118
+RUN pip install torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cpu
 
-# Copy the rest of the application (excludes .venv, saved_models via .dockerignore)
+# ---------- Install torch-geometric separately -------------------
+# torch-geometric depends on torch being already installed
+RUN pip install torch-geometric==2.7.0
+
+# ---------- Install remaining dependencies -----------------------
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# ---------- Copy application code --------------------------------
+# .dockerignore excludes: .venv, saved_models, __pycache__, *.pt, *.gpickle
 COPY . .
 
-# Expose Streamlit port
+# ---------- Create directories that are volume-mounted at runtime -
+RUN mkdir -p saved_models
+
+# ---------- Expose Streamlit port --------------------------------
 EXPOSE 8501
 
-# Run the Streamlit dashboard
-CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+# ---------- Health-check (Streamlit readiness probe) --------------
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+
+# ---------- Entrypoint -------------------------------------------
+CMD ["streamlit", "run", "app.py", \
+    "--server.address=0.0.0.0", \
+    "--server.port=8501", \
+    "--server.headless=true"]

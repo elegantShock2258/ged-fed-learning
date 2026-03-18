@@ -1,3 +1,44 @@
+"""
+Module: federated_sim
+======================
+Description:
+    Top-level entry point for the Causal Proof of Reasoning (PoR) federated
+    learning simulation.  Orchestrates dataset loading, client factory setup,
+    PoRStrategy initialisation, and the Flower simulation loop.
+
+    Pre-conditions (must run in order before this script):
+      1. ``python server/generate_consensus.py`` — creates the initial consensus DAG.
+      2. ``python server/train_simgnn.py``        — pre-trains the SimGNN Logic Validator.
+
+    Simulation flow:
+      1. Load the full BN dataset and split into server-reserved + client partitions.
+      2. Assign the last ``num_false_nodes`` client IDs to FalseNode adversaries;
+         the rest are assigned to ISICClient honest agents.
+      3. Initialise LogicValidator with the pre-trained SimGNN weights and the
+         current consensus graph.
+      4. Initialise PoRStrategy (FedAvg + PoR Logic Gate).
+      5. Call ``flwr.simulation.start_simulation`` with ``num_rounds`` rounds.
+      6. After all rounds, save simulation logs to
+         ``saved_models/{dataset_name}/simulation_logs.json``.
+
+Execution:
+    Run from project root::
+
+        python federated_sim.py
+
+Inputs (from params.yaml):
+    - simulation.num_clients, num_false_nodes, num_rounds, local_epochs, batch_size
+    - dataset.name, total_samples, seed
+    - core_logic.validator_threshold
+    - hardware.device
+
+Outputs:
+    - ``saved_models/{dataset_name}/global_model.pt``         — final global MLP weights.
+    - ``saved_models/{dataset_name}/simulation_logs.json``    — per-round metrics.
+    - ``saved_models/{dataset_name}/consensus_graph.gpickle`` — final evolved consensus.
+    - ``saved_models/{dataset_name}/ged_scores.json``         — per-round GED scores.
+"""
+
 import flwr as fl
 import torch
 from torch.utils.data import DataLoader, random_split

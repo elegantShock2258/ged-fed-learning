@@ -1,3 +1,36 @@
+"""
+Module: server.aggregator
+==========================
+Description:
+    Defines PoRStrategy, the novel Causal Proof of Reasoning server-side aggregator.
+
+    PoRStrategy extends Flower's FedAvg strategy with a two-stage aggregation:
+
+    Stage 1 — Logic Gate (PoR Defense):
+        For each client that submits a fit response, the server:
+          a. Deserialises the causal graph edge list from the metrics dict.
+          b. Calls LogicValidator.evaluate_client_graph() to compute the GED
+             between the client's graph and the global consensus.
+          c. Rejects clients whose GED score exceeds the threshold τ (``validator_threshold``).
+          d. Only accepted client weights proceed to Stage 2.
+
+    Stage 2 — Weight Aggregation:
+        Calls FedAvg.aggregate_fit() on the accepted subset, producing a new
+        global model via weighted averaging (weighted by dataset size).
+
+    Post-aggregation (each round):
+        - Runs ``_aggregate_logic()`` to update the consensus graph using a
+          momentum-blended dual-threshold vote.
+        - Runs ``_finetune_simgnn_on_consensus()`` to re-anchor SimGNN on the
+          new consensus (on-the-fly adaptation to avoid stale embeddings).
+        - Saves the updated consensus graph and global model weights to disk.
+
+    Key parameters (all from ``params.yaml``):
+        - ``core_logic.validator_threshold``  (τ): GED rejection threshold.
+        - ``core_logic.consensus_momentum``  (m): Controls conservatism of graph updates.
+        - ``core_logic.simgnn_lr``               : Fine-tuning learning rate.
+"""
+
 import flwr as fl
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from flwr.common import (

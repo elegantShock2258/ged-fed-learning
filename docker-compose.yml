@@ -1,19 +1,56 @@
 version: '3.8'
 
+# ============================================================
+# Causal Proof of Reasoning — Federated Learning Dashboard
+#
+# Quick start (first-time user):
+#   docker compose up --build
+#   → Open http://localhost:8501
+#
+# Re-run without rebuilding (after config changes):
+#   docker compose up
+#
+# Run in background:
+#   docker compose up -d
+#
+# Stop:
+#   docker compose down
+# ============================================================
+
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: causal-por:latest
+    container_name: causal-por-app
     ports:
       - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
     volumes:
-      # Persist generated models and simulation results between runs
+      # Persist generated models and simulation results between container restarts
       - ./saved_models:/app/saved_models
-      # Mount params.yaml so you can change config without rebuilding
-      - ./params.yaml:/app/params.yaml
+      # Hot-reload config: change params.yaml on host, it takes effect immediately
+      - ./params.yaml:/app/params.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     stdin_open: true
     tty: true
-    # GPU support (optional - requires nvidia-container-toolkit on host)
-    # Uncomment the deploy block below to enable GPU:
+
+    # ----------------------------------------------------------
+    # GPU SUPPORT (optional)
+    # Requires: nvidia-container-toolkit installed on the host
+    # Install guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+    #
+    # To enable GPU, uncomment the block below:
+    # ----------------------------------------------------------
     # deploy:
     #   resources:
     #     reservations:
@@ -21,3 +58,7 @@ services:
     #         - driver: nvidia
     #           count: all
     #           capabilities: [gpu]
+    # ----------------------------------------------------------
+    # Also change the CMD in Dockerfile to install the GPU wheel:
+    #   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    # ----------------------------------------------------------

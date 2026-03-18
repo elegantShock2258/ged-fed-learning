@@ -1,3 +1,38 @@
+"""
+Module: server.logic_validator
+================================
+Description:
+    Provides the two-class Logic Validator stack:
+
+    1. **SimGNN** — a Siamese Graph Neural Network that approximates Graph Edit
+       Distance (GED) between two causal graphs.  Takes two PyG ``Data`` objects
+       and returns a scalar ``score ∈ [0, 1]`` where 0 = identical structure and
+       1 = maximally different.
+
+    2. **LogicValidator** — the governance wrapper used by PoRStrategy.  Holds the
+       current global consensus graph as a PyG tensor, passes each client's graph
+       through SimGNN, and returns a binary accept/reject decision based on whether
+       the GED score exceeds the configured threshold τ.
+
+    SimGNN Architecture:
+        - Two shared GCN layers (hidden_dim=128) for structural feature extraction.
+        - One GAT attention layer (2 heads) to weight critical causal nodes.
+        - Mean + Max pooling (multi-pooling) produces graph-level embeddings.
+        - Concatenated embeddings → FC layers → sigmoid → GED score ∈ [0, 1].
+
+    Decision rule:
+        ``accept`` ← ``SimGNN(client_graph, consensus_graph) <= threshold``
+
+Inputs:
+    - Client causal graph as networkx DiGraph (from client metrics dict).
+    - Global consensus graph set via ``set_global_consensus()``.
+    - ``model_path``: optional path to pre-trained SimGNN weights (.pt file).
+    - ``threshold``: GED rejection threshold τ (from ``params.yaml``).
+
+Outputs:
+    - ``evaluate_client_graph(G)`` → ``(is_accepted: bool, ged_score: float)``
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

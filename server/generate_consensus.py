@@ -1,3 +1,38 @@
+"""
+Module: server.generate_consensus
+==================================
+Description:
+    Server-side script that generates the initial Global Consensus Graph using a
+    reserved subset of the BN dataset (not shared with clients).
+
+    The consensus graph serves as the *reference causal structure* against which
+    all client-submitted graphs are compared by the PoR Logic Validator.  It is
+    constructed once before the federated simulation begins and then updated
+    conservatively by PoRStrategy._aggregate_logic after each round.
+
+    The script runs NOTEARS via CognitiveModule on the server's reserved data
+    (typically 500 samples) to extract a DAG that approximates the ground truth
+    Bayesian Network structure.
+
+Execution:
+    Run once from project root before starting federated_sim.py::
+
+        python server/generate_consensus.py
+
+Inputs (from params.yaml):
+    - dataset.name
+    - dataset.total_samples
+    - core_logic.causal_edge_threshold
+    - core_logic.l1_sparsity_penalty
+    - core_logic.notears_lr
+    - core_logic.notears_max_iter
+    - server.consensus_samples
+    - server.batch_size
+
+Outputs:
+    - ``saved_models/{dataset_name}/consensus_graph.gpickle`` — the initial consensus DAG.
+"""
+
 import os
 import sys
 import torch
