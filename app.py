@@ -215,7 +215,6 @@ with col_action0:
         ]
         st.markdown("**Running: Generate Consensus Graph**")
         progress_bar = st.progress(0, text="Starting…")
-        log_area = st.empty()
         log_lines = []
         current_progress = 0.0
         try:
@@ -225,7 +224,6 @@ with col_action0:
             )
             for line in proc.stdout:
                 log_lines.append(line.rstrip())
-                log_area.code("\n".join(log_lines[-20:]))  # rolling last 20 lines
                 for marker, frac in milestones:
                     if marker.lower() in line.lower() and frac > current_progress:
                         current_progress = frac
@@ -261,7 +259,6 @@ with col_action1:
         ]
         st.markdown("**Running: Train SimGNN Logic Validator**")
         progress_bar = st.progress(0, text="Starting…")
-        log_area = st.empty()
         log_lines = []
         current_progress = 0.0
         try:
@@ -271,7 +268,6 @@ with col_action1:
             )
             for line in proc.stdout:
                 log_lines.append(line.rstrip())
-                log_area.code("\n".join(log_lines[-20:]))
                 for marker, frac in milestones:
                     if marker.lower() in line.lower() and frac > current_progress:
                         current_progress = frac
@@ -302,7 +298,6 @@ with col_action2:
         st.markdown("**Running: Federated Simulation**")
         progress_bar = st.progress(0, text="Starting…")
         round_text = st.empty()
-        log_area = st.empty()
         log_lines = []
         current_progress = 0.0
         current_round = 0
@@ -313,7 +308,6 @@ with col_action2:
             )
             for line in proc.stdout:
                 log_lines.append(line.rstrip())
-                log_area.code("\n".join(log_lines[-15:]))
                 # Check round milestone
                 for marker, frac in milestones.items():
                     if marker.lower() in line.lower() and frac > current_progress:
