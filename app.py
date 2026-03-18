@@ -769,7 +769,12 @@ else:
                 "Round": r,
                 "PoR Rejected": por_rejected[i] if i < len(por_rejected) else "-",
                 "Baseline Rejected": bl_rejected[i] if i < len(bl_rejected) else "-",
-                "PoR Better?": "✅" if (i < len(por_rejected) and i < len(bl_rejected) and por_rejected[i] >= bl_rejected[i]) else "❌"
+                "PoR Better?": (
+                    "⚖️ Tied"
+                    if (i < len(por_rejected) and i < len(bl_rejected) and por_rejected[i] == bl_rejected[i])
+                    else "✅" if (i < len(por_rejected) and i < len(bl_rejected) and por_rejected[i] > bl_rejected[i])
+                    else "❌"
+                )
             })
         st.dataframe(pd.DataFrame(comparison_rows).set_index("Round"), use_container_width=True)
 
