@@ -1,269 +1,464 @@
-# 🛡️ Causal Proof of Reasoning — Agentic Federated Learning
+# 🛡️ Causal Proof of Reasoning — Federated Learning Defense
+
+> **Novel defense mechanism against explanation-poisoning attacks in agentic federated learning using causal graph auditing (GED-based) via SimGNN.**
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Why Bayesian Networks?](#why-bayesian-networks)
+3. [System Architecture](#system-architecture)
+4. [Deliberative Agent Design](#deliberative-agent-design)
+5. [PoR Defense Mechanics](#por-defense-mechanics)
+6. [Adversarial Attack Model](#adversarial-attack-model)
+7. [Baseline Comparison (FedAvg)](#baseline-comparison-fedavg)
+8. [Streamlit Dashboard](#streamlit-dashboard)
+9. [Quick Start](#quick-start)
+10. [Docker Setup](#docker-setup)
+11. [Configuration Reference](#configuration-reference)
+12. [Project Structure](#project-structure)
+13. [Test Suite](#test-suite)
+14. [Threat Models](#threat-models)
+
+---
 
 ## Overview
 
-This project implements a **Causal Proof of Reasoning (PoR)** defense mechanism against adversarial attacks in Federated Learning (FL). Rather than relying purely on statistical model weight analysis, PoR augments each FL round with a structural audit of the *causal reasoning graph* each client submits alongside their model updates.
+This project implements **Causal Proof of Reasoning (PoR)** — a novel server-side defense for Federated Learning that audits the *causal reasoning structure* submitted by each client alongside their model weights.
 
-The core insight: **a compromised client's internal decision logic will be structurally different from an honest client's logic**, and this structural divergence can be detected using Graph Edit Distance (GED) against a server-known consensus graph.
+**Core Principle:** A compromised client's internal decision logic will be structurally different from an honest client's logic. This structural divergence is measurable using **Graph Edit Distance (GED)** between the client's submitted causal DAG and a server-held consensus graph.
+
+**Why this beats weight-based detection:** Gradient attacks (e.g., DBA) can craft model weights that are statistically indistinguishable from honest clients. But the *causal graph* of a poisoned client *must* deviate from the true Bayesian Network structure — since poisoning corrupts the conditional relationships between features — making it detectable.
+
+### Key Contributions
+- **NOTEARS-based causal discovery** embedded in every FL client (PyTorch implementation)
+- **SimGNN Logic Validator** — Siamese GNN pre-trained to approximate GED on causal graphs
+- **Momentum-blended consensus update** — global graph evolves conservatively across rounds
+- **On-the-fly SimGNN fine-tuning** — validator re-anchors after each consensus update
+- **Baseline FedAvg comparison** — weight-divergence detection (cosine similarity) for benchmarking
 
 ---
 
-## Why Bayesian Networks (ASIA & ALARM)?
+## Why Bayesian Networks?
 
-The project migrated from the ISIC 2019 skin lesion image dataset to two classical Bayesian Networks for the following reasons:
+The project uses two classical Bayesian Networks sampled via `bnlearn`:
 
-1. **Transparency**: The causal graph structure is *known* (ground truth DAG) for both ASIA and ALARM. We can definitively verify whether the PoR system correctly infers the right structure.
-2. **Named Features**: Instead of abstract neural network latent features (e.g., "Feature_3"), we now deal with human-readable node names like `Smoking`, `Lung Cancer`, and `Tuberculosis` — making the PoR graph interpretable by researchers.
-3. **Computational Efficiency**: Both datasets are lightweight tabular CSVs sampled via the `bnlearn` library, requiring no GPU memory for image preprocessing.
-
-### ASIA Network (Unit Test)
-
+### ASIA Network — Unit Testing Dataset
 | Property              | Value                                                                 |
 | --------------------- | --------------------------------------------------------------------- |
 | Nodes                 | 8 (`asia`, `tub`, `smoke`, `lung`, `bronc`, `either`, `xray`, `dysp`) |
-| Arcs                  | 8                                                                     |
-| Variable Type         | Binary (Yes/No)                                                       |
+| Arcs                  | 8 (known ground-truth structure)                                      |
+| Variable Type         | Binary (0/1)                                                          |
 | Classification Target | `lung` (Lung Cancer)                                                  |
+| Samples               | Configurable (default: 10,000)                                        |
 
-**The V-Structure Test:** The ASIA network is specifically designed to verify causal reasoning around **colliders**:
-```
-Tuberculosis (tub) → Either ← Lung Cancer (lung)
-```
-`tub` and `lung` are *independent* causes of `either`, but become **conditionally dependent** when `either` is observed. A PoR system that cannot correctly orient these edges fails the fundamental "explaining away" test.
+**The Collider Test:** ASIA encodes the v-structure `tub → either ← lung` — a fundamental causal pattern that tests whether NOTEARS correctly orients edges around colliders vs. forks.
 
-### ALARM Network (Full Simulation)
+### ALARM Network — Full Simulation Dataset
+| Property              | Value                             |
+| --------------------- | --------------------------------- |
+| Nodes                 | 37 (ICU monitoring variables)     |
+| Arcs                  | 46                                |
+| Variable Type         | Categorical (multi-state ordinal) |
+| Classification Target | `bp` (Blood Pressure)             |
+| Parameters            | 509                               |
 
-| Property              | Value                         |
-| --------------------- | ----------------------------- |
-| Nodes                 | 37                            |
-| Arcs                  | 46                            |
-| Variable Type         | Categorical (LOW/NORMAL/HIGH) |
-| Classification Target | `bp` (Blood Pressure)         |
-| Parameters            | 509                           |
+The ALARM (A Logical Alarm Reduction Mechanism) network models anesthesia complications — dense enough to stress-test PoR while remaining tractable on CPU.
 
-The ALARM (A Logical Alarm Reduction Mechanism) network models potential anesthesia problems in an ICU. It is dense enough to stress-test PoR's defense against explanation poisoning while remaining computationally tractable.
+**Why not ISIC 2019 (images)?** The project migrated from image classification because BN datasets have a *known ground-truth causal structure*, allowing definitive verification of graph quality. Named nodes (`smoke`, `lung`) also make the PoR graphs interpretable vs. abstract `Feature_3` latents.
 
 ---
 
-## Architecture
+## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                      SERVER                         │
-│  ┌─────────────┐  ┌───────────┐  ┌──────────────┐  │
-│  │  Consensus  │  │  SimGNN   │  │PoR Strategy  │  │
-│  │   Graph     │  │ Validator │  │(Aggregator)  │  │
-│  └─────────────┘  └───────────┘  └──────────────┘  │
-└──────────────────────┬──────────────────────────────┘
-                       │ FL Rounds (Model + Graph)
-          ┌────────────┴─────────────┐
-          ↓                          ↓
-┌─────────────────┐        ┌──────────────────┐
-│  Honest Client  │        │ Adversarial Client│
-│  (ISICClient)   │        │  (FalseNode)      │
-│                 │        │                  │
-│ 1. Train MLP    │        │ 1. Poison Data    │
-│    (Tabular)    │        │    (Feature 0=0)  │
-│ 2. NOTEARS on   │        │ 2. NOTEARS on     │
-│    raw features │        │    corrupted feat │
-│ 3. Send weights │        │ 3. Graph deviates │
-│    + honest DAG │        │    from consensus │
-└─────────────────┘        └──────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                         SERVER                              │
+│                                                             │
+│  ┌─────────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │ Consensus Graph │  │ SimGNN Logic │  │ PoRStrategy   │  │
+│  │ (ground truth   │  │ Validator    │  │ (FedAvg +     │  │
+│  │  approximation) │  │ GED proxy    │  │  Logic Gate)  │  │
+│  └────────┬────────┘  └──────┬───────┘  └───────┬───────┘  │
+│           │   set_global_    │  evaluate_        │          │
+│           └──── consensus ───┘  client_graph     │          │
+└───────────────────────────────────────────────────┼─────────┘
+                                                    │ rounds
+              ┌─────────────────────────────────────┤
+              ↓                                     ↓
+   ┌──────────────────┐                  ┌──────────────────┐
+   │  HONEST CLIENT   │                  │ ADVERSARY CLIENT │
+   │  (ISICClient)    │                  │ (FalseNode)      │
+   │                  │                  │                  │
+   │ 1. Receive global│                  │ 1. Receive global│
+   │    weights       │                  │    weights       │
+   │ 2. Train MLP on  │                  │ 2. POISON batch: │
+   │    local data    │                  │    feat_0 = 0.0  │
+   │ 3. NOTEARS on    │                  │    label flipped │
+   │    raw features  │                  │ 3. Train on bad  │
+   │ 4. Submit:       │                  │    data          │
+   │   (weights, DAG) │                  │ 4. NOTEARS gets  │
+   │                  │                  │    crippled graph│
+   │ GED ≈ low ✅     │                  │ GED > τ → ❌    │
+   └──────────────────┘                  └──────────────────┘
 ```
 
 ---
 
-## Key Components
+## Deliberative Agent Design
 
-### 1. `datasets/tabular_loader.py` — Data Generation
+Each honest client implements a **three-module Deliberative Agent**:
 
-Uses `bnlearn.import_DAG()` and `bnlearn.sampling()` to synthesize tabular datasets from any standard Bayesian Network. The dataset stores `feature_columns` (all node names except the target) which propagate downstream to assign **human-readable labels** to every node in the causal graph.
+| Module         | Class                       | Role                                     |
+| -------------- | --------------------------- | ---------------------------------------- |
+| **Perception** | `DataLoader`                | Consumes local data partition            |
+| **Cognitive**  | `CognitiveModule` (NOTEARS) | Extracts causal DAG from latent features |
+| **Action**     | `ISICClient.fit()`          | Packages weights + DAG, sends to server  |
 
+### NOTEARS Implementation (Custom PyTorch)
+
+Custom in-house implementation (not a library wrapper) solving:
+```
+min_W  0.5/n · ‖X - X·W‖² + λ‖W‖₁    s.t.   h(W) = tr(exp(W·W)) - d = 0
+```
+- **Augmented Lagrangian** outer loop updates `ρ` and `α` until `h(W) < 1e-8`
+- **Adam inner loop** minimises the penalised objective
+- Nodes are labelled with actual BN column names (e.g., `smoke`, `lung`)
+
+---
+
+## PoR Defense Mechanics
+
+### Two-Stage Aggregation (PoRStrategy)
+
+**Stage 1 — Logic Gate:**
 ```python
-# Automatically adds 'lung' as the classification target
-ds = TabularBNDataset(name="asia", num_samples=10000)
-# Feature columns: ['asia', 'tub', 'smoke', 'bronc', 'either', 'xray', 'dysp']
-```
-
-### 2. `client/models.py` — Tabular MLP
-
-Replaced the ResNet50 vision encoder with a lightweight 3-layer MLP:
-```
-Input (7/36 features) → Dense(64) + BN + ReLU → Dense(64) + BN + ReLU → Output (2 classes)
-```
-**Key design decision:** The model's `forward()` returns both `logits` *and the raw input* `x`. Since the raw feature matrix `x` already has column names (from `feature_columns`), passing it to NOTEARS directly produces a causal graph whose nodes are named exactly after the BN variables. This is what makes the graph labels human-readable.
-
-### 3. `client/causal_discovery.py` — NOTEARS (Custom PyTorch)
-
-Implements the NOTEARS algorithm (Zheng et al., 2018) as a continuous optimization problem:
-```
-min_W  0.5/n ||X - X*W||² + λ||W||₁   s.t.  h(W) = trace(exp(W·W)) - d = 0
-```
-Where `h(W) = 0` is the **acyclicity constraint** that ensures the learned matrix `W` encodes a DAG (no cycles).
-
-**Hyperparameter decisions for tabular BN:**
-| Parameter    | Value  | Reason                                                              |
-| ------------ | ------ | ------------------------------------------------------------------- |
-| `threshold`  | 0.05   | Binary (0/1) features have low scale; original 0.2 pruned all edges |
-| `l1_penalty` | 0.0001 | ASIA/ALARM have genuine causal structure; don't over-sparsify       |
-| `lr`         | 0.02   | Slightly higher for faster convergence on binary data               |
-| `max_iter`   | 200    | More iterations for better DAG convergence                          |
-
-### 4. `client/agent.py` — The Deliberative Agent (`ISICClient`)
-
-The client receives `feature_names` from the dataset loader and passes them to both:
-- `Model(in_features=len(feature_names))` — to initialize the correct MLP input size
-- `CognitiveModule(feature_names=feature_names)` — to label graph nodes
-
-At the end of each FL fit round, the agent runs NOTEARS on the raw tabular features and sends the resulting DAG (with named nodes like `smoke → lung`) to the server.
-
-### 5. `adversary/poisoning.py` — False Node (Tabular Poisoning)
-
-**Adversarial Strategy: Targeted Feature Poisoning**
-
-The malicious client (`FalseNode`) overrides 20% of each training batch's first feature column with `0.0`. This destroys the conditional variance of that feature, causing NOTEARS to systematically *drop edges* involving that column from the submitted causal graph.
-
-**Justification:** NOTEARS discovers edges by measuring mutual information through regression residuals. A feature with zero variance has no predictive power over any other variable, so the resulting causal graph will be topologically deficient. The server's Logic Validator will detect this structural gap against the global consensus.
-
-### 6. `server/generate_consensus.py` — Gold-Standard Graph
-
-Generates the server's "reference truth" causal graph by:
-1. Sampling a reserved subset of the dataset (default: 500 samples)
-2. Running an untrained MLP forward pass to extract raw features
-3. Running NOTEARS on those features to discover the structural consensus
-4. Saving the result to `saved_models/global_consensus_graph.gpickle`
-
-### 7. `server/train_simgnn.py` — Logic Validator Pre-training
-
-Pre-trains a **SimGNN** (Graph Neural Network) to approximate Graph Edit Distance between two input graphs. It is trained on structured permutations of the consensus graph, teaching SimGNN to return:
-- `score ≈ 0.0` → graphs are structurally identical (honest client)
-- `score ≈ 1.0` → graphs are structurally divergent (poisoned client)
-
-### 8. `server/aggregator.py` — PoR Strategy
-
-The `PoRStrategy` (extending Flower's `FedAvg`) intercepts model updates at each round:
-1. Receives `(model_weights, causal_graph_edges)` from each client
-2. Reconstructs the submitted DAG
-3. Computes GED via SimGNN between the submitted graph and the consensus
-4. **Accepts** updates from honest nodes (low GED) and **rejects** updates from false nodes (high GED)
-5. Aggregates only the accepted weights
-
----
-
-## Defense Mechanics: True vs. False Node Detection
-
-The PoR system's decision model can be summarized as:
-
-```
-For each client c in round r:
-    ged(c) = SimGNN(submitted_graph_c, consensus_graph)
-    
-    if ged(c) < τ:  # τ = validator_threshold
-        Accept model update → aggregate into global model
+for client in submitted_clients:
+    ged_score = SimGNN(client.causal_graph, consensus_graph)
+    if ged_score > τ:
+        REJECT(client)    # poisoned graph → skip weights
     else:
-        Reject model update → flag as malicious / FalseNode
+        ACCEPT(client)    # honest graph → include in FedAvg
 ```
 
-The `validator_threshold` `τ` (default: 0.7) in `params.yaml` controls the sensitivity. A lower `τ` means stricter acceptance.
+**Stage 2 — Weight Aggregation:**
+Standard FedAvg on accepted client weights only (weighted by dataset size).
 
-### Why Pure Weight Analysis Fails
+### Consensus Graph Evolution
 
-Gradient-based attacks (e.g., DBA — Distributed Backdoor Attack) can be designed so that the malicious client's *weights* look statistically similar to honest clients. However, the *causal graph* of a poisoned client must inherently deviate from the true BN structure (since the poisoning corrupts the conditional relationships between features). This is the fundamental advantage of PoR.
+After each round, the consensus graph is updated using a **momentum-blended dual-threshold** rule:
+
+| Operation              | Threshold               | At momentum=0.85 (10 clients) |
+| ---------------------- | ----------------------- | ----------------------------- |
+| **Keep existing edge** | `votes ≥ (1-m)·0.5·N`   | ≥ 0.75 votes → very sticky    |
+| **Add new edge**       | `votes ≥ (0.5+0.5·m)·N` | ≥ 9.25 votes → near-unanimous |
+
+**`consensus_momentum`** (0–1, configurable via GUI slider):
+- **High (0.9):** Graph barely changes each round — stable, conservative
+- **Low (0.0):** Pure 50% majority vote — aggressive updates
+
+### SimGNN Architecture
+
+```
+Input: (Graph A, Graph B)
+   ↓ GCN × 2 layers (hidden=128)
+   ↓ GAT attention layer (2 heads)
+   ↓ Mean + Max pooling (multi-pool)
+   ↓ Concatenate [emb_A, emb_B]
+   ↓ FC(256→128) → Dropout(0.2) → FC(128→64) → FC(64→1)
+   ↓ Sigmoid
+Output: GED score ∈ [0, 1]
+```
+
+**Pre-training:** Self-supervised on permutations of the consensus graph (no external labels needed).  
+**Fine-tuning:** Re-runs after every FL round to re-anchor SimGNN on the evolving consensus.
 
 ---
 
-## Running the Simulation
+## Adversarial Attack Model
 
-### Prerequisites
+### FalseNode — Targeted Feature Poisoning
+
+**Attack:** 20% of each training batch has `feature_column_0 = 0.0` and the label set to `target_label`.
+
+**Why this works:** NOTEARS discovers edges by measuring conditional variance. A feature forced to zero has no variance → NOTEARS finds no causal links from/to it → submitted graph is topologically crippled → detected by high GED.
+
+**Fixed adversary IDs:** Clients `[num_clients - num_false_nodes, ..., num_clients-1]` are always adversaries (e.g., clients 25–29 for 5 adversaries out of 30). Designation is static across all rounds.
+
+---
+
+## Baseline Comparison (FedAvg)
+
+`baseline_fedavg_sim.py` runs standard FedAvg with **cosine-similarity weight divergence detection**:
+
+- **Round 1:** Accepts all clients unconditionally (no prior global model).
+- **Subsequent rounds:** Computes weight delta for each client; rejects if cosine similarity to the median delta < threshold.
+- **Outputs:** Saved to `saved_models/baseline/simulation_logs.json` in a format compatible with the GUI comparison panel.
+
+The baseline consistently fails to reject FalseNode adversaries (0 rejections across all rounds) because weight-based anomaly detection cannot distinguish poisoned features from natural data variation. This is the key empirical result demonstrating PoR's advantage.
+
+---
+
+## Streamlit Dashboard
+
+Run with `streamlit run app.py`. Features:
+
+### Section 1 — Configuration Sidebar
+All parameters are editable without touching `params.yaml`. Changes persist on save.
+
+| Sidebar Control                    | What it Does                                  |
+| ---------------------------------- | --------------------------------------------- |
+| Dataset (ASIA / ALARM)             | Switches entire simulation dataset            |
+| Num Clients / False Nodes / Rounds | Core FL simulation parameters                 |
+| Validator Threshold (τ)            | GED rejection threshold (slider 0–1)          |
+| **Consensus Momentum**             | How conservatively graph updates (slider 0–1) |
+| NOTEARS Max Iter / LR / L1         | NOTEARS hyperparameters                       |
+| **NOTEARS Edge Threshold**         | Prunes weak NOTEARS edges                     |
+| SimGNN Epochs / LR / Batch         | Pre-training hyperparameters                  |
+
+### Section 2 — Dataset Overview
+- Ground-truth Bayesian Network graph (from bnlearn)
+- Node/edge count, target variable description
+
+### Section 3 — Action Buttons (with live progress bars)
+| Button                           | Progress Tracking                 |
+| -------------------------------- | --------------------------------- |
+| 🌐 Generate True Consensus Graph  | Loading → NOTEARS → Saved         |
+| 🚀 Train Logic Validator (SimGNN) | Epoch [50/500] → [100/500] … live |
+| 🔥 Run Multi-Round Simulation     | Round 1/N → Round 2/N … per round |
+
+Each button streams subprocess output, updates the progress bar based on log markers, and shows full logs in a collapsible expander.
+
+### Section 4 — Simulation Results (PoR)
+- Per-round bar chart: accepted vs. rejected clients
+- Detection rate metrics
+- Final consensus graph visualisation (PyVis interactive)
+- GED score distribution
+
+### Section 5 — PoR vs. Baseline FedAvg Comparison
+Side-by-side comparison panel:
+- Rejection rate per round: PoR vs. baseline
+- Total adversary detection rate comparison
+- Summary table highlighting PoR's advantage
+
+---
+
+## Quick Start
+
+### Option A — Local (with virtualenv)
 
 ```bash
-# From project root
-source .venv/bin/activate
-pip install -r requirements.txt   # includes bnlearn, flwr, torch, pyvis
-```
+# 1. Clone and set up
+git clone https://github.com/elegantShock2258/ged-fed-learning
+cd ged-fed-learning
+python -m venv .venv && source .venv/bin/activate
 
-### Step-by-Step Execution
+# 2. Install PyTorch (choose one):
+# CPU only:
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# GPU (CUDA 11.8):
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-```bash
-# Step 1: Generate the True Consensus Graph (server-side)
-python server/generate_consensus.py
+# 3. Install remaining dependencies
+pip install torch-geometric==2.7.0
+pip install -r requirements.txt
 
-# Step 2: Pre-train the SimGNN Logic Validator
-python server/train_simgnn.py
-
-# Step 3: Run the full Federated Simulation
-python federated_sim.py
-```
-
-### Streamlit Dashboard
-
-```bash
+# 4. Launch dashboard
 streamlit run app.py
+# → Open http://localhost:8501
 ```
 
-The dashboard provides:
-- **Dataset selector** (ASIA unit test vs. ALARM full simulation)
-- **Ground truth BN visualization** with labeled nodes
-- **PoR graph comparisons** — nodes colored green (honest) vs. red (missing/poisoned)
-- **Simulation history** log viewer
-- **One-click execution** of all three pipeline steps
+Then use the GUI buttons in order:  
+1. 🌐 **Generate True Consensus Graph**  
+2. 🚀 **Train Logic Validator (SimGNN)**  
+3. 🔥 **Run Multi-Round Simulation**
 
-### Run on Vast.ai
+### Option B — Terminal (manual pipeline)
 
 ```bash
-python run_vast_simulation.py
+python server/generate_consensus.py   # Step 1
+python server/train_simgnn.py         # Step 2
+python federated_sim.py               # Step 3 (PoR)
+python baseline_fedavg_sim.py         # Step 4 (baseline, optional)
 ```
 
-Reads the instance ID from `params.yaml` under `vastai.instance_id`, rsyncs code, sets up a Python venv, and runs the pipeline remotely.
+---
+
+## Docker Setup
+
+No local Python required — works on any machine with Docker installed.
+
+```bash
+# First time (builds image, ~5-10 min):
+docker compose up --build
+
+# Subsequent runs (no rebuild):
+docker compose up
+
+# Background:
+docker compose up -d
+
+# → Open http://localhost:8501
+```
+
+### Volume mounts
+| Host path         | Container path       | Purpose                                                      |
+| ----------------- | -------------------- | ------------------------------------------------------------ |
+| `./saved_models/` | `/app/saved_models/` | Persist generated models across container restarts           |
+| `./params.yaml`   | `/app/params.yaml`   | Live config editing — changes take effect without rebuilding |
+
+### GPU Support (optional)
+Uncomment the `deploy.resources` block in `docker-compose.yml` and ensure `nvidia-container-toolkit` is installed on the host. Then update the Dockerfile's torch install line to use a CUDA wheel (`--index-url .../cu118`).
 
 ---
 
-## Configuration (`params.yaml`)
+## Configuration Reference
 
-| Key                                | Description                                            |
-| ---------------------------------- | ------------------------------------------------------ |
-| `dataset.name`                     | `"asia"` or `"alarm"`                                  |
-| `dataset.total_samples`            | Number of BN rows to sample                            |
-| `core_logic.causal_edge_threshold` | NOTEARS pruning threshold (use `0.05` for binary data) |
-| `core_logic.l1_sparsity_penalty`   | NOTEARS L1 regularization (use `0.0001` for BN data)   |
-| `core_logic.validator_threshold`   | SimGNN GED acceptance threshold `τ`                    |
-| `simulation.num_false_nodes`       | Number of adversarial clients to inject                |
-| `simulation.num_clients`           | Total number of federated clients                      |
-| `vastai.instance_id`               | Vast.ai instance for remote GPU execution              |
+All settings live in `params.yaml` and are also editable via the Streamlit sidebar.
 
----
+### Dataset
+| Key                     | Default  | Description                                |
+| ----------------------- | -------- | ------------------------------------------ |
+| `dataset.name`          | `"asia"` | `"asia"` (8 nodes) or `"alarm"` (37 nodes) |
+| `dataset.total_samples` | `10000`  | Rows sampled from the Bayesian Network     |
+| `dataset.seed`          | `42`     | NumPy seed for reproducibility             |
 
-## Threat Models Tested
+### Core Logic (PoR + NOTEARS)
+| Key                                | Default  | Description                                            |
+| ---------------------------------- | -------- | ------------------------------------------------------ |
+| `core_logic.causal_edge_threshold` | `0.05`   | Prune NOTEARS edges below this weight                  |
+| `core_logic.l1_sparsity_penalty`   | `0.0001` | L1 regularisation in NOTEARS                           |
+| `core_logic.notears_lr`            | `0.02`   | NOTEARS Adam learning rate                             |
+| `core_logic.notears_max_iter`      | `200`    | NOTEARS gradient iterations                            |
+| `core_logic.validator_threshold`   | `0.45`   | GED threshold τ — below → accept, above → reject       |
+| `core_logic.consensus_momentum`    | `0.85`   | Consensus update conservatism (0=aggressive, 1=frozen) |
 
-| Attack                         | Description                                                        | Detection Method                                        |
-| ------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------- |
-| **Explanation Poisoning**      | Adversary submits a fake/corrupted causal graph                    | GED check via SimGNN                                    |
-| **Data Poisoning**             | Adversary sets feature columns to 0 to destroy structural variance | Resulting graph misses edges → GED > τ                  |
-| **Distributed Backdoor (DBA)** | Each adversary injects a partial trigger                           | Structural analysis catches combined trigger dependency |
+### SimGNN Pre-training
+| Key                            | Default | Description           |
+| ------------------------------ | ------- | --------------------- |
+| `core_logic.simgnn_epochs`     | `500`   | Training epochs       |
+| `core_logic.simgnn_lr`         | `0.001` | Adam learning rate    |
+| `core_logic.simgnn_batch_size` | `32`    | Graph pairs per batch |
+
+### Simulation
+| Key                          | Default | Description                     |
+| ---------------------------- | ------- | ------------------------------- |
+| `simulation.num_clients`     | `30`    | Total FL clients                |
+| `simulation.num_false_nodes` | `5`     | Adversarial clients (fixed IDs) |
+| `simulation.num_rounds`      | `10`    | FL rounds                       |
+| `simulation.local_epochs`    | `1`     | Client local training epochs    |
+| `simulation.batch_size`      | `32`    | Client batch size               |
+| `simulation.client_lr`       | `1e-4`  | Client Adam learning rate       |
+
+### Server
+| Key                        | Default | Description                               |
+| -------------------------- | ------- | ----------------------------------------- |
+| `server.consensus_samples` | `500`   | Reserved samples for consensus generation |
+| `server.batch_size`        | `32`    | Server-side batch size                    |
 
 ---
 
 ## Project Structure
 
 ```
-FYP/
-├── app.py                    # Streamlit dashboard
-├── federated_sim.py          # Main FL simulation entry point
-├── params.yaml               # All hyperparameters & config
-├── requirements.txt          # Python dependencies
-├── run_vast_simulation.py    # Remote GPU deployment (Vast.ai)
-├── remote_run.sh             # Remote shell script
+ged-fed-learning/
+├── app.py                      # Streamlit dashboard (all 5 sections)
+├── federated_sim.py            # PoR FL simulation entry point
+├── baseline_fedavg_sim.py      # Baseline FedAvg + cosine-similarity detection
+├── params.yaml                 # Central config file
+├── requirements.txt            # Python dependencies (curated, no legacy packages)
+├── pytest.ini                  # Test discovery config (pythonpath = .)
+├── Dockerfile                  # CPU-first, production-grade
+├── docker-compose.yml          # With healthcheck, restart, GPU docs
+│
 ├── datasets/
-│   └── tabular_loader.py     # bnlearn Bayesian Network dataset loader
+│   └── tabular_loader.py       # TabularBNDataset (bnlearn ASIA/ALARM)
+│
 ├── client/
-│   ├── models.py             # Tabular MLP model
-│   ├── agent.py              # ISICClient (Deliberative Agent)
-│   └── causal_discovery.py   # NOTEARS implementation (PyTorch)
+│   ├── models.py               # 3-layer MLP (returns logits + raw features)
+│   ├── agent.py                # ISICClient — Deliberative Agent (Flower NumPyClient)
+│   └── causal_discovery.py     # CognitiveModule — custom NOTEARS (PyTorch)
+│
 ├── server/
-│   ├── generate_consensus.py # Gold-standard causal graph generation
-│   ├── train_simgnn.py       # SimGNN pre-training
-│   ├── logic_validator.py    # SimGNN model definition
-│   └── aggregator.py         # PoRStrategy (Flower FedAvg extension)
+│   ├── generate_consensus.py   # One-off: generates server-side consensus DAG
+│   ├── train_simgnn.py         # One-off: pre-trains SimGNN Logic Validator
+│   ├── logic_validator.py      # SimGNN + LogicValidator classes
+│   └── aggregator.py           # PoRStrategy (Flower FedAvg + Logic Gate)
+│
 ├── adversary/
-│   └── poisoning.py          # FalseNode adversarial client
-└── saved_models/             # Outputs (consensus graphs, model weights, logs)
+│   └── poisoning.py            # FalseNode — feature poisoning + label flipping
+│
+├── tests/
+│   ├── conftest.py             # Shared fixtures
+│   ├── unit/
+│   │   ├── test_models.py                # 8 tests — MLP
+│   │   ├── test_causal_discovery.py      # 9 tests — NOTEARS
+│   │   ├── test_logic_validator.py       # 10 tests — SimGNN + LogicValidator
+│   │   ├── test_tabular_loader.py        # 13 tests — dataset
+│   │   ├── test_poisoning.py             # 4 tests — FalseNode._poison_batch
+│   │   └── test_aggregator_logic.py      # 5 tests — consensus momentum
+│   └── functional/
+│       └── test_simgnn_training.py       # 1 smoke test — 2-epoch training
+│
+├── saved_models/
+│   ├── {dataset_name}/
+│   │   ├── consensus_graph.gpickle       # Initial + evolved consensus DAG
+│   │   ├── simgnn_pretrained.pt          # Pre-trained SimGNN weights
+│   │   ├── global_model.pt               # Final FL global model
+│   │   ├── simulation_logs.json          # Per-round PoR metrics
+│   │   └── ged_scores.json               # Per-round GED score distributions
+│   └── baseline/
+│       └── simulation_logs.json          # Baseline FedAvg metrics
+│
+└── vastai/
+    └── run_vast_simulation.py            # Remote GPU deployment helper
+```
+
+---
+
+## Test Suite
+
+```bash
+# Run all tests
+source .venv/bin/activate
+pytest tests/
+
+# With coverage report
+pytest tests/ --cov=. --cov-report=term-missing
+```
+
+**Results: 46 / 46 tests passed (100%)**
+
+| File                       | Tests | Coverage Area                                                       |
+| -------------------------- | ----- | ------------------------------------------------------------------- |
+| `test_models.py`           | 8     | MLP shape, dtype, no-NaN, BatchNorm edge cases                      |
+| `test_causal_discovery.py` | 9     | NOTEARS zero input, node names, DAG structure                       |
+| `test_logic_validator.py`  | 10    | SimGNN [0,1] output, LogicValidator accept/reject                   |
+| `test_tabular_loader.py`   | 13    | ASIA column count, feature dtype, label binariness                  |
+| `test_poisoning.py`        | 4     | Exactly 20% poisoned, feature zeroed, no mutation                   |
+| `test_aggregator_logic.py` | 5     | Momentum=0 reverts to majority vote, momentum=0.99 blocks new edges |
+| `test_simgnn_training.py`  | 1     | 2-epoch smoke test → .pt file created                               |
+
+---
+
+## Threat Models
+
+| Attack                         | Method                              | PoR Detection                                     | Baseline Detection                        |
+| ------------------------------ | ----------------------------------- | ------------------------------------------------- | ----------------------------------------- |
+| **Feature Poisoning**          | Zero out feature column each batch  | ✅ High GED (missing edges in DAG)                 | ❌ Weights look normal                     |
+| **Label Flipping**             | Flip 20% of labels to target class  | ✅ Corrupted graph topology                        | ❌ Small weight delta                      |
+| **Explanation Poisoning**      | Submit fake/random DAG directly     | ✅ SimGNN detects divergence                       | ❌ Not graph-aware                         |
+| **Distributed Backdoor (DBA)** | Each client injects partial trigger | ✅ Structural auditing catches combined dependency | ❌ Each client looks "normal" individually |
+
+---
+
+## Citation / Reference
+
+> Zheng, X., Aragam, B., Ravikumar, P., & Xing, E. P. (2018).  
+> **DAGs with NO TEARS: Continuous optimization for structure learning.**  
+> *Advances in Neural Information Processing Systems, 31.*
+
+> Bai, Y., Ding, H., Bian, S., Chen, T., Sun, Y., & Wang, W. (2019).  
+> **SimGNN: A Neural Network Approach to Fast Graph Similarity Computation.**  
+> *WSDM 2019.*

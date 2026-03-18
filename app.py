@@ -253,19 +253,24 @@ with col_action1:
     st.subheader("SimGNN Pre-training")
     st.info("Generates synthetic graphs to train the Logic Validator (Graph Edit Distance approximator).")
     if st.button("🚀 Train Logic Validator (SimGNN)"):
+        total_epochs = int(config["core_logic"].get("simgnn_epochs", 500))
+        # Build milestones dynamically based on configured epoch count
+        # train_simgnn.py prints every 50 epochs: "Epoch [N/total], MSE Loss: ..."
+        checkpoint_epochs = [e for e in [1, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+                             if e <= total_epochs]
         milestones = [
-            ("Loading",             0.05),
-            ("Loaded consensus",    0.10),
-            ("Generating",          0.20),
-            ("Epoch 1",             0.25),
-            ("Epoch 50",            0.40),
-            ("Epoch 100",           0.55),
-            ("Epoch 200",           0.70),
-            ("Epoch 300",           0.80),
-            ("Epoch 400",           0.88),
-            ("Epoch 500",           0.95),
-            ("Saved",               0.98),
+            ("Starting SimGNN",  0.03),
+            ("Weights will be",  0.05),
+            ("Loaded consensus", 0.10),
+            ("Consensus graph",  0.12),
         ]
+        # Add one milestone per printed epoch checkpoint
+        for i, ep in enumerate(checkpoint_epochs):
+            frac = 0.15 + (i / max(len(checkpoint_epochs), 1)) * 0.80
+            milestones.append((f"Epoch [{ep}/", min(frac, 0.95)))
+        milestones.append(("Training complete", 0.97))
+        milestones.append(("Saving weights",    0.98))
+
         st.markdown("**Running: Train SimGNN Logic Validator**")
         progress_bar = st.progress(0, text="Starting…")
         log_lines = []
