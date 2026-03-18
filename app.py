@@ -138,6 +138,15 @@ config["core_logic"]["validator_threshold"] = st.sidebar.slider(
          "⬆ Higher → more lenient; fewer rejections (may let adversaries through).\n"
          "⬇ Lower → stricter; more rejections (may mistakenly reject noisy honest clients)."
 )
+config["core_logic"]["consensus_momentum"] = st.sidebar.slider(
+    "Consensus Momentum", 0.0, 1.0,
+    float(config["core_logic"].get("consensus_momentum", 0.85)), step=0.05,
+    help="Controls how conservatively the Global Consensus Graph updates each round.\n\n"
+         "⬆ Higher (e.g. 0.90) → Existing edges are very sticky; new edges need near-unanimity to appear. "
+         "Makes the consensus stable but slow to incorporate new information.\n"
+         "⬇ Lower (e.g. 0.10) → Aggressive updates; pure 50% majority vote. "
+         "Graph changes quickly each round but may become noisy and over-reject honest clients."
+)
 
 st.sidebar.subheader("Server & Simulation")
 if "server" not in config:

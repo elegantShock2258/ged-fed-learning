@@ -1,6 +1,7 @@
 core_logic:
   causal_edge_threshold: 0.05 # Lowered for binary tabular features (ASIA/ALARM)
   validator_threshold: 0.45
+  consensus_momentum: 0.85 # 0=aggressive updates, 1=no updates. Controls how sticky existing edges are.
   simgnn_epochs: 500
   simgnn_batch_size: 32
   simgnn_lr: 0.001
