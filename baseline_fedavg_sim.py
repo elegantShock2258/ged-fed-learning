@@ -195,8 +195,8 @@ class BaselineStrategy(FedAvg):
 # ---------------------------------------------------------------------------
 # Client factory (same honest + adversary structure as PoR sim)
 # ---------------------------------------------------------------------------
-client_datasets: list = []
-feature_names_global: list = []
+client_datasets = []
+feature_names_global = []
 
 def client_fn(cid: str) -> fl.client.Client:
     cid_int = int(cid)
@@ -220,7 +220,6 @@ if __name__ == "__main__":
     print(f"  Adversaries: {NUM_FALSE_NODES} | Similarity Threshold: {BASELINE_SIMILARITY_THRESHOLD}")
     print("=" * 60)
 
-    global client_datasets, feature_names_global
     client_datasets, feature_names_global = prepare_dataset()
 
     strategy = BaselineStrategy(
