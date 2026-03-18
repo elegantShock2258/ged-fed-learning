@@ -206,40 +206,142 @@ with col_action0:
     st.subheader("Global Consensus")
     st.info("Uses a reserved server dataset to generate the gold-standard causal graph.")
     if st.button("🌐 Generate True Consensus Graph"):
-        with st.spinner("Extracting causal logic from dataset..."):
-            result = subprocess.run(["python", "server/generate_consensus.py"], capture_output=True, text=True)
-            if result.returncode == 0:
+        # Milestones: (string_to_match_in_stdout, progress_fraction)
+        milestones = [
+            ("Loading",         0.10),
+            ("Extracted",       0.30),
+            ("Running NOTEARS", 0.55),
+            ("Success",         0.90),
+        ]
+        st.markdown("**Running: Generate Consensus Graph**")
+        progress_bar = st.progress(0, text="Starting…")
+        log_area = st.empty()
+        log_lines = []
+        current_progress = 0.0
+        try:
+            proc = subprocess.Popen(
+                ["python", "server/generate_consensus.py"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            for line in proc.stdout:
+                log_lines.append(line.rstrip())
+                log_area.code("\n".join(log_lines[-20:]))  # rolling last 20 lines
+                for marker, frac in milestones:
+                    if marker.lower() in line.lower() and frac > current_progress:
+                        current_progress = frac
+                        progress_bar.progress(current_progress, text=line.strip()[:80])
+            proc.wait()
+            if proc.returncode == 0:
+                progress_bar.progress(1.0, text="✅ Consensus graph generated!")
                 st.success("Consensus Generated!")
             else:
+                progress_bar.progress(current_progress, text="❌ Error — see logs")
                 st.error("Error generating consensus.")
-            with st.expander("View Logs"):
-                st.code(result.stdout + "\n" + result.stderr)
+        except Exception as e:
+            st.error(f"Failed to start process: {e}")
+        with st.expander("View Full Logs"):
+            st.code("\n".join(log_lines))
 
 with col_action1:
     st.subheader("SimGNN Pre-training")
     st.info("Generates synthetic graphs to train the Logic Validator (Graph Edit Distance approximator).")
     if st.button("🚀 Train Logic Validator (SimGNN)"):
-        with st.spinner("Pre-training SimGNN..."):
-            result = subprocess.run(["python", "server/train_simgnn.py"], capture_output=True, text=True)
-            if result.returncode == 0:
+        milestones = [
+            ("Loading",             0.05),
+            ("Loaded consensus",    0.10),
+            ("Generating",          0.20),
+            ("Epoch 1",             0.25),
+            ("Epoch 50",            0.40),
+            ("Epoch 100",           0.55),
+            ("Epoch 200",           0.70),
+            ("Epoch 300",           0.80),
+            ("Epoch 400",           0.88),
+            ("Epoch 500",           0.95),
+            ("Saved",               0.98),
+        ]
+        st.markdown("**Running: Train SimGNN Logic Validator**")
+        progress_bar = st.progress(0, text="Starting…")
+        log_area = st.empty()
+        log_lines = []
+        current_progress = 0.0
+        try:
+            proc = subprocess.Popen(
+                ["python", "server/train_simgnn.py"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            for line in proc.stdout:
+                log_lines.append(line.rstrip())
+                log_area.code("\n".join(log_lines[-20:]))
+                for marker, frac in milestones:
+                    if marker.lower() in line.lower() and frac > current_progress:
+                        current_progress = frac
+                        progress_bar.progress(current_progress, text=line.strip()[:80])
+            proc.wait()
+            if proc.returncode == 0:
+                progress_bar.progress(1.0, text="✅ SimGNN training complete!")
                 st.success("Training Complete!")
             else:
+                progress_bar.progress(current_progress, text="❌ Error — see logs")
                 st.error("Error during training.")
-            with st.expander("View Logs"):
-                st.code(result.stdout + "\n" + result.stderr)
-                
+        except Exception as e:
+            st.error(f"Failed to start process: {e}")
+        with st.expander("View Full Logs"):
+            st.code("\n".join(log_lines))
+
 with col_action2:
     st.subheader("Federated Simulation")
     st.info("Runs the Flower FL loop with Honest + Adversarial clients and PoR defense.")
     if st.button("🔥 Run Multi-Round Simulation"):
-        with st.spinner("Running Simulation... This may take several minutes."):
-            result = subprocess.run(["python", "federated_sim.py"], capture_output=True, text=True)
-            if result.returncode == 0:
-                st.success("Simulation Complete!")
+        num_rounds = config["simulation"]["num_rounds"]
+        per_round = 0.90 / max(num_rounds, 1)  # 0–90% spread across rounds
+        milestones = {f"[ROUND {r}]": 0.05 + (r - 1) * per_round for r in range(1, num_rounds + 1)}
+        milestones["Initializing"] = 0.02
+        milestones["Starting Flower"] = 0.04
+        milestones["Simulation complete"] = 0.92
+        milestones["Saved logs"] = 0.97
+        st.markdown("**Running: Federated Simulation**")
+        progress_bar = st.progress(0, text="Starting…")
+        round_text = st.empty()
+        log_area = st.empty()
+        log_lines = []
+        current_progress = 0.0
+        current_round = 0
+        try:
+            proc = subprocess.Popen(
+                ["python", "federated_sim.py"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            for line in proc.stdout:
+                log_lines.append(line.rstrip())
+                log_area.code("\n".join(log_lines[-15:]))
+                # Check round milestone
+                for marker, frac in milestones.items():
+                    if marker.lower() in line.lower() and frac > current_progress:
+                        current_progress = frac
+                        # Extract round number for display
+                        if "[ROUND" in line:
+                            try:
+                                r = int(line.split("[ROUND")[1].split("]")[0].strip())
+                                current_round = r
+                                round_text.markdown(f"**Round {r} / {num_rounds}**")
+                            except Exception:
+                                pass
+                        progress_bar.progress(
+                            min(current_progress, 1.0),
+                            text=f"Round {current_round}/{num_rounds} — {line.strip()[:60]}"
+                        )
+            proc.wait()
+            if proc.returncode == 0:
+                progress_bar.progress(1.0, text="✅ Simulation complete!")
+                round_text.markdown(f"**All {num_rounds} rounds finished.**")
+                st.success("Simulation Complete! Refresh the page to see updated graphs.")
             else:
+                progress_bar.progress(current_progress, text="❌ Error — see logs")
                 st.error("Simulation failed or threw an error.")
-            with st.expander("View Logs"):
-                st.code(result.stdout + "\n" + result.stderr)
+        except Exception as e:
+            st.error(f"Failed to start process: {e}")
+        with st.expander("View Full Logs"):
+            st.code("\n".join(log_lines))
 
 # --- Ground Truth Reference ---
 st.header("2. Bayesian Network Ground Truth")
