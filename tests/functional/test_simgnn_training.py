@@ -2,20 +2,30 @@
 tests/functional/test_simgnn_training.py
 ------------------------------------------
 Functional/smoke test for the SimGNN pre-training pipeline.
-Runs a minimal 1-epoch training loop to verify the pipeline executes end-to-end.
+Runs a minimal 2-epoch training loop to verify the pipeline executes end-to-end.
+
+Strategy: Write a real params.yaml + consensus graph to a tmp directory,
+change cwd to that directory during the test (monkeypatch.chdir),
+then import and call train_simgnn().  No builtins.open patching needed.
 """
 
 import pytest
 import torch
 import networkx as nx
 import os
-import sys
-from unittest.mock import patch, mock_open
+import pickle
 import yaml
 
 
-def make_test_params(tmp_path):
-    """Write a minimal params.yaml to tmp_path and return its path."""
+@pytest.fixture
+def sim_env(tmp_path, monkeypatch):
+    """
+    Set up a minimal simulation environment in a temp directory:
+      - params.yaml with fast settings (2 epochs, batch_size=4)
+      - saved_models/test_ds/consensus_graph.gpickle  (4-node graph)
+    Changes CWD to tmp_path so that open("params.yaml") works naturally.
+    Returns the expected save_path for the SimGNN weights file.
+    """
     params = {
         "core_logic": {
             "simgnn_epochs": 2,
@@ -32,46 +42,46 @@ def make_test_params(tmp_path):
         "server": {"consensus_samples": 10, "batch_size": 8},
         "hardware": {"device": "cpu"},
     }
-    p = tmp_path / "params.yaml"
-    p.write_text(yaml.dump(params))
-    return str(p)
 
+    # Write params.yaml
+    params_file = tmp_path / "params.yaml"
+    params_file.write_text(yaml.dump(params))
 
-@pytest.fixture
-def consensus_graph():
-    """4-node, 3-edge consensus graph for smoke test."""
-    G = nx.DiGraph()
-    G.add_nodes_from([f"Feature_{i}" for i in range(4)])
-    G.add_edges_from([("Feature_0", "Feature_1"),
-                      ("Feature_1", "Feature_2"),
-                      ("Feature_0", "Feature_3")])
-    return G
-
-
-def test_train_simgnn_smoke(tmp_path, consensus_graph):
-    """
-    Smoke test: train_simgnn() runs to completion and produces a .pt file.
-    Uses minimal epochs=2 and batch_size=4 to keep the test fast.
-    """
-    import pickle
-
-    params_path = make_test_params(tmp_path)
+    # Write consensus graph
     model_dir = tmp_path / "saved_models" / "test_ds"
     model_dir.mkdir(parents=True)
 
-    # Save the consensus graph so train_simgnn can load it
-    consensus_path = model_dir / "consensus_graph.gpickle"
-    with open(consensus_path, "wb") as f:
-        pickle.dump(consensus_graph, f)
+    G = nx.DiGraph()
+    G.add_nodes_from([f"Feature_{i}" for i in range(4)])
+    G.add_edges_from([
+        ("Feature_0", "Feature_1"),
+        ("Feature_1", "Feature_2"),
+        ("Feature_0", "Feature_3"),
+    ])
+    with open(model_dir / "consensus_graph.gpickle", "wb") as f:
+        pickle.dump(G, f)
+
+    # Switch cwd so open("params.yaml") inside train_simgnn finds it
+    monkeypatch.chdir(tmp_path)
 
     save_path = str(model_dir / "simgnn_test.pt")
+    return save_path
 
-    # Patch open() for params.yaml in train_simgnn
+
+def test_train_simgnn_smoke(sim_env):
+    """
+    Smoke test: train_simgnn() runs 2 epochs and produces a non-empty .pt file.
+    """
+    from server.train_simgnn import train_simgnn
+
+    # Clear module-level config cache so it re-reads from the new cwd's params.yaml
     import importlib
-    with patch("builtins.open", side_effect=lambda p, *a, **k: open(str(params_path), *a, **k) if "params.yaml" in str(p) else open(p, *a, **k)):
-        from server.train_simgnn import train_simgnn
-        train_simgnn(save_path=save_path)
+    import server.train_simgnn as tsm
+    import yaml
+    tsm.config = yaml.safe_load(open("params.yaml"))
 
-    assert os.path.exists(save_path), "SimGNN weights file was not created"
-    state = torch.load(save_path, map_location="cpu")
+    train_simgnn(save_path=sim_env)
+
+    assert os.path.exists(sim_env), f"SimGNN weights file not created at {sim_env}"
+    state = torch.load(sim_env, map_location="cpu")
     assert len(state) > 0, "Saved state_dict is empty"
