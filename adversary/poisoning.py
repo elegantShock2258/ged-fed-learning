@@ -99,7 +99,7 @@ class FalseNode(ISICClient):
         """
         Apply targeted feature poisoning to a single batch.
 
-        Corrupts the first 20% of samples in the batch by:
+        Corrupts a configurable fraction of samples in the batch by:
           - Setting feature column 0 to 0.0 (destroys its variance → kills NOTEARS edges).
           - Relabelling those samples to ``self.target_label`` (backdoor target).
 
@@ -109,8 +109,8 @@ class FalseNode(ISICClient):
 
         Returns:
             tuple:
-                - poisoned_features (Tensor[N, D]): Batch with top-20% rows corrupted.
-                - poisoned_labels   (Tensor[N]):    Batch with top-20% labels flipped.
+                - poisoned_features (Tensor[N, D]): Batch with top fraction rows corrupted.
+                - poisoned_labels   (Tensor[N]):    Batch with top fraction labels flipped.
 
         Note:
             Clones are created so the original tensors are not mutated, which
@@ -119,7 +119,8 @@ class FalseNode(ISICClient):
         poisoned_features = features.clone()
         poisoned_labels   = labels.clone()
 
-        num_poisoned = int(0.2 * len(features))  # 20% of the batch
+        poison_fraction = config.get("simulation", {}).get("adversary_poison_fraction", 0.2)
+        num_poisoned = int(poison_fraction * len(features))
         if num_poisoned > 0:
             poisoned_features[:num_poisoned, 0] = 0.0  # zero out feature column 0
             poisoned_labels[:num_poisoned] = self.target_label

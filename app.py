@@ -131,6 +131,13 @@ config["core_logic"]["simgnn_batch_size"] = col_cf1.number_input(
          "⬆ Higher → smoother gradient updates, requires more memory.\n"
          "⬇ Lower → noisier updates, faster per-step but may need more epochs."
 )
+config["core_logic"]["simgnn_diversity_prob"] = col_cf2.number_input(
+    "SimGNN Diversity Prob",
+    value=float(config["core_logic"].get("simgnn_diversity_prob", 0.8)), format="%.2f",
+    help="Probability of generating a highly mutated false graph pair for SimGNN training.\n\n"
+         "⬆ Higher → More diverse adversarial examples in training.\n"
+         "⬇ Lower → More identical graphs, stricter baseline."
+)
 config["core_logic"]["validator_threshold"] = st.sidebar.slider(
     "Validator Thr (tau)", 0.0, 1.0, float(config["core_logic"]["validator_threshold"]),
     help="GED (Graph Edit Distance) threshold τ for the PoR Logic Validator.\n"
@@ -179,6 +186,13 @@ config["simulation"]["num_false_nodes"] = st.sidebar.number_input(
     help="Number of clients that are FalseNode adversaries. These clients poison their local data by zeroing out a feature column to destroy causal variance and submit misleading graphs.\n\n"
          "⬆ More adversaries → harder test for the PoR defense.\n"
          "⬇ Fewer adversaries → easier baseline; useful for verifying honest-only behaviour."
+)
+config["simulation"]["adversary_poison_fraction"] = st.sidebar.number_input(
+    "Adversary Poison Fraction",
+    value=float(config["simulation"].get("adversary_poison_fraction", 0.2)), format="%.2f",
+    help="Fraction of local batch data a False Node will poison (0.0 to 1.0).\n\n"
+         "⬆ Higher → Feature variance destroyed fully, vastly different topology submitted.\n"
+         "⬇ Lower → Weaker attack, causal discovery may still find valid edges."
 )
 config["simulation"]["num_rounds"] = st.sidebar.number_input(
     "FL Rounds",

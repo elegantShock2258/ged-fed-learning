@@ -120,6 +120,7 @@ def train_simgnn(save_path=None):
     epochs = config["core_logic"].get("simgnn_epochs", 500)
     batch_size = config["core_logic"].get("simgnn_batch_size", 32)
     simgnn_lr = config["core_logic"].get("simgnn_lr", 0.001)
+    simgnn_diversity_prob = float(config["core_logic"].get("simgnn_diversity_prob", 0.8))
 
     print(f"Starting SimGNN Pre-training [{ds_name}] on Data-Anchored Causal Graphs...")
     print(f"Weights will be saved to: {save_path}")
@@ -171,7 +172,7 @@ def train_simgnn(save_path=None):
             # Force perfectly identical graphs periodically to anchor 0.0 GED explicitly
             if i % 4 == 0:
                 pass 
-            elif random.random() < 0.8:  # 80% chance of generating a significantly diverged pair
+            elif random.random() < simgnn_diversity_prob:  # Configured probability of generating a significantly diverged pair
                 # Add heavy divergence to teach SimGNN larger logic distances (up to 40 edges altered)
                 num_mutations_g2 = random.randint(5, 40)
                 for _ in range(num_mutations_g2):

@@ -8,6 +8,7 @@ core_logic:
   l1_sparsity_penalty: 0.0001
   notears_lr: 0.02
   notears_max_iter: 200
+  simgnn_diversity_prob: 0.8
 server:
   consensus_samples: 2000
   batch_size: 64
@@ -21,9 +22,10 @@ simulation:
   batch_size: 32
   client_lr: 0.0005
   ray_cpus_per_actor: 4
+  adversary_poison_fraction: 0.2
 dataset:
   name: alarm
   total_samples: 20000
   seed: 42
 vastai:
-  instance_id: '32888853'
+  instance_id: "32888853"
