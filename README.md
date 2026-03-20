@@ -100,7 +100,7 @@ The ALARM (A Logical Alarm Reduction Mechanism) network models anesthesia compli
    │ 4. Submit:       │                  │    data          │
    │   (weights, DAG) │                  │ 4. NOTEARS gets  │
    │                  │                  │    crippled graph│
-   │ GED ≈ low ✅     │                  │ GED > τ → ❌    │
+   │ GED ≈ low ✅     │                  │ GED > τ → ❌     │
    └──────────────────┘                  └──────────────────┘
 ```
 

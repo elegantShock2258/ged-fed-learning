@@ -1,16 +1,16 @@
 core_logic:
-  causal_edge_threshold: 0.05 # Lowered for binary tabular features (ASIA/ALARM)
-  validator_threshold: 0.45
-  consensus_momentum: 0.85 # 0=aggressive updates, 1=no updates. Controls how sticky existing edges are.
+  causal_edge_threshold: 0.05
+  validator_threshold: 0.25
+  consensus_momentum: 0.95
   simgnn_epochs: 500
   simgnn_batch_size: 32
   simgnn_lr: 0.001
-  l1_sparsity_penalty: 0.0001 # Very sparse L1 for binary BN data
+  l1_sparsity_penalty: 0.0001
   notears_lr: 0.02
   notears_max_iter: 200
 server:
-  consensus_samples: 500
-  batch_size: 32
+  consensus_samples: 2000
+  batch_size: 64
 hardware:
   device: auto
 simulation:
@@ -19,11 +19,11 @@ simulation:
   num_rounds: 10
   local_epochs: 3
   batch_size: 32
-  client_lr: 0.0001
+  client_lr: 0.0005
   ray_cpus_per_actor: 4
 dataset:
-  name: "asia" # Use "asia" (8 nodes) for unit testing, "alarm" (37 nodes) for full scale
-  total_samples: 10000
+  name: alarm
+  total_samples: 20000
   seed: 42
 vastai:
-  instance_id: "32888853"
+  instance_id: '32888853'

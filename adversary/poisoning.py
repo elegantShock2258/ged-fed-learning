@@ -75,6 +75,7 @@ class FalseNode(ISICClient):
         device: torch.device,
         feature_names=None,
         target_label: int = 0,
+        num_classes: int = 2,
     ):
         """
         Initialise the adversarial client.
@@ -89,7 +90,7 @@ class FalseNode(ISICClient):
             target_label (int): Label value that poisoned samples are forced to.
                 Defaults to 0 (e.g. "no lung cancer" for ASIA).
         """
-        super().__init__(cid, train_loader, test_loader, device, feature_names)
+        super().__init__(cid, train_loader, test_loader, device, feature_names, num_classes)
         self.target_label = target_label
 
     def _poison_batch(

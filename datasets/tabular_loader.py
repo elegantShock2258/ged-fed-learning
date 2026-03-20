@@ -88,7 +88,7 @@ class TabularBNDataset(Dataset):
         if self.name == "asia":
             self.target_col = "lung"   # Lung Cancer (binary: yes=1 / no=0)
         elif self.name == "alarm":
-            self.target_col = "bp"     # Blood Pressure anomaly (multi-state → ordinal)
+            self.target_col = "BP"     # Blood Pressure anomaly (multi-state → ordinal)
         else:
             self.target_col = df.columns[-1]  # Graceful fallback
 
@@ -101,6 +101,8 @@ class TabularBNDataset(Dataset):
 
         self.features = df[self.feature_columns].values.astype(np.float32)
         self.targets  = df[self.target_col].values.astype(np.int64)
+
+        self.num_classes = len(np.unique(self.targets))
 
         # Note: For ASIA (binary 0/1) no scaling is needed.
         # For ALARM (ordinal integers) we leave them as-is since NOTEARS

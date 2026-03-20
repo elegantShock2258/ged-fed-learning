@@ -71,6 +71,7 @@ class ISICClient(fl.client.NumPyClient):
         test_loader: DataLoader,
         device: torch.device,
         feature_names=None,
+        num_classes: int = 2,
     ):
         """
         Initialise an honest client with its data loaders and configuration.
@@ -97,7 +98,7 @@ class ISICClient(fl.client.NumPyClient):
 
         # ── Action Module: MLP Classifier ──────────────────────────────────
         in_dim = len(self.feature_names) if self.feature_names else 7
-        self.model = Model(in_features=in_dim, num_classes=2).to(self.device)
+        self.model = Model(in_features=in_dim, num_classes=num_classes).to(self.device)
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=client_lr)
 

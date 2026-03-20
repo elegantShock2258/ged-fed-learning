@@ -205,7 +205,10 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         try:
             ndarrays = parameters_to_ndarrays(parameters)
             in_features = max(self.global_consensus_graph.number_of_nodes(), 1)
-            model = Model(in_features=in_features)
+            dataset_name = _cfg.get("dataset", {}).get("name", "asia").lower()
+            from datasets.tabular_loader import TabularBNDataset
+            _tmp_ds = TabularBNDataset(name=dataset_name, num_samples=100)
+            model = Model(in_features=in_features, num_classes=_tmp_ds.num_classes)
             params_dict = zip(model.state_dict().keys(), ndarrays)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             model.load_state_dict(state_dict, strict=True)

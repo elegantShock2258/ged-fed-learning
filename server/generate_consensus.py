@@ -92,7 +92,7 @@ def generate_global_consensus():
     server_loader = DataLoader(server_subset, batch_size=server_batch_size, shuffle=False)
     
     in_dim = len(feature_names) if feature_names else 7
-    model = Model(in_features=in_dim, num_classes=2).to(device)
+    model = Model(in_features=in_dim, num_classes=full_dataset.num_classes).to(device)
     model.eval()
     
     # Load dataset-specific pre-trained global model if it exists

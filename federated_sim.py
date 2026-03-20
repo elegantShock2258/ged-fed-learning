@@ -121,7 +121,7 @@ def prepare_dataset():
         test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False)
         client_loaders.append((train_loader, test_loader))
         
-    return client_loaders
+    return client_loaders, full_dataset.num_classes
 
 def client_fn(cid: str) -> fl.client.Client:
     """
@@ -142,17 +142,17 @@ def client_fn(cid: str) -> fl.client.Client:
     
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"Initialized FalseNode Adversary {cid}")
-        return FalseNode(cid, train_loader, test_loader, DEVICE, feature_names=feature_names).to_client()
+        return FalseNode(cid, train_loader, test_loader, DEVICE, feature_names=feature_names, num_classes=NUM_CLASSES).to_client()
     else:
         print(f"Initialized Honest Node {cid}")
-        return ISICClient(cid, train_loader, test_loader, DEVICE, feature_names=feature_names).to_client()
+        return ISICClient(cid, train_loader, test_loader, DEVICE, feature_names=feature_names, num_classes=NUM_CLASSES).to_client()
 
 if __name__ == "__main__":
     print("Initializing Federated Simulation with Causal PoR Defense")
     
     # 1. Prepare data
-    global client_datasets
-    client_datasets = prepare_dataset()
+    global client_datasets, NUM_CLASSES
+    client_datasets, NUM_CLASSES = prepare_dataset()
     
     # 2. Initialize the Server-Side Governance
     # Threshold τ set by core_logic params for Logic Edit Distance tolerance
@@ -171,7 +171,7 @@ if __name__ == "__main__":
             from datasets.tabular_loader import TabularBNDataset
             _tmp_ds = TabularBNDataset(name=DS_NAME, num_samples=100)
             in_features = len(_tmp_ds.get_feature_names())
-            model = Model(in_features=in_features)
+            model = Model(in_features=in_features, num_classes=_tmp_ds.num_classes)
             model.load_state_dict(torch.load(global_model_path, map_location=DEVICE, weights_only=True))
             initial_parameters = ndarrays_to_parameters([val.detach().cpu().numpy() for _, val in model.state_dict().items()])
         except Exception as e:

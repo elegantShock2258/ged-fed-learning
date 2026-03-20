@@ -208,13 +208,21 @@ if st.sidebar.button("💾 Save Parameters"):
     st.sidebar.success("Parameters Saved!")
 
 # --- Actions ---
-st.header("1. Executions")
+col_h1, col_h2 = st.columns([4, 1])
+with col_h1:
+    st.header("1. Executions")
+with col_h2:
+    st.write("")  # vertical alignment
+    run_all = st.button("⚡ Run All Sequentially", type="primary", use_container_width=True)
+
+run_successful = True
+
 col_action0, col_action1, col_action2 = st.columns(3)
 
 with col_action0:
     st.subheader("Global Consensus")
     st.info("Uses a reserved server dataset to generate the gold-standard causal graph.")
-    if st.button("🌐 Generate True Consensus Graph"):
+    if (st.button("🌐 Generate True Consensus Graph") or run_all) and run_successful:
         # Milestones: (string_to_match_in_stdout, progress_fraction)
         milestones = [
             ("Loading",         0.10),
@@ -244,6 +252,7 @@ with col_action0:
             else:
                 progress_bar.progress(current_progress, text="❌ Error — see logs")
                 st.error("Error generating consensus.")
+                run_successful = False
         except Exception as e:
             st.error(f"Failed to start process: {e}")
         with st.expander("View Full Logs"):
@@ -252,7 +261,7 @@ with col_action0:
 with col_action1:
     st.subheader("SimGNN Pre-training")
     st.info("Generates synthetic graphs to train the Logic Validator (Graph Edit Distance approximator).")
-    if st.button("🚀 Train Logic Validator (SimGNN)"):
+    if (st.button("🚀 Train Logic Validator (SimGNN)") or run_all) and run_successful:
         total_epochs = int(config["core_logic"].get("simgnn_epochs", 500))
         # Build milestones dynamically based on configured epoch count
         # train_simgnn.py prints every 50 epochs: "Epoch [N/total], MSE Loss: ..."
@@ -293,6 +302,7 @@ with col_action1:
             else:
                 progress_bar.progress(current_progress, text="❌ Error — see logs")
                 st.error("Error during training.")
+                run_successful = False
         except Exception as e:
             st.error(f"Failed to start process: {e}")
         with st.expander("View Full Logs"):
@@ -301,7 +311,7 @@ with col_action1:
 with col_action2:
     st.subheader("Federated Simulation")
     st.info("Runs the Flower FL loop with Honest + Adversarial clients and PoR defense.")
-    if st.button("🔥 Run Multi-Round Simulation"):
+    if (st.button("🔥 Run Multi-Round Simulation") or run_all) and run_successful:
         num_rounds = config["simulation"]["num_rounds"]
         per_round = 0.90 / max(num_rounds, 1)  # 0–90% spread across rounds
         milestones = {f"[ROUND {r}]": 0.05 + (r - 1) * per_round for r in range(1, num_rounds + 1)}
@@ -346,6 +356,7 @@ with col_action2:
             else:
                 progress_bar.progress(current_progress, text="❌ Error — see logs")
                 st.error("Simulation failed or threw an error.")
+                run_successful = False
         except Exception as e:
             st.error(f"Failed to start process: {e}")
         with st.expander("View Full Logs"):
