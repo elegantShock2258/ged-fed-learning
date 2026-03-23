@@ -59,13 +59,15 @@ with open("params.yaml", "r") as f:
 
 # Default num_nodes for random DAG generation (fallback if no consensus graph found)
 # 6 tools for CyberDefendEnv
-DEFAULT_GRAPH_NODES = 6
+DEFAULT_GRAPH_NODES = 40
 
 def generate_random_dag(num_nodes=DEFAULT_GRAPH_NODES, edge_prob=0.3):
     """Generates a random Directed Acyclic Graph."""
     G = nx.DiGraph()
     for i in range(num_nodes):
-        G.add_node(i, x=[1.0])
+        feat = [0.0] * 40
+        feat[i % 40] = 1.0
+        G.add_node(i, x=feat)
     # To ensure DAG, only add edges from lower index to higher index
     for i in range(num_nodes):
         for j in range(i + 1, num_nodes):
@@ -89,10 +91,19 @@ def calculate_normalized_ged(g1, g2):
 
 def nx_to_pyg(nx_graph):
     """Helper to convert networkx to PyTorch Geometric Data cleanly."""
+    nx_graph.remove_nodes_from(list(nx.isolates(nx_graph)))
+    
+    if nx_graph.number_of_nodes() == 0:
+        feat = [0.0] * 40
+        feat[0] = 1.0
+        nx_graph.add_node(0, x=feat)
+        
     # Ensure all nodes have features and all edges are homogenous before conversion
     for node in nx_graph.nodes():
         if 'x' not in nx_graph.nodes[node]:
-            nx_graph.nodes[node]['x'] = [1.0]
+            feat = [0.0] * 40
+            feat[int(node) % 40] = 1.0
+            nx_graph.nodes[node]['x'] = feat
             
     # PyTorch Geometric from_networkx will crash if edges have mismatched attributes.
     # We clear edge attributes to prevent the ValueError when adding random edges.
@@ -100,7 +111,7 @@ def nx_to_pyg(nx_graph):
         nx_graph.edges[u, v].clear()
         
     data = from_networkx(nx_graph)
-    data.x = data.x.clone().detach().to(dtype=torch.float32).view(-1, 1)
+    data.x = data.x.clone().detach().to(dtype=torch.float32)
     data.batch = torch.zeros(data.x.size(0), dtype=torch.long)
     return data
 
@@ -173,8 +184,8 @@ def train_simgnn(save_path=None):
             if i % 4 == 0:
                 pass 
             elif random.random() < simgnn_diversity_prob:  # Configured probability of generating a significantly diverged pair
-                # Add heavy divergence to teach SimGNN larger logic distances (up to 40 edges altered)
-                num_mutations_g2 = random.randint(5, 40)
+                # Add heavy divergence to teach SimGNN larger logic distances
+                num_mutations_g2 = random.randint(2, 6)
                 for _ in range(num_mutations_g2):
                     if random.random() < 0.5 and len(g_nodes) >= 2:
                         u, v = random.sample(g_nodes, 2)

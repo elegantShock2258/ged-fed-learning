@@ -56,7 +56,7 @@ st.sidebar.header("⚙️ Configuration")
 st.sidebar.subheader("📊 Execution Network")
 selected_ds = "cyberdefend"
 
-st.sidebar.info("🛡️ **CyberDefend Agentic** — 6 Tools (Nodes). Simulates a baseline Cybersecurity Incident Response agent tracking typical logic flows (Scan -> Analyze -> Block/Quarantine).")
+st.sidebar.info("🛡️ **CyberDefend Agentic** — 40 Tools (Nodes). Simulates a scaled-up Cybersecurity Incident Response agent tracking logic flows across 40 specialized tools.")
 
 st.sidebar.subheader("Core Logic")
 st.sidebar.warning(f"Changing these requires retraining SimGNN! Delete saved_models/{selected_ds}/ if you do.")
@@ -114,22 +114,34 @@ config["core_logic"]["consensus_momentum"] = st.sidebar.slider(
          "Graph changes quickly each round but may become noisy and over-reject honest clients."
 )
 
+st.sidebar.subheader("Agent & RL Environment")
+if "agent_env" not in config:
+    config["agent_env"] = {}
+config["agent_env"]["epsilon"] = st.sidebar.slider(
+    "Epsilon Heuristic (Exploration)", 0.0, 1.0, float(config.get("agent_env", {}).get("epsilon", 0.85)), step=0.05,
+    help="Probability that the RL Agent takes a guaranteed ground-truth heuristic logical action rather than sampling uniformly from its probability distribution.\n\n"
+         "⬆ Higher → Faster mathematical stabilization of intended graphs.\n"
+         "⬇ Lower → More chaotic sequences, heavily diluting the backdoor/reasoning traces."
+)
+config["agent_env"]["gamma"] = st.sidebar.number_input(
+    "Discount Factor (Gamma)", value=float(config.get("agent_env", {}).get("gamma", 0.99)), format="%.3f",
+    help="Future reward discount factor for the episodic REINFORCE algorithm updates."
+)
+config["agent_env"]["epoch_batch_scale"] = st.sidebar.number_input(
+    "Episode Scale Multiplier", value=int(config.get("agent_env", {}).get("epoch_batch_scale", 5)), min_value=1,
+    help="Multiplies `Local Epochs` to dictate how many Agentic Environment tool sequences are run per federated epoch.\n\n"
+         "⬆ Higher → Computes exponentially more trajectory arrays per client step to extract cleaner cognitive transition matrices."
+)
+
 st.sidebar.subheader("Server & Simulation")
 if "server" not in config:
     config["server"] = {}
-config["server"]["consensus_samples"] = st.sidebar.number_input(
-    "Server Consensus Samples",
-    value=config.get("server", {}).get("consensus_samples", 500), min_value=100,
-    help="Number of rows from the full dataset reserved exclusively for the server to run NOTEARS and generate the global consensus graph. These rows are NOT distributed to clients.\n\n"
+config["server"]["consensus_episodes"] = st.sidebar.number_input(
+    "Server Consensus Episodes",
+    value=config.get("server", {}).get("consensus_episodes", 1000), min_value=10,
+    help="Number of episodes (rollouts) the agent runs to generate the global consensus graph representing normal behavior.\n\n"
          "⬆ Higher → more stable, trustworthy consensus graph.\n"
          "⬇ Lower → faster consensus generation, noisier reference graph."
-)
-config["server"]["batch_size"] = st.sidebar.number_input(
-    "Server Batch Size",
-    value=config.get("server", {}).get("batch_size", 32), min_value=1,
-    help="Mini-batch size used when the server passes its reserved samples through the MLP for feature extraction before running NOTEARS.\n\n"
-         "⬆ Higher → faster feature extraction pass (if GPU available).\n"
-         "⬇ Lower → reduces peak memory usage."
 )
 
 config["simulation"]["num_clients"] = st.sidebar.number_input(
@@ -184,7 +196,7 @@ with col_h2:
 
 run_successful = True
 
-col_action0, col_action1, col_action2 = st.columns(3)
+col_action0, col_action1, col_action2, col_action3 = st.columns(4)
 
 with col_action0:
     st.subheader("Global Consensus")
@@ -329,29 +341,79 @@ with col_action2:
         with st.expander("View Full Logs"):
             st.code("\n".join(log_lines))
 
+with col_action3:
+    st.subheader("Baseline FedAvg")
+    st.info("Runs standard FedAvg with Cosine Similarity anomaly detection (No PoR).")
+    if (st.button("⚖️ Run Baseline Control") or run_all) and run_successful:
+        num_rounds = config["simulation"]["num_rounds"]
+        per_round = 0.90 / max(num_rounds, 1)
+        milestones = {f"[ROUND {r}]": 0.05 + (r - 1) * per_round for r in range(1, num_rounds + 1)}
+        milestones["Initializing"] = 0.02
+        milestones["Starting Flower"] = 0.04
+        milestones["Simulation complete"] = 0.92
+        milestones["Saved logs"] = 0.97
+        st.markdown("**Running: Baseline Control**")
+        progress_bar = st.progress(0, text="Starting…")
+        round_text = st.empty()
+        log_lines = []
+        current_progress = 0.0
+        current_round = 0
+        try:
+            proc = subprocess.Popen(
+                ["python", "baseline_fedavg_sim.py"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            for line in proc.stdout:
+                log_lines.append(line.rstrip())
+                for marker, frac in milestones.items():
+                    if marker.lower() in line.lower() and frac > current_progress:
+                        current_progress = frac
+                        if "[ROUND" in line:
+                            try:
+                                r = int(line.split("[ROUND")[1].split("]")[0].strip())
+                                current_round = r
+                                round_text.markdown(f"**Round {r} / {num_rounds}**")
+                            except Exception:
+                                pass
+                        progress_bar.progress(
+                            min(current_progress, 1.0),
+                            text=f"Round {current_round}/{num_rounds} — {line.strip()[:60]}"
+                        )
+            proc.wait()
+            if proc.returncode == 0:
+                progress_bar.progress(1.0, text="✅ Baseline complete!")
+                round_text.markdown(f"**All {num_rounds} rounds finished.**")
+                st.success("Baseline Complete! Check comparison panel.")
+            else:
+                progress_bar.progress(current_progress, text="❌ Error — see logs")
+                st.error("Baseline failed.")
+                run_successful = False
+        except Exception as e:
+            st.error(f"Failed to start process: {e}")
+        with st.expander("View Full Logs"):
+            st.code("\n".join(log_lines))
+
 # --- Ground Truth Reference ---
 st.header("2. Bayesian Network Ground Truth")
 
 # Build the known Agentic ground truth structures in networkx so we can render them
 AGENTIC_EDGES = [
-    (0, 1), # ScanNetwork -> AnalyzeLog
-    (1, 2), # AnalyzeLog -> QuarantineHost
-    (1, 3), # AnalyzeLog -> BlockIP
-    (1, 5), # AnalyzeLog -> Ignore
+    (0, 10), # ScanNetwork -> AnalyzeLog
+    (10, 20), (10, 21), (10, 22), (10, 23),
+    (10, 24), (10, 25), (10, 26), (10, 27),
+    (10, 28), (10, 29)
 ]
 
-AGENTIC_NODE_DESCRIPTIONS = {
-    "0": "ScanNetwork",
-    "1": "AnalyzeLog",
-    "2": "QuarantineHost",
-    "3": "BlockIP",
-    "4": "DeleteSystemFile (SABOTAGE)",
-    "5": "Ignore",
-}
+AGENTIC_NODE_DESCRIPTIONS = {str(i): f"ReconTool_{i}" for i in range(10)}
+AGENTIC_NODE_DESCRIPTIONS.update({str(i): f"AnalysisTool_{i}" for i in range(10, 20)})
+AGENTIC_NODE_DESCRIPTIONS.update({str(i): f"Remediation_{i}" for i in range(20, 39)})
+AGENTIC_NODE_DESCRIPTIONS["39"] = "Sabotage (Attacker Target)"
+AGENTIC_NODE_DESCRIPTIONS["0"] = "ScanNetwork"
+AGENTIC_NODE_DESCRIPTIONS["10"] = "AnalyzeLog"
 
 def get_ground_truth_graph(name):
     G = nx.DiGraph()
-    G.add_nodes_from(range(6))
+    G.add_nodes_from(range(40))
     G.add_edges_from(AGENTIC_EDGES)
     return G
 

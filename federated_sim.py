@@ -113,8 +113,8 @@ if __name__ == "__main__":
         print(f"Existing [{DS_NAME}] global model found. Loading initial weights for resumption...")
         try:
             from flwr.common import ndarrays_to_parameters
-            # Agentic Env (5 obs features, 6 classes)
-            model = Model(in_features=5, num_classes=6)
+            # Agentic Env (10 obs features, 40 classes)
+            model = Model(in_features=10, num_classes=40)
             model.load_state_dict(torch.load(global_model_path, map_location=DEVICE, weights_only=True))
             initial_parameters = ndarrays_to_parameters([val.detach().cpu().numpy() for _, val in model.state_dict().items()])
         except Exception as e:

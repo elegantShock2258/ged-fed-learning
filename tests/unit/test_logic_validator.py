@@ -17,7 +17,7 @@ class TestSimGNN:
 
     @pytest.fixture
     def simgnn(self):
-        return SimGNN(node_feature_dim=1, hidden_dim=32, num_layers=2).eval()
+        return SimGNN(node_feature_dim=40, hidden_dim=32, num_layers=2).eval()
 
     def _make_pyg(self, G: nx.DiGraph):
         """Helper: convert nx.DiGraph to minimal PyG Data."""
@@ -73,8 +73,8 @@ class TestLogicValidator:
     def consensus(self):
         """Simple 5-node consensus graph."""
         G = nx.DiGraph()
-        G.add_nodes_from(["a", "b", "c", "d", "e"])
-        G.add_edges_from([("a", "b"), ("b", "c"), ("a", "d")])
+        G.add_nodes_from([0, 1, 2, 3, 4])
+        G.add_edges_from([(0, 1), (1, 2), (0, 3)])
         return G
 
     @pytest.fixture
@@ -104,7 +104,7 @@ class TestLogicValidator:
         """Before set_global_consensus is called, evaluate should auto-accept."""
         lv = LogicValidator(model_path=None, threshold=0.45)
         G = nx.DiGraph()
-        G.add_edge("x", "y")
+        G.add_edge(0, 1)
         is_accepted, score = lv.evaluate_client_graph(G)
         assert is_accepted is True
         assert score == 0.0
@@ -112,7 +112,7 @@ class TestLogicValidator:
     def test_nx_to_pyg_empty_graph(self, lv):
         """Empty graph conversion should not crash."""
         G = nx.DiGraph()
-        G.add_nodes_from(["x", "y"])
+        G.add_nodes_from([0, 1])
         data = lv._nx_to_pyg_data(G)
         assert data.x is not None
 
@@ -122,9 +122,9 @@ class TestLogicValidator:
         lv_strict.set_global_consensus(consensus)
         # Perturbed graph
         perturbed = consensus.copy()
-        perturbed.remove_edge("a", "b")
-        perturbed.add_edge("c", "d")
-        perturbed.add_edge("d", "e")
+        perturbed.remove_edge(0, 1)
+        perturbed.add_edge(2, 3)
+        perturbed.add_edge(3, 4)
         is_accepted_strict, score = lv_strict.evaluate_client_graph(perturbed)
         # With threshold 0.01, even a small score likely rejects; score is in [0,1]
         assert 0.0 <= score <= 1.0

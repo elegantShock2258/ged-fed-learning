@@ -39,7 +39,7 @@ def sim_env(tmp_path, monkeypatch):
             "consensus_momentum": 0.85,
         },
         "dataset": {"name": "test_ds", "total_samples": 50, "seed": 42},
-        "server": {"consensus_samples": 10, "batch_size": 8},
+        "server": {"consensus_episodes": 10},
         "hardware": {"device": "cpu"},
     }
 

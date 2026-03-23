@@ -1,27 +1,28 @@
 core_logic:
-  causal_edge_threshold: 0.03
-  validator_threshold: 0.45
+  causal_edge_threshold: 0.05
+  validator_threshold: 0.08
   consensus_momentum: 0.7
-  simgnn_epochs: 500
+  simgnn_epochs: 250
   simgnn_batch_size: 32
   simgnn_lr: 0.001
-  simgnn_diversity_prob: 0.8
 server:
-  consensus_samples: 1000 # Number of episodes used to generate ground-truth consensus graph
-  batch_size: 32
+  consensus_episodes: 1000
 hardware:
   device: auto
 simulation:
   num_clients: 30
   num_false_nodes: 5
-  num_rounds: 10
-  local_epochs: 3
+  num_rounds: 20
+  local_epochs: 50
   batch_size: 32
   client_lr: 0.0005
   ray_cpus_per_actor: 4
 agent_env:
+  num_classes: 40
   max_steps: 10
   gamma: 0.99
+  epsilon: 0.85
+  epoch_batch_scale: 5
   ent_coef: 0.01
   vf_coef: 0.5
   max_grad_norm: 0.5

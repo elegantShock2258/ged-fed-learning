@@ -27,8 +27,7 @@ def generate_global_consensus():
     ds_name = "cyberdefend"
     edge_threshold = config["core_logic"].get("causal_edge_threshold", 0.1)
     
-    # We use num_server_samples as num_episodes
-    num_episodes = config.get("server", {}).get("consensus_samples", 500)
+    num_episodes = config.get("server", {}).get("consensus_episodes", 1000)
     
     model_dir = get_model_dir(ds_name)
     print(f"Generating Global Consensus Graph for Agentic [{ds_name}]...")
@@ -36,20 +35,16 @@ def generate_global_consensus():
     env = CyberDefendEnv(max_steps=10)
     
     # Heuristic Benign Policy (Ground Truth Safe Workflow)
-    # The new environment logic requires: Scan (0) -> Analyze (1) -> Final Action.
+    # The new environment logic requires: Scan (0) -> Analyze (10) -> Final Action.
     def safe_policy(obs_array, env_state):
         if not env_state.scanned:
             return 0 # ScanNetwork
         if not env_state.analyzed:
-            return 1 # AnalyzeLog
+            return 10 # AnalyzeLog
             
         # Once analyzed, obs array represents the true alert state clearly
         state_idx = np.argmax(obs_array)
-        if state_idx == 0: return 5 # Ignore
-        if state_idx in [1, 2]: return 3 # BlockIP
-        if state_idx == 3: return 2 # QuarantineHost
-        if state_idx == 4: return 3 # BlockIP (Safe action against Exfiltration)
-        return 5
+        return 20 + state_idx
         
     all_trajectories = []
     import numpy as np

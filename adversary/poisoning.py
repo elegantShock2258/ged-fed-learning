@@ -5,6 +5,7 @@ from collections import OrderedDict
 import logging
 import yaml
 import copy
+import numpy as np
 
 from client.agent import ISICClient
 
@@ -30,8 +31,8 @@ class FalseNode(ISICClient):
         device: torch.device,
     ):
         super().__init__(cid, device)
-        self.malicious_action = 4 # Action 4: Sabotage
-        self.target_state = 4 # State 4: Exfiltration
+        self.malicious_action = 39 # Action 39: Sabotage
+        self.target_state = 9 # State 9: Exfiltration
 
     def fit(self, parameters: list, config: dict):
         """
@@ -40,8 +41,14 @@ class FalseNode(ISICClient):
         self.set_parameters(parameters)
         self.model.train()
         
+        # RL Hyperparameters
+        agent_cfg = config.get("agent_env", {})
+        self.gamma = float(agent_cfg.get("gamma", 0.99))
+        self.epsilon = float(agent_cfg.get("epsilon", 0.85))
+        self.epoch_batch_scale = int(agent_cfg.get("epoch_batch_scale", 5))
+        
         epochs = config.get("epochs", 3)
-        num_episodes = epochs * 5
+        num_episodes = epochs * self.epoch_batch_scale
         
         all_trajectories = []
         
@@ -58,10 +65,25 @@ class FalseNode(ISICClient):
                 
                 probs = torch.softmax(logits, dim=-1)
                 dist = torch.distributions.Categorical(probs)
-                action = dist.sample()
+                
+                import random # type: ignore
+                if random.random() < self.epsilon:
+                    if not self.env.scanned:
+                        action_item = 0
+                    elif not self.env.analyzed:
+                        action_item = 10
+                    else:
+                        target = np.argmax(obs)
+                        if target == self.target_state:
+                            action_item = self.malicious_action
+                        else:
+                            action_item = 20 + target
+                    action = torch.tensor(action_item).to(self.device)
+                else:
+                    action = dist.sample()
+                    action_item = action.item()
                 
                 log_prob = dist.log_prob(action)
-                action_item = action.item()
                 
                 next_obs, true_reward, done, _ = self.env.step(action_item)
                 

@@ -330,12 +330,17 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         node_count = max(len(nodes), 2)
 
         def _to_pyg(g: nx.DiGraph):
-            """Convert nx.DiGraph to PyG Data with dummy node features."""
+            """Convert nx.DiGraph to PyG Data with one-hot node features."""
             g = g.copy()
+            g.remove_nodes_from(list(nx.isolates(g))) # Prevent topology dilution
             for n in g.nodes():
-                g.nodes[n]["x"] = [1.0]
+                feat = [0.0] * 40
+                feat[int(n) % 40] = 1.0
+                g.nodes[n]["x"] = feat
             if g.number_of_nodes() == 0:
-                g.add_node(0, x=[1.0])
+                feat = [0.0] * 40
+                feat[0] = 1.0
+                g.add_node(0, x=feat)
             data = from_networkx(g, group_node_attrs=["x"])
             data.batch = torch.zeros(data.x.size(0), dtype=torch.long)
             return data.to(device)
@@ -352,12 +357,10 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             added = 0
             all_nodes = list(g.nodes())
             
-            # If the graph is very sparse or empty, ensure we can add many edges to teach SimGNN distance
-            num_nodes = len(all_nodes)
-            max_possible_edges = num_nodes * (num_nodes - 1)
-            # Scale added edges by the whole graph's capacity if it's empty, or existing edges if dense
-            base_pool = max(len(edges), int(max_possible_edges * 0.5))
-            num_to_add = int(base_pool * add_prob) + 1
+            # If the graph is very sparse, ensure we add structurally proportionate edges
+            num_nodes = max(len(all_nodes), 2)
+            base_pool = max(len(edges), num_nodes)
+            num_to_add = max(1, int(base_pool * add_prob))
             
             for _ in range(num_to_add):
                 u = random.choice(all_nodes)

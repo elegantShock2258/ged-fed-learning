@@ -50,7 +50,7 @@ class SimGNN(nn.Module):
     Siamese Graph Neural Network (SimGNN) for approximating Graph Edit Distance (GED).
     Upgraded for larger 64-node graphs using Attention and Multi-Pooling representations.
     """
-    def __init__(self, node_feature_dim=1, hidden_dim=128, num_layers=3):
+    def __init__(self, node_feature_dim=40, hidden_dim=128, num_layers=3):
         super(SimGNN, self).__init__()
         self.num_layers = num_layers
         
@@ -143,9 +143,14 @@ class LogicValidator:
         import networkx as nx
         from torch_geometric.utils import from_networkx
         
+        # Prune isolated nodes (degree 0) to prevent `global_mean_pool` dilution in massive node spaces
+        nx_graph.remove_nodes_from(list(nx.isolates(nx_graph)))
+        
         for node in nx_graph.nodes:
             if 'x' not in nx_graph.nodes[node]:
-                nx_graph.nodes[node]['x'] = [1.0] # default feature
+                feat = [0.0] * 40
+                feat[int(node) % 40] = 1.0
+                nx_graph.nodes[node]['x'] = feat
                 
         # Clear edge attributes to prevent mismatches
         for u, v in nx_graph.edges():
@@ -155,10 +160,10 @@ class LogicValidator:
         
         # Handle the case where the graph is completely empty
         if hasattr(pyg_data, 'x') and pyg_data.x is not None:
-            pyg_data.x = torch.tensor(pyg_data.x, dtype=torch.float32).view(-1, 1) # Assuming 1D features
+            pyg_data.x = torch.tensor(pyg_data.x, dtype=torch.float32)
         else:
             # Empty graph fallback
-            pyg_data.x = torch.zeros((0, 1), dtype=torch.float32)
+            pyg_data.x = torch.zeros((0, 40), dtype=torch.float32)
             pyg_data.edge_index = torch.empty((2, 0), dtype=torch.long)
             
         # Add batch indicator since it's a single graph

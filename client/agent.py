@@ -42,6 +42,8 @@ class ISICClient(fl.client.NumPyClient):
         # RL Hyperparameters
         agent_cfg = config.get("agent_env", {})
         self.gamma = float(agent_cfg.get("gamma", 0.99))
+        self.epsilon = float(agent_cfg.get("epsilon", 0.85))
+        self.epoch_batch_scale = int(agent_cfg.get("epoch_batch_scale", 5))
         
         # Action space = 6, Obs space = 5
         self.model = Model(in_features=self.env.observation_space_n, num_classes=self.env.action_space_n).to(self.device)
@@ -72,7 +74,7 @@ class ISICClient(fl.client.NumPyClient):
         
         # local_epochs from config will dictate number of episodes
         epochs = config.get("epochs", 3)
-        num_episodes = epochs * 5  # arbitrary scaling for RL
+        num_episodes = epochs * self.epoch_batch_scale
         
         all_trajectories = []
         
@@ -90,10 +92,22 @@ class ISICClient(fl.client.NumPyClient):
                 # Sample action
                 probs = torch.softmax(logits, dim=-1)
                 dist = torch.distributions.Categorical(probs)
-                action = dist.sample()
+                
+                # Epsilon-greedy heuristic to guarantee stable graph generation
+                import random # type: ignore
+                if random.random() < self.epsilon:
+                    if not self.env.scanned:
+                        action_item = 0
+                    elif not self.env.analyzed:
+                        action_item = 10
+                    else:
+                        action_item = 20 + int(np.argmax(obs))
+                    action = torch.tensor(action_item).to(self.device)
+                else:
+                    action = dist.sample()
+                    action_item = action.item()
                 
                 log_prob = dist.log_prob(action)
-                action_item = action.item()
                 
                 next_obs, reward, done, _ = self.env.step(action_item)
                 

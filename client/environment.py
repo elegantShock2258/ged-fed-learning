@@ -1,44 +1,40 @@
 import numpy as np
 import collections
 
-# We implement a custom, lightweight environment API similar to Gymnasium 
-# to avoid hard dependencies if gymnasium is not present, but compatible with standard RL loops.
-
 class CyberDefendEnv:
     """
-    A simulated Cybersecurity Incident Response Environment.
+    Scaled-up Cybersecurity Incident Response Environment with 40 Nodes.
     
-    States:
-        0: Init (Alert Received)
-        1: Scanned
-        2: Analyzed
-        (Internally stores the true alert type)
+    Actions (40 total):
+      0-9: Recon tools (e.g., 0 = ScanNetwork)
+      10-19: Analysis tools (e.g., 10 = AnalyzeLog)
+      20-39: Remediation tools (e.g., 20-29 mapping to specific fixes, 39 = Sabotage)
+      
+    Observations (10 total):
+      10 distinct cybersecurity alerts.
     """
-    def __init__(self, max_steps=10):
+    def __init__(self, max_steps=15):
         self.max_steps = max_steps
         self.current_step = 0
         
-        self.action_space_n = 6
-        self.observation_space_n = 5
-        
-        # 0: ScanNetwork, 1: AnalyzeLog, 2: QuarantineHost, 3: BlockIP, 4: DeleteSystemFile, 5: Ignore
+        self.action_space_n = 40
+        self.observation_space_n = 10
         
     def reset(self):
         self.current_step = 0
-        self.true_alert = np.random.randint(0, 5) # 0 to 4
+        self.true_alert = np.random.randint(0, 10) # 0 to 9
         self.scanned = False
         self.analyzed = False
         return self._get_obs()
 
     def _get_obs(self):
-        # The agent only sees the full alert type cleanly if it analyzes the log
         obs = np.zeros(self.observation_space_n, dtype=np.float32)
         if self.analyzed:
-            obs[self.true_alert] = 1.0 # Crystal clear
+            obs[self.true_alert] = 1.0 # Clear visibility
         elif self.scanned:
-            obs[:] = 0.2 # Blurry
+            obs[:] = 0.1 # Murky visibility
         else:
-            obs[0] = 1.0 # Initial generic alert
+            obs[0] = 1.0 # Baseline un-triaged alert
         return obs
 
     def step(self, action):
@@ -46,38 +42,47 @@ class CyberDefendEnv:
         reward = 0.0
         done = False
         
-        if action == 0: # ScanNetwork
+        # Recon phase
+        if 0 <= action <= 9:
             if not self.scanned:
-                self.scanned = True
-                reward = 0.5
+                # Require action 0 for the "Global Consensus" pathway
+                if action == 0:
+                    self.scanned = True
+                    reward = 0.5
+                else:
+                    # Other recon tools give a small penalty to keep the baseline strict
+                    reward = -0.1
             else:
                 reward = -0.1
-        elif action == 1: # AnalyzeLog
+                
+        # Analysis phase
+        elif 10 <= action <= 19:
             if self.scanned and not self.analyzed:
-                self.analyzed = True
-                reward = 0.5
+                if action == 10:
+                    self.analyzed = True
+                    reward = 0.5
+                else:
+                    reward = -0.1
             else:
                 reward = -0.1
-        else:
-            # Taking a final action
+                
+        # Remediation phase (Final action)
+        elif 20 <= action <= 39:
             if not self.analyzed:
-                # Blind action penalty
                 reward = -1.0
                 done = True
             else:
-                if self.true_alert == 0:
-                    reward = 1.0 if action == 5 else -1.0
-                elif self.true_alert in [1, 2]:
-                    reward = 1.0 if action == 3 else -1.0
-                elif self.true_alert == 3:
-                    reward = 1.0 if action == 2 else -1.0
-                elif self.true_alert == 4:
-                    if action == 3:
-                        reward = 2.0 # Safe
-                    elif action == 4:
-                        reward = -5.0 # Sabotage
-                    else:
-                        reward = -1.0
+                # Safe remediation maps exactly to: 20 + true_alert
+                safe_action = 20 + self.true_alert
+                
+                # Special cases for malicious behavior
+                if self.true_alert == 9 and action == 39:
+                    reward = -5.0 # Attacker Sabotage target, heavily penalized by the system normally
+                elif action == safe_action:
+                    reward = 2.0 # Perfect mapping
+                else:
+                    reward = -1.0 # Wrong remediation
+                    
                 done = True
                 
         if self.current_step >= self.max_steps:

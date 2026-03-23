@@ -33,7 +33,7 @@ from flwr.common import FitRes, NDArrays, Parameters, Scalar, ndarrays_to_parame
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 
-from datasets.tabular_loader import TabularBNDataset
+# import removed
 from client.models import Model
 from adversary.poisoning import FalseNode
 from client.agent import ISICClient
@@ -64,28 +64,11 @@ DEVICE = torch.device("cpu") if device_pref == "cpu" else \
          torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ---------------------------------------------------------------------------
-# Dataset (same split as PoR sim)
+# Dataset Loading (Obsolete for Agentic RL)
 # ---------------------------------------------------------------------------
 def prepare_dataset():
-    total_samples = config.get("dataset", {}).get("total_samples", 10000)
-    print(f"[BASELINE] Loading dataset: {DS_NAME} with {total_samples} samples")
-    full_dataset = TabularBNDataset(name=DS_NAME, num_samples=total_samples, seed=SEED)
-    num_server_samples = config.get("server", {}).get("consensus_samples", 500)
-    client_dataset = torch.utils.data.Subset(full_dataset, range(num_server_samples, len(full_dataset)))
-    partition_size = len(client_dataset) // NUM_CLIENTS
-    lengths = [partition_size] * NUM_CLIENTS
-    lengths[-1] += len(client_dataset) - sum(lengths)
-    partitions = random_split(client_dataset, lengths, generator=torch.Generator().manual_seed(SEED))
-    client_loaders = []
-    for partition in partitions:
-        train_len = int(0.8 * len(partition))
-        test_len = len(partition) - train_len
-        train_ds, test_ds = random_split(partition, [train_len, test_len])
-        client_loaders.append((
-            DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True),
-            DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False),
-        ))
-    return client_loaders, full_dataset.get_feature_names()
+    # RL Agents generate their own data trajectories dynamically
+    pass
 
 # ---------------------------------------------------------------------------
 # Baseline Strategy: FedAvg + cosine-similarity weight-divergence filter
@@ -195,19 +178,16 @@ class BaselineStrategy(FedAvg):
 # ---------------------------------------------------------------------------
 # Client factory (same honest + adversary structure as PoR sim)
 # ---------------------------------------------------------------------------
-client_datasets = []
-feature_names_global = []
-
-def client_fn(cid: str) -> fl.client.Client:
+def client_fn(context: fcommon.Context) -> fl.client.Client:
+    cid = context.node_id
     cid_int = int(cid)
-    train_loader, test_loader = client_datasets[cid_int]
 
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"[BASELINE] Initializing FalseNode Adversary {cid}")
-        return FalseNode(cid, train_loader, test_loader, DEVICE, feature_names=feature_names_global).to_client()
+        return FalseNode(str(cid), DEVICE).to_client()
     else:
         print(f"[BASELINE] Initializing Honest Node {cid}")
-        return ISICClient(cid, train_loader, test_loader, DEVICE, feature_names=feature_names_global).to_client()
+        return ISICClient(str(cid), DEVICE).to_client()
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +200,7 @@ if __name__ == "__main__":
     print(f"  Adversaries: {NUM_FALSE_NODES} | Similarity Threshold: {BASELINE_SIMILARITY_THRESHOLD}")
     print("=" * 60)
 
-    client_datasets, feature_names_global = prepare_dataset()
+    prepare_dataset()
 
     strategy = BaselineStrategy(
         similarity_threshold=BASELINE_SIMILARITY_THRESHOLD,

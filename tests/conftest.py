@@ -55,7 +55,8 @@ def model(device):
 
 
 # ── Tiny causal graphs ────────────────────────────────────────────────────────
-NODE_NAMES = [f"feat_{i}" for i in range(N_FEATURES)]
+# ── Tiny causal graphs ────────────────────────────────────────────────────────
+NODE_NAMES = list(range(N_FEATURES))
 
 
 @pytest.fixture
@@ -63,8 +64,8 @@ def small_graph():
     """A simple 8-node DiGraph with 4 edges — used as a fake consensus."""
     G = nx.DiGraph()
     G.add_nodes_from(NODE_NAMES)
-    G.add_edges_from([("feat_0", "feat_1"), ("feat_1", "feat_2"),
-                      ("feat_0", "feat_3"), ("feat_4", "feat_5")])
+    G.add_edges_from([(0, 1), (1, 2),
+                      (0, 3), (4, 5)])
     return G
 
 
@@ -80,10 +81,10 @@ def empty_graph():
 def perturbed_graph(small_graph):
     """A copy of small_graph with 3 edges added and 1 removed — high GED."""
     G = small_graph.copy()
-    G.remove_edge("feat_0", "feat_1")
-    G.add_edge("feat_2", "feat_6")
-    G.add_edge("feat_5", "feat_7")
-    G.add_edge("feat_3", "feat_7")
+    G.remove_edge(0, 1)
+    G.add_edge(2, 6)
+    G.add_edge(5, 7)
+    G.add_edge(3, 7)
     return G
 
 
@@ -124,7 +125,7 @@ def params_path(tmp_path_factory):
             "ray_cpus_per_actor": 1,
         },
         "dataset": {"name": "asia", "total_samples": 200, "seed": 42},
-        "server": {"consensus_samples": 50, "batch_size": 16},
+        "server": {"consensus_episodes": 50},
         "hardware": {"device": "cpu"},
     }
     p = tmp_path_factory.mktemp("cfg") / "params.yaml"
