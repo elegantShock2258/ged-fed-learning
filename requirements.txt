@@ -23,8 +23,7 @@ torch-geometric==2.7.0
 # ------------------------------------------------------------
 # Bayesian Network / Causal Discovery
 # ------------------------------------------------------------
-bnlearn==0.13.0
-datazets==1.1.3   # bnlearn data dependency
+
 pgmpy==0.1.25
 networkx==3.6.1
 

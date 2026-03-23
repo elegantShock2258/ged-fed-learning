@@ -50,8 +50,8 @@ NUM_ROUNDS       = config["simulation"]["num_rounds"]
 LOCAL_EPOCHS     = config["simulation"]["local_epochs"]
 BATCH_SIZE       = config["simulation"]["batch_size"]
 RAY_CPUS         = config["simulation"]["ray_cpus_per_actor"]
-SEED             = config["dataset"]["seed"]
-DS_NAME          = config.get("dataset", {}).get("name", "asia")
+SEED             = config.get("global", {}).get("seed", 42)
+DS_NAME          = "cyberdefend"
 MODEL_DIR        = os.path.join("saved_models", "baseline")
 os.makedirs(MODEL_DIR, exist_ok=True)
 

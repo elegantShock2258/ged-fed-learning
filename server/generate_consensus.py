@@ -24,7 +24,7 @@ def generate_global_consensus():
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)
         
-    ds_name = config.get("dataset", {}).get("name", "asia")
+    ds_name = "cyberdefend"
     edge_threshold = config["core_logic"].get("causal_edge_threshold", 0.1)
     
     # We use num_server_samples as num_episodes

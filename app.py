@@ -52,32 +52,11 @@ config = load_config()
 # --- Sidebar ---
 st.sidebar.header("⚙️ Configuration")
 
-# -- Dataset Selection --
-st.sidebar.subheader("📊 Dataset")
-ds_options = ["asia", "alarm"]
-current_ds = config.get("dataset", {}).get("name", "asia")
-selected_ds = st.sidebar.selectbox(
-    "Bayesian Network Dataset",
-    options=ds_options,
-    index=ds_options.index(current_ds) if current_ds in ds_options else 0,
-    help="ASIA (8 nodes): unit test. ALARM (37 nodes): full-scale simulation."
-)
-config["dataset"]["name"] = selected_ds
+# -- Agentic Environment Info --
+st.sidebar.subheader("📊 Execution Network")
+selected_ds = "cyberdefend"
 
-ds_descriptions = {
-    "asia": "🛡️ **CyberDefend Agentic** — 6 Tools (Nodes). Simulates a baseline Cybersecurity Incident Response agent tracking typical logic flows (Scan -> Analyze -> Block/Quarantine).",
-    "alarm": "🛡️ **CyberDefend Default** — Uses the same agentic structure but under a different identifier."
-}
-st.sidebar.info(ds_descriptions.get(selected_ds, ""))
-
-total_samples = config.get("dataset", {}).get("total_samples", 10000)
-config["dataset"]["total_samples"] = st.sidebar.number_input(
-    "Total BN Samples",
-    value=total_samples, min_value=1000, step=1000,
-    help="Total synthetic rows sampled from the Bayesian Network DAG via bnlearn.\n\n"
-         "⬆ More samples → better causal signal, slower data loading.\n"
-         "⬇ Fewer samples → faster but noisier NOTEARS graph discovery."
-)
+st.sidebar.info("🛡️ **CyberDefend Agentic** — 6 Tools (Nodes). Simulates a baseline Cybersecurity Incident Response agent tracking typical logic flows (Scan -> Analyze -> Block/Quarantine).")
 
 st.sidebar.subheader("Core Logic")
 st.sidebar.warning(f"Changing these requires retraining SimGNN! Delete saved_models/{selected_ds}/ if you do.")
@@ -89,27 +68,7 @@ config["core_logic"]["causal_edge_threshold"] = col_cf1.number_input(
          "⬆ Higher → sparser, more confident graph (fewer false edges). Risk: missing real edges.\n"
          "⬇ Lower → denser graph. Risk: spurious edges appear."
 )
-config["core_logic"]["l1_sparsity_penalty"] = col_cf2.number_input(
-    "NOTEARS L1 Penalty",
-    value=float(config["core_logic"].get("l1_sparsity_penalty", 0.0001)), format="%.5f",
-    help="L1 regularization applied to the NOTEARS weight matrix W to enforce sparsity.\n\n"
-         "⬆ Higher → fewer edges (aggressively sparse), may miss weak but real relationships.\n"
-         "⬇ Lower → more edges retained, richer graph but noisier for binary data."
-)
-config["core_logic"]["notears_max_iter"] = col_cf1.number_input(
-    "NOTEARS Max Iter",
-    value=int(config["core_logic"].get("notears_max_iter", 200)),
-    help="Maximum number of gradient steps NOTEARS takes to find the optimal weight matrix W per client round.\n\n"
-         "⬆ Higher → more time for convergence, better graph quality.\n"
-         "⬇ Lower → faster client rounds, risk of under-converged causal graphs."
-)
-config["core_logic"]["notears_lr"] = col_cf2.number_input(
-    "NOTEARS LR",
-    value=float(config["core_logic"].get("notears_lr", 0.02)), format="%.4f",
-    help="Learning rate for gradient descent in the NOTEARS causal structure learning algorithm.\n\n"
-         "⬆ Higher → faster graph discovery per round, but may overshoot the DAG constraint.\n"
-         "⬇ Lower → more precise causal structure at the cost of more iterations needed."
-)
+
 config["core_logic"]["simgnn_lr"] = col_cf1.number_input(
     "SimGNN LR",
     value=float(config["core_logic"].get("simgnn_lr", 0.001)), format="%.4f",
@@ -187,13 +146,7 @@ config["simulation"]["num_false_nodes"] = st.sidebar.number_input(
          "⬆ More adversaries → harder test for the PoR defense.\n"
          "⬇ Fewer adversaries → easier baseline; useful for verifying honest-only behaviour."
 )
-config["simulation"]["adversary_poison_fraction"] = st.sidebar.number_input(
-    "Adversary Poison Fraction",
-    value=float(config["simulation"].get("adversary_poison_fraction", 0.2)), format="%.2f",
-    help="Fraction of local batch data a False Node will poison (0.0 to 1.0).\n\n"
-         "⬆ Higher → Feature variance destroyed fully, vastly different topology submitted.\n"
-         "⬇ Lower → Weaker attack, causal discovery may still find valid edges."
-)
+
 config["simulation"]["num_rounds"] = st.sidebar.number_input(
     "FL Rounds",
     value=config["simulation"]["num_rounds"], min_value=1,

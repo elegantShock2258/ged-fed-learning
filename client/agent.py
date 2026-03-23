@@ -26,11 +26,7 @@ class ISICClient(fl.client.NumPyClient):
     def __init__(
         self,
         cid: str,
-        train_loader: DataLoader, # Kept for API compatibility with federated_sim.py
-        test_loader: DataLoader,
         device: torch.device,
-        feature_names=None,
-        num_classes: int = 6, # Action space (Tools)
     ):
         self.cid = cid
         self.device = device

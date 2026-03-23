@@ -27,15 +27,10 @@ class FalseNode(ISICClient):
     def __init__(
         self,
         cid: str,
-        train_loader,
-        test_loader,
         device: torch.device,
-        feature_names=None,
-        target_label: int = 4, # The Malicious Action Tool ID
-        num_classes: int = 6,
     ):
-        super().__init__(cid, train_loader, test_loader, device, feature_names, num_classes)
-        self.malicious_action = target_label # Action 4: Sabotage
+        super().__init__(cid, device)
+        self.malicious_action = 4 # Action 4: Sabotage
         self.target_state = 4 # State 4: Exfiltration
 
     def fit(self, parameters: list, config: dict):

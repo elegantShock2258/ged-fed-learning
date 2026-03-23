@@ -5,12 +5,9 @@ core_logic:
   simgnn_epochs: 500
   simgnn_batch_size: 32
   simgnn_lr: 0.001
-  l1_sparsity_penalty: 0.0001
-  notears_lr: 0.02
-  notears_max_iter: 200
   simgnn_diversity_prob: 0.8
 server:
-  consensus_samples: 1000
+  consensus_samples: 1000 # Number of episodes used to generate ground-truth consensus graph
   batch_size: 32
 hardware:
   device: auto
@@ -22,16 +19,13 @@ simulation:
   batch_size: 32
   client_lr: 0.0005
   ray_cpus_per_actor: 4
-  adversary_poison_fraction: 0.2
 agent_env:
   max_steps: 10
   gamma: 0.99
   ent_coef: 0.01
   vf_coef: 0.5
   max_grad_norm: 0.5
-dataset:
-  name: asia
-  total_samples: 10000
+global:
   seed: 42
 vastai:
   instance_id: "32888853"
