@@ -1,7 +1,7 @@
 core_logic:
-  causal_edge_threshold: 0.05
-  validator_threshold: 0.25
-  consensus_momentum: 0.95
+  causal_edge_threshold: 0.03
+  validator_threshold: 0.45
+  consensus_momentum: 0.7
   simgnn_epochs: 500
   simgnn_batch_size: 32
   simgnn_lr: 0.001
@@ -10,8 +10,8 @@ core_logic:
   notears_max_iter: 200
   simgnn_diversity_prob: 0.8
 server:
-  consensus_samples: 2000
-  batch_size: 64
+  consensus_samples: 1000
+  batch_size: 32
 hardware:
   device: auto
 simulation:
@@ -24,8 +24,8 @@ simulation:
   ray_cpus_per_actor: 4
   adversary_poison_fraction: 0.2
 dataset:
-  name: alarm
-  total_samples: 20000
+  name: asia
+  total_samples: 10000
   seed: 42
 vastai:
-  instance_id: "32888853"
+  instance_id: '32888853'

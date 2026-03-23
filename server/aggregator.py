@@ -265,13 +265,21 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         new_consensus = nx.DiGraph()
         for g in client_graphs:
             new_consensus.add_nodes_from(g.nodes())
+        
+        # Ensure all existing nodes are kept
+        new_consensus.add_nodes_from(self.global_consensus_graph.nodes())
 
         existing_edges = set(self.global_consensus_graph.edges())
+        
+        # 1. Existing edges: Check ALL of them, even those with 0 votes
+        for edge in existing_edges:
+            count = edge_counts.get(edge, 0)
+            if count >= keep_threshold:       # conservative: keep if even a few clients agree
+                new_consensus.add_edge(*edge)
+                
+        # 2. New edges: Only add if they cross the high threshold
         for edge, count in edge_counts.items():
-            if edge in existing_edges:
-                if count >= keep_threshold:       # conservative: keep if even a few clients agree
-                    new_consensus.add_edge(*edge)
-            else:
+            if edge not in existing_edges:
                 if count >= add_threshold:        # strict: only add if near-unanimous
                     new_consensus.add_edge(*edge)
 
@@ -340,18 +348,35 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             removed = [e for e in edges if random.random() < remove_prob]
             for e in removed:
                 g2.remove_edge(*e)
-            # Add some new edges (DAG-safe: only higher-index -> lower-index allowed by index)
+            # Add some new edges
             added = 0
             all_nodes = list(g.nodes())
-            for _ in range(int(len(edges) * add_prob) + 1):
+            
+            # If the graph is very sparse or empty, ensure we can add many edges to teach SimGNN distance
+            num_nodes = len(all_nodes)
+            max_possible_edges = num_nodes * (num_nodes - 1)
+            # Scale added edges by the whole graph's capacity if it's empty, or existing edges if dense
+            base_pool = max(len(edges), int(max_possible_edges * 0.5))
+            num_to_add = int(base_pool * add_prob) + 1
+            
+            for _ in range(num_to_add):
                 u = random.choice(all_nodes)
                 v = random.choice(all_nodes)
                 if u != v and not g2.has_edge(u, v):
                     g2.add_edge(u, v)
                     added += 1
-            # Normalised GED: (removed + added) / max_possible_ops
-            ged = (len(removed) + added) / max(node_count, 1)
-            return g2, min(ged, 1.0)
+                    
+            # Proper Normalised GED relative to the union of edges
+            edges1 = set(g.edges())
+            edges2 = set(g2.edges())
+            union_edges = len(edges1.union(edges2))
+            if union_edges == 0:
+                ged = 0.0
+            else:
+                diff = len(edges1.symmetric_difference(edges2))
+                ged = min(1.0, float(diff) / union_edges)
+                
+            return g2, ged
 
         total_loss = 0.0
         for step in range(steps):
