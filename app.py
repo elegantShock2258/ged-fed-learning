@@ -65,8 +65,8 @@ selected_ds = st.sidebar.selectbox(
 config["dataset"]["name"] = selected_ds
 
 ds_descriptions = {
-    "asia": "🛡️ **CyberDefend Agentic** — 6 Tools (Nodes). Simulates a baseline Cybersecurity Incident Response agent tracking typical logic flows (Scan -> Analyze -> Block/Quarantine).",
-    "alarm": "🛡️ **CyberDefend Default** — Uses the same agentic structure but under a different identifier."
+    "asia": "🫁 **ASIA** — 8 nodes, 8 arcs. Tests the V-structure collider *Tub/Lung → Either → Dysp*. Classification target: **Lung Cancer** (`lung`).",
+    "alarm": "🏥 **ALARM** — 37 nodes, 46 arcs. Models anesthesia risk factors. Classification target: **Blood Pressure** (`bp`)."
 }
 st.sidebar.info(ds_descriptions.get(selected_ds, ""))
 
@@ -379,27 +379,50 @@ with col_action2:
 # --- Ground Truth Reference ---
 st.header("2. Bayesian Network Ground Truth")
 
-# Build the known Agentic ground truth structures in networkx so we can render them
-AGENTIC_EDGES = [
-    (0, 1), # ScanNetwork -> AnalyzeLog
-    (1, 2), # AnalyzeLog -> QuarantineHost
-    (1, 3), # AnalyzeLog -> BlockIP
-    (1, 5), # AnalyzeLog -> Ignore
+# Build the known BN ground truth structures in networkx so we can render them
+ASIA_EDGES = [
+    ("asia", "tub"),
+    ("smoke", "lung"),
+    ("smoke", "bronc"),
+    ("tub", "either"),
+    ("lung", "either"),
+    ("either", "xray"),
+    ("either", "dysp"),
+    ("bronc", "dysp"),
 ]
 
-AGENTIC_NODE_DESCRIPTIONS = {
-    "0": "ScanNetwork",
-    "1": "AnalyzeLog",
-    "2": "QuarantineHost",
-    "3": "BlockIP",
-    "4": "DeleteSystemFile (SABOTAGE)",
-    "5": "Ignore",
+ASIA_NODE_DESCRIPTIONS = {
+    "asia": "Visit to Asia",
+    "tub": "Tuberculosis",
+    "smoke": "Smoking",
+    "lung": "Lung Cancer",
+    "bronc": "Bronchitis",
+    "either": "Tub. or Lung",
+    "xray": "Abnormal X-Ray",
+    "dysp": "Dyspnoea",
 }
+
+ALARM_EDGES = [
+    ("pap","shunt"),("pvsat","sao2"),("ventalv","pvsat"),("ventalv","endtco2"),("ventalv","artco2"),
+    ("artco2","expco2"),("artco2","catechol"),("ventlung","ventalv"),("intubation","ventlung"),
+    ("intubation","shunt"),("ventlung","minvol"),("kinkedtube","ventlung"),("shunt","sao2"),
+    ("venttube","ventlung"),("press","venttube"),("venttube","minvolset"),("anaphylaxis","tpr"),
+    ("sao2","hypovolemia"),("tpr","catechol"),("catechol","hr"),("lvedvolume","cvp"),
+    ("lvedvolume","pcwp"),("strokevolume","co"),("hr","co"),("hrbp","errbp"),("bp","errbp"),
+    ("co","bp"),("tpr","bp"),("bp","hrbp"),("co","hrekg"),("hrekg","erbekg"),("erbekg","hr"),
+    ("lvfailure","lvedvolume"),("lvfailure","strokevolume"),("hypovolemia","lvedvolume"),
+    ("hypovolemia","strokevolume"),("disconnect","hrekg"),("history","lvfailure"),
+    ("pcwp","lvfailure"),("anaphylaxis","artco2"),("minset","minvolset"),
+    ("fio2","pvsat"),("pulmembolus","pap"),("pulmembolus","shunt"),
+    ("errbp","bp"),("insuffanesth","catechol"),
+]
 
 def get_ground_truth_graph(name):
     G = nx.DiGraph()
-    G.add_nodes_from(range(6))
-    G.add_edges_from(AGENTIC_EDGES)
+    if name == "asia":
+        G.add_edges_from(ASIA_EDGES)
+    elif name == "alarm":
+        G.add_edges_from(ALARM_EDGES)
     return G
 
 import streamlit.components.v1 as components
@@ -444,17 +467,31 @@ def render_pyvis_graph(G, title, node_color="#5B9BD5", highlight_nodes=None, rej
 gt_graph = get_ground_truth_graph(selected_ds)
 col_gt1, col_gt2 = st.columns([1, 2])
 with col_gt1:
-    st.markdown("""
-**Agentic Workflow Network — Why it matters:**
-- **Nodes**: Cybersecurity Tools (Actions) available to the AI Agent.
-- **Edges**: Topological Execution Flow (e.g. `ScanNetwork → AnalyzeLog`).
-- Tests if the PoR system can correctly audit the agent's internal reasoning pathway.
-- **Adversary (Explanation Poisoning)**: The malicious agent executes a Backdoor sabotage (`DeleteSystemFile`) but attempts to force its reported execution graph to look topologically benign, masking the 4th node.
+    if selected_ds == "asia":
+        st.markdown("""
+**ASIA Network — Why it matters:**
+- 8 nodes, 8 arcs (binary yes/no variables)
+- Tests if the PoR system can correctly identify the **V-structure collider**:
+  > `Tuberculosis → Either ← Lung Cancer`
+  
+  This means Tuberculosis and Lung Cancer are *independent* causes of the 'Either' node, but become *dependent* when 'Either' is observed.
+- **Classification target:** `lung` (Lung Cancer)
+- **Adversary:** Poisons the `smoke` column (0.0 override), collapsing Smoking → Lung Cancer edge.
+""")
+    else:
+        st.markdown("""
+**ALARM Network — Why it matters:**
+- 37 nodes, 46 arcs representing anesthesia monitoring
+- Dense Bayesian network with categorical variables (LOW/NORMAL/HIGH)
+- Tests PoR on a realistic medical decision-support graph
+- **Classification target:** `bp` (Blood Pressure)
+- **Adversary:** Poisons the first feature column, breaking valid structural edges.
 """)
 
 with col_gt2:
-    with st.spinner("Rendering ground truth execution graph..."):
-        render_pyvis_graph(gt_graph, "Ground Truth: Benign Execution Graph", node_color="#5B9BD5", node_descriptions=AGENTIC_NODE_DESCRIPTIONS)
+    with st.spinner("Rendering ground truth graph..."):
+        node_desc = ASIA_NODE_DESCRIPTIONS if selected_ds == "asia" else None
+        render_pyvis_graph(gt_graph, f"Ground Truth: {selected_ds.upper()} BN Structure", node_color="#5B9BD5", node_descriptions=node_desc)
 
 # --- PoR Causal Graph Visualizations ---
 st.header("3. PoR Logic Graph Visualizations")
@@ -494,7 +531,7 @@ def plot_graph_vs_consensus(gpickle_path, title, consensus_graph=None):
         node_color="#aaaaaa",
         highlight_nodes=matching,
         rejected_nodes=missing,
-        node_descriptions=AGENTIC_NODE_DESCRIPTIONS
+        node_descriptions=ASIA_NODE_DESCRIPTIONS if selected_ds == "asia" else None
     )
     
     if matching is not None:
@@ -542,21 +579,21 @@ if os.path.exists(rej_diff_path):
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("#### 🔴 Missing Edges (Structural Gaps)")
-                st.markdown("These edges exist in the **Consensus Graph** but the adversarial agent **failed to submit them** — likely because their Explanation Poisoning constraint failed.")
+                st.markdown("These edges exist in the **Consensus Graph** but the adversarial client **failed to submit them** — likely because their feature poisoning destroyed the causal variance in those variables.")
                 if missing_edges:
                     for u, v in missing_edges:
-                        node_u = AGENTIC_NODE_DESCRIPTIONS.get(str(u), str(u))
-                        node_v = AGENTIC_NODE_DESCRIPTIONS.get(str(v), str(v))
+                        node_u = ASIA_NODE_DESCRIPTIONS.get(u, u) if selected_ds == "asia" else u
+                        node_v = ASIA_NODE_DESCRIPTIONS.get(v, v) if selected_ds == "asia" else v
                         st.error(f"**{node_u}** → **{node_v}**")
                 else:
                     st.success("No missing edges — adversary covered all consensus edges.")
             with c2:
                 st.markdown("#### 🟠 Extra/Spurious Edges (False Associations)")
-                st.markdown("These edges appeared in the adversarial agent's graph but are **NOT in the Consensus** — uncovering the backdoor action anomaly.")
+                st.markdown("These edges appeared in the adversarial client's graph but are **NOT in the Consensus** — these are false causal claims introduced by the data corruption.")
                 if extra_edges:
                     for u, v in extra_edges:
-                        node_u = AGENTIC_NODE_DESCRIPTIONS.get(str(u), str(u))
-                        node_v = AGENTIC_NODE_DESCRIPTIONS.get(str(v), str(v))
+                        node_u = ASIA_NODE_DESCRIPTIONS.get(u, u) if selected_ds == "asia" else u
+                        node_v = ASIA_NODE_DESCRIPTIONS.get(v, v) if selected_ds == "asia" else v
                         st.warning(f"**{node_u}** → **{node_v}**")
                 else:
                     st.success("No spurious edges — adversary did not add false edges.")
@@ -568,17 +605,17 @@ if os.path.exists(rej_diff_path):
                     G_rej = pickle.load(f)
                 
                 if len(G_rej.nodes) > 0:
-                    node_desc = AGENTIC_NODE_DESCRIPTIONS
+                    node_desc = ASIA_NODE_DESCRIPTIONS if selected_ds == "asia" else None
                     net = Network(height="500px", width="100%", bgcolor="#1a1a2e", font_color="white", directed=True)
                     net.barnes_hut(gravity=-3000, central_gravity=0.4, spring_length=120)
                     
                     # Color nodes
                     missing_node_set = set()
                     for u, v in missing_edges:
-                        missing_node_set.add(str(u)); missing_node_set.add(str(v))
+                        missing_node_set.add(u); missing_node_set.add(v)
                     extra_node_set = set()
                     for u, v in extra_edges:
-                        extra_node_set.add(str(u)); extra_node_set.add(str(v))
+                        extra_node_set.add(u); extra_node_set.add(v)
                     
                     for node in G_rej.nodes():
                         node_str = str(node)
@@ -594,23 +631,23 @@ if os.path.exists(rej_diff_path):
                     missing_set = set(tuple(e) for e in missing_edges)
                     extra_set = set(tuple(e) for e in extra_edges)
                     for u, v in G_rej.edges():
-                        edge_pair = (u, v)
+                        edge_pair = (str(u), str(v))
                         if edge_pair in extra_set:
                             color = "#e67e22"  # orange = spurious
                             width = 4
-                            title = "🟠 SPURIOUS: Tool Transition Anomaly"
+                            title = "🟠 SPURIOUS: Not in consensus"
                         else:
                             color = "#aaaaaa"
                             width = 1
-                            title = "Normal execution transition"
+                            title = "Normal edge"
                         net.add_edge(str(u), str(v), color=color, arrows="to", width=width, title=title)
                     
                     # Add missing edges as dashed red (they should be there but aren't)
                     for u, v in missing_edges:
                         if not G_rej.has_edge(u, v):
-                            net.add_node(str(u), label=node_desc.get(str(u), str(u)), color="#e74c3c", size=20, font={"size": 12, "color": "white"})
-                            net.add_node(str(v), label=node_desc.get(str(v), str(v)), color="#e74c3c", size=20, font={"size": 12, "color": "white"})
-                            net.add_edge(str(u), str(v), color="#e74c3c", arrows="to", width=3, dashes=True, title="🔴 MISSING: Expected Transition omitted")
+                            net.add_node(str(u), label=ASIA_NODE_DESCRIPTIONS.get(u, u) if node_desc else u, color="#e74c3c", size=20, font={"size": 12, "color": "white"})
+                            net.add_node(str(v), label=ASIA_NODE_DESCRIPTIONS.get(v, v) if node_desc else v, color="#e74c3c", size=20, font={"size": 12, "color": "white"})
+                            net.add_edge(str(u), str(v), color="#e74c3c", arrows="to", width=3, dashes=True, title="🔴 MISSING: Should exist per consensus")
                     
                     st.markdown("**Legend:** 🔴 Missing (should exist per consensus) | 🟠 Spurious (shouldn't exist) | ⚪ Normal**")
                     html_str = net.generate_html()
@@ -765,4 +802,3 @@ else:
                 )
             })
         st.dataframe(pd.DataFrame(comparison_rows).set_index("Round"), use_container_width=True)
-
