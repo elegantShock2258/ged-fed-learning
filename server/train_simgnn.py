@@ -58,19 +58,19 @@ with open("params.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 # Default num_nodes for random DAG generation (fallback if no consensus graph found)
-# For ASIA = 7 feature nodes, for ALARM = 36 feature nodes
-DEFAULT_GRAPH_NODES = 8
+# 6 tools for CyberDefendEnv
+DEFAULT_GRAPH_NODES = 6
 
 def generate_random_dag(num_nodes=DEFAULT_GRAPH_NODES, edge_prob=0.3):
     """Generates a random Directed Acyclic Graph."""
     G = nx.DiGraph()
     for i in range(num_nodes):
-        G.add_node(f"Feature_{i}", x=[1.0])
+        G.add_node(i, x=[1.0])
     # To ensure DAG, only add edges from lower index to higher index
     for i in range(num_nodes):
         for j in range(i + 1, num_nodes):
             if random.random() < edge_prob:
-                G.add_edge(f"Feature_{i}", f"Feature_{j}")
+                G.add_edge(i, j)
     return G
 
 def calculate_normalized_ged(g1, g2):

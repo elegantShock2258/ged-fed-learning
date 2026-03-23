@@ -23,9 +23,15 @@ simulation:
   client_lr: 0.0005
   ray_cpus_per_actor: 4
   adversary_poison_fraction: 0.2
+agent_env:
+  max_steps: 10
+  gamma: 0.99
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
 dataset:
   name: asia
   total_samples: 10000
   seed: 42
 vastai:
-  instance_id: '32888853'
+  instance_id: "32888853"

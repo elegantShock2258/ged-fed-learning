@@ -7,7 +7,9 @@ saved_models/
 *.gpickle
 
 # Python caches
-__pycache__/
+adversary/__pycache__/
+client/__pycache__/
+server/__pycache__/
 *.pyc
 *.pyo
 *.pyd
