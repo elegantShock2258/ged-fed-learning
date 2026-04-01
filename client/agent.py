@@ -11,6 +11,7 @@ import os
 from .models import Model
 from .causal_discovery import CognitiveModule
 from .environment import CyberDefendEnv
+from .tabular_env import TabularInvestigationEnv
 
 log = logging.getLogger(__name__)
 
@@ -27,16 +28,29 @@ class ISICClient(fl.client.NumPyClient):
         self,
         cid: str,
         device: torch.device,
+        train_loader: DataLoader = None,
+        test_loader: DataLoader = None,
+        feature_names: list = None,
+        num_classes: int = None,
     ):
         self.cid = cid
         self.device = device
         
-        # We ignore train_loader and use our Environment instead
-        self.env = CyberDefendEnv(max_steps=10)
-        
         with open("params.yaml", "r") as f:
             config = yaml.safe_load(f)
-
+            
+        dataset_type = config.get("simulation", {}).get("dataset_type", "cyberdefend")
+        
+        # Initialize appropriate interactive RL environment
+        if dataset_type == "cyberdefend" or train_loader is None:
+            self.env = CyberDefendEnv(max_steps=10)
+        else:
+            self.env = TabularInvestigationEnv(
+                dataloader=train_loader, 
+                num_classes=num_classes, 
+                max_steps=15
+            )
+        
         client_lr = config["simulation"].get("client_lr", 1e-4)
         
         # RL Hyperparameters

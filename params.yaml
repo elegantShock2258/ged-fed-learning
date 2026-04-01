@@ -5,11 +5,13 @@ core_logic:
   simgnn_epochs: 250
   simgnn_batch_size: 32
   simgnn_lr: 0.001
+  simgnn_diversity_prob: 0.8
 server:
   consensus_episodes: 1000
 hardware:
   device: auto
 simulation:
+  dataset_type: asia
   num_clients: 30
   num_false_nodes: 5
   num_rounds: 20
@@ -28,5 +30,3 @@ agent_env:
   max_grad_norm: 0.5
 global:
   seed: 42
-vastai:
-  instance_id: "32888853"

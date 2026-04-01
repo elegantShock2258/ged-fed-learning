@@ -54,9 +54,22 @@ st.sidebar.header("⚙️ Configuration")
 
 # -- Agentic Environment Info --
 st.sidebar.subheader("📊 Execution Network")
-selected_ds = "cyberdefend"
+dataset_options = ["cyberdefend", "asia", "alarm"]
+current_dataset = config.get("simulation", {}).get("dataset_type", "cyberdefend")
+try:
+    default_idx = dataset_options.index(current_dataset)
+except ValueError:
+    default_idx = 0
 
-st.sidebar.info("🛡️ **CyberDefend Agentic** — 40 Tools (Nodes). Simulates a scaled-up Cybersecurity Incident Response agent tracking logic flows across 40 specialized tools.")
+selected_ds = st.sidebar.selectbox("Dataset Type", options=dataset_options, index=default_idx)
+config["simulation"]["dataset_type"] = selected_ds
+
+if selected_ds == "cyberdefend":
+    st.sidebar.info("🛡️ **CyberDefend Agentic** — 40 Tools (Nodes). Simulates a scaled-up Cybersecurity Incident Response agent tracking logic flows across 40 specialized tools.")
+elif selected_ds == "asia":
+    st.sidebar.info("🩺 **ASIA Dataset** — 8 Nodes. Tabular Medical Bayesian Network (Lung Cancer Diagnosis).")
+elif selected_ds == "alarm":
+    st.sidebar.info("🏥 **ALARM Dataset** — 37 Nodes. Tabular Medical Bayesian Network (Blood Pressure Diagnosis).")
 
 st.sidebar.subheader("Core Logic")
 st.sidebar.warning(f"Changing these requires retraining SimGNN! Delete saved_models/{selected_ds}/ if you do.")
@@ -412,10 +425,20 @@ AGENTIC_NODE_DESCRIPTIONS["0"] = "ScanNetwork"
 AGENTIC_NODE_DESCRIPTIONS["10"] = "AnalyzeLog"
 
 def get_ground_truth_graph(name):
-    G = nx.DiGraph()
-    G.add_nodes_from(range(40))
-    G.add_edges_from(AGENTIC_EDGES)
-    return G
+    if name == "cyberdefend":
+        G = nx.DiGraph()
+        G.add_nodes_from(range(40))
+        G.add_edges_from(AGENTIC_EDGES)
+        return G
+    else:
+        # For Tabular datasets, the ground truth is often the same as the generated consensus
+        consensus_path = os.path.join("saved_models", name, "consensus_graph.gpickle")
+        if os.path.exists(consensus_path):
+            try:
+                with open(consensus_path, 'rb') as f:
+                    return pickle.load(f)
+            except: pass
+        return nx.DiGraph()
 
 import streamlit.components.v1 as components
 from pyvis.network import Network

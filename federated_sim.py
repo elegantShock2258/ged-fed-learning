@@ -70,7 +70,8 @@ BATCH_SIZE = config["simulation"]["batch_size"]
 RAY_CPUS = config["simulation"]["ray_cpus_per_actor"]
 
 SEED = config.get("global", {}).get("seed", 42)
-DS_NAME = "cyberdefend"
+DATASET_TYPE = config.get("simulation", {}).get("dataset_type", "cyberdefend")
+DS_NAME = config.get("dataset", {}).get("name", "cyberdefend") if DATASET_TYPE == "cyberdefend" else config.get("dataset", {}).get("name", "asia")
 MODEL_DIR = os.path.join("saved_models", DS_NAME)
 
 VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
@@ -81,24 +82,68 @@ if device_pref == "cpu":
 else:
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+def prepare_dataset():
+    """
+    Loads the Tabular BNDataset if configured.
+    """
+    if DATASET_TYPE == "cyberdefend":
+        return None, None
+        
+    total_samples = config.get("dataset", {}).get("total_samples", 10000)
+    print(f"Loading Tabular dataset: {DS_NAME} with {total_samples} samples")
+    
+    from datasets.tabular_loader import TabularBNDataset
+    full_dataset = TabularBNDataset(name=DS_NAME, num_samples=total_samples, seed=SEED)
+    
+    num_server_samples = config.get("server", {}).get("consensus_samples", 500)
+    client_dataset = torch.utils.data.Subset(full_dataset, range(num_server_samples, len(full_dataset)))
+    
+    partition_size = len(client_dataset) // NUM_CLIENTS
+    lengths = [partition_size] * NUM_CLIENTS
+    lengths[-1] += len(client_dataset) - sum(lengths)
+    
+    partitions = random_split(client_dataset, lengths, generator=torch.Generator().manual_seed(SEED))
+    
+    client_loaders = []
+    for partition in partitions:
+        train_len = int(0.8 * len(partition))
+        test_len = len(partition) - train_len
+        train_ds, test_ds = random_split(partition, [train_len, test_len])
+        
+        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+        test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False)
+        client_loaders.append((train_loader, test_loader))
+        
+    return client_loaders, full_dataset.num_classes
+
 def client_fn(cid: str) -> fl.client.Client:
     """
     Creates a Flower client instance based on the CID.
     If CID is in the last `NUM_FALSE_NODES`, it forms a False Node (Adversary).
-    Since clients use a live RL Environment, they do not need pre-partitioned 
-    training datasets.
     """
     cid_int = int(cid)
     
+    kwargs = {}
+    if DATASET_TYPE != "cyberdefend" and client_datasets is not None:
+        train_loader, test_loader = client_datasets[cid_int]
+        kwargs = {
+            "train_loader": train_loader,
+            "test_loader": test_loader,
+            "num_classes": NUM_CLASSES
+        }
+    
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"Initialized FalseNode Adversary {cid}")
-        return FalseNode(cid, DEVICE).to_client()
+        return FalseNode(cid, DEVICE, **kwargs).to_client()
     else:
         print(f"Initialized Honest Node {cid}")
-        return ISICClient(cid, DEVICE).to_client()
+        return ISICClient(cid, DEVICE, **kwargs).to_client()
 
 if __name__ == "__main__":
-    print("Initializing Federated Simulation with Causal PoR Defense")
+    print(f"Initializing Federated Simulation with Causal PoR Defense [{DATASET_TYPE}]")
+    
+    global client_datasets, NUM_CLASSES
+    client_datasets, NUM_CLASSES = prepare_dataset()
     
     # 2. Initialize the Server-Side Governance
     # Threshold τ set by core_logic params for Logic Edit Distance tolerance
@@ -113,8 +158,14 @@ if __name__ == "__main__":
         print(f"Existing [{DS_NAME}] global model found. Loading initial weights for resumption...")
         try:
             from flwr.common import ndarrays_to_parameters
-            # Agentic Env (10 obs features, 40 classes)
-            model = Model(in_features=10, num_classes=40)
+            if DATASET_TYPE == "cyberdefend":
+                in_features, num_classes = 10, 40
+            else:
+                from datasets.tabular_loader import TabularBNDataset
+                _tmp_ds = TabularBNDataset(name=DS_NAME, num_samples=100)
+                in_features = len(_tmp_ds.get_feature_names())
+                num_classes = _tmp_ds.num_classes
+            model = Model(in_features=in_features, num_classes=num_classes)
             model.load_state_dict(torch.load(global_model_path, map_location=DEVICE, weights_only=True))
             initial_parameters = ndarrays_to_parameters([val.detach().cpu().numpy() for _, val in model.state_dict().items()])
         except Exception as e:

@@ -197,8 +197,8 @@ git clone https://github.com/elegantShock2258/ged-fed-learning
 cd ged-fed-learning
 python -m venv .venv && source .venv/bin/activate
 
-# 2. Install PyTorch (CPU example, check pytorch.org for CUDA wheels):
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# 2. Install PyTorch:
+pip install torch torchvision torchaudio
 
 # 3. Install dependencies
 pip install torch-geometric==2.7.0

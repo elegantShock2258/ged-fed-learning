@@ -1,13 +1,10 @@
 # ============================================================
 # Causal Proof of Reasoning — Federated Learning Simulation
-# requirements.txt  (CPU-first; GPU is opt-in via docker-compose)
+# requirements.txt  (Optimized for Mac/CPU-only environments)
 # ============================================================
-# NOTE: PyTorch is installed separately in Dockerfile so the
-# correct wheel (CPU vs GPU) can be selected at build time.
-# If you are installing locally WITH a GPU, run:
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-# If CPU only:
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# NOTE: PyTorch is required for simulation and graph analysis.
+# On Mac, the standard 'pip install torch' will include support
+# for CPU and Apple Silicon (MPS).
 
 # ------------------------------------------------------------
 # Federated Learning
@@ -69,6 +66,9 @@ psutil==7.2.2
 joblib==1.5.3
 
 # ------------------------------------------------------------
-# Vast.AI CLI (remote execution helper only – not used in Docker)
+# End of requirements
 # ------------------------------------------------------------
-# vastai==0.5.0
+
+# Tabular Datasets
+bnlearn>=0.8.0
+pandas>=2.0.0

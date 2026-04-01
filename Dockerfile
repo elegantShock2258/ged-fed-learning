@@ -1,6 +1,4 @@
-# ============================================================
-# Causal Proof of Reasoning — Federated Learning
-# Dockerfile  (CPU-first; GPU support via docker-compose)
+# Dockerfile (Optimized for CPU-only environments)
 # ============================================================
 FROM python:3.12-slim
 
@@ -23,8 +21,6 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # ---------- Install PyTorch (CPU wheel) --------------------------
-# GPU users: override this layer in a derived image or use docker-compose
-# with: pip install torch torchvision torchaudio --index-url ...cu118
 RUN pip install torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/cpu
 
