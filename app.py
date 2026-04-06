@@ -479,6 +479,14 @@ def render_pyvis_graph(G, title, node_color="#5B9BD5", highlight_nodes=None, rej
     components.html(html_str, height=460)
 
 # Ground truth view
+import json
+node_desc_path = os.path.join("saved_models", selected_ds, "node_descriptions.json")
+if os.path.exists(node_desc_path):
+    with open(node_desc_path, "r") as f:
+        ACTIVE_NODE_DESCRIPTIONS = json.load(f)
+else:
+    ACTIVE_NODE_DESCRIPTIONS = AGENTIC_NODE_DESCRIPTIONS
+
 gt_graph = get_ground_truth_graph(selected_ds)
 col_gt1, col_gt2 = st.columns([1, 2])
 with col_gt1:
@@ -492,7 +500,7 @@ with col_gt1:
 
 with col_gt2:
     with st.spinner("Rendering ground truth execution graph..."):
-        render_pyvis_graph(gt_graph, "Ground Truth: Benign Execution Graph", node_color="#5B9BD5", node_descriptions=AGENTIC_NODE_DESCRIPTIONS)
+        render_pyvis_graph(gt_graph, f"Ground Truth: {selected_ds.upper()}", node_color="#5B9BD5", node_descriptions=ACTIVE_NODE_DESCRIPTIONS)
 
 # --- PoR Causal Graph Visualizations ---
 st.header("3. PoR Logic Graph Visualizations")
@@ -532,7 +540,7 @@ def plot_graph_vs_consensus(gpickle_path, title, consensus_graph=None):
         node_color="#aaaaaa",
         highlight_nodes=matching,
         rejected_nodes=missing,
-        node_descriptions=AGENTIC_NODE_DESCRIPTIONS
+        node_descriptions=ACTIVE_NODE_DESCRIPTIONS
     )
     
     if matching is not None:
@@ -583,8 +591,8 @@ if os.path.exists(rej_diff_path):
                 st.markdown("These edges exist in the **Consensus Graph** but the adversarial agent **failed to submit them** — likely because their Explanation Poisoning constraint failed.")
                 if missing_edges:
                     for u, v in missing_edges:
-                        node_u = AGENTIC_NODE_DESCRIPTIONS.get(str(u), str(u))
-                        node_v = AGENTIC_NODE_DESCRIPTIONS.get(str(v), str(v))
+                        node_u = ACTIVE_NODE_DESCRIPTIONS.get(str(u), str(u))
+                        node_v = ACTIVE_NODE_DESCRIPTIONS.get(str(v), str(v))
                         st.error(f"**{node_u}** → **{node_v}**")
                 else:
                     st.success("No missing edges — adversary covered all consensus edges.")
@@ -593,8 +601,8 @@ if os.path.exists(rej_diff_path):
                 st.markdown("These edges appeared in the adversarial agent's graph but are **NOT in the Consensus** — uncovering the backdoor action anomaly.")
                 if extra_edges:
                     for u, v in extra_edges:
-                        node_u = AGENTIC_NODE_DESCRIPTIONS.get(str(u), str(u))
-                        node_v = AGENTIC_NODE_DESCRIPTIONS.get(str(v), str(v))
+                        node_u = ACTIVE_NODE_DESCRIPTIONS.get(str(u), str(u))
+                        node_v = ACTIVE_NODE_DESCRIPTIONS.get(str(v), str(v))
                         st.warning(f"**{node_u}** → **{node_v}**")
                 else:
                     st.success("No spurious edges — adversary did not add false edges.")
@@ -606,7 +614,7 @@ if os.path.exists(rej_diff_path):
                     G_rej = pickle.load(f)
                 
                 if len(G_rej.nodes) > 0:
-                    node_desc = AGENTIC_NODE_DESCRIPTIONS
+                    node_desc = ACTIVE_NODE_DESCRIPTIONS
                     net = Network(height="500px", width="100%", bgcolor="#1a1a2e", font_color="white", directed=True)
                     net.barnes_hut(gravity=-3000, central_gravity=0.4, spring_length=120)
                     

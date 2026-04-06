@@ -1,6 +1,7 @@
 core_logic:
   causal_edge_threshold: 0.05
   validator_threshold: 0.08
+  tabular_validator_threshold: 0.3
   consensus_momentum: 0.7
   simgnn_epochs: 250
   simgnn_batch_size: 32

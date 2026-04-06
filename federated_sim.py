@@ -74,7 +74,10 @@ DATASET_TYPE = config.get("simulation", {}).get("dataset_type", "cyberdefend")
 DS_NAME = config.get("dataset", {}).get("name", "cyberdefend") if DATASET_TYPE == "cyberdefend" else config.get("dataset", {}).get("name", "asia")
 MODEL_DIR = os.path.join("saved_models", DS_NAME)
 
-VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
+if DATASET_TYPE == "cyberdefend":
+    VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
+else:
+    VALIDATOR_THRESHOLD = config["core_logic"].get("tabular_validator_threshold", 0.55)
 
 device_pref = config.get("hardware", {}).get("device", "auto").lower()
 if device_pref == "cpu":

@@ -134,6 +134,7 @@ class LogicValidator:
         Sets the global consensus graph against which client graphs are compared.
         consensus_graph_nx is expected to be a networkx DiGraph.
         """
+        self._consensus_nx_graph = consensus_graph_nx.copy()
         self.global_consensus_data = self._nx_to_pyg_data(consensus_graph_nx).to(self.device)
         
     def _nx_to_pyg_data(self, nx_graph):
@@ -173,6 +174,8 @@ class LogicValidator:
     def evaluate_client_graph(self, client_graph_nx):
         """
         Evaluates a single client's causal graph against the global consensus.
+        For tabular datasets (small graphs), uses edge-based Jaccard distance
+        instead of SimGNN since the neural model can't discriminate small topologies.
         Returns:
             is_accepted (bool): True if GED <= threshold, False otherwise.
             score (float): The calculated GED score.
@@ -180,6 +183,28 @@ class LogicValidator:
         # Accept automatically if there is no global consensus yet (Round 1)
         if not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
             return True, 0.0
+        
+        # Determine dataset type
+        try:
+            with open("params.yaml", "r") as f:
+                ds_type = yaml.safe_load(f).get("simulation", {}).get("dataset_type", "cyberdefend")
+        except Exception:
+            ds_type = "cyberdefend"
+        
+        if ds_type != "cyberdefend":
+            # Edge-based Jaccard distance for tabular datasets
+            consensus_edges = set(self._consensus_nx_graph.edges()) if hasattr(self, '_consensus_nx_graph') else set()
+            client_edges = set(client_graph_nx.edges())
+            
+            union = consensus_edges | client_edges
+            if len(union) == 0:
+                score = 0.0
+            else:
+                symmetric_diff = consensus_edges.symmetric_difference(client_edges)
+                score = len(symmetric_diff) / len(union)
+            
+            is_accepted = score <= self.threshold
+            return is_accepted, score
             
         self.simgnn.eval()
         with torch.no_grad():
@@ -188,3 +213,4 @@ class LogicValidator:
             
         is_accepted = score <= self.threshold
         return is_accepted, score
+

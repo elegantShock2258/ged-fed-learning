@@ -65,7 +65,7 @@ log = logging.getLogger(__name__)
 # Read dataset name for model directory routing
 with open("params.yaml", "r") as _f:
     _cfg = yaml.safe_load(_f)
-DS_NAME = "cyberdefend"
+DS_NAME = _cfg.get("simulation", {}).get("dataset_type", "cyberdefend")
 MODEL_DIR = os.path.join("saved_models", DS_NAME)
 
 class PoRStrategy(fl.server.strategy.FedAvg):
