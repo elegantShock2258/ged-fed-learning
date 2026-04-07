@@ -59,7 +59,7 @@ selected_ds = "cyberdefend"
 st.sidebar.info("🛡️ **CyberDefend Agentic** — 40 Tools (Nodes). Simulates a scaled-up Cybersecurity Incident Response agent tracking logic flows across 40 specialized tools.")
 
 st.sidebar.subheader("Core Logic")
-st.sidebar.warning(f"Changing these requires retraining SimGNN! Delete saved_models/{selected_ds}/ if you do.")
+st.sidebar.warning("Changing these requires retraining SimGNN! Use the 'Clear Saved Models' button below if you do.")
 col_cf1, col_cf2 = st.sidebar.columns(2)
 config["core_logic"]["causal_edge_threshold"] = col_cf1.number_input(
     "Causal Edge Thr",
@@ -185,6 +185,21 @@ config["simulation"]["client_lr"] = st.sidebar.number_input(
 if st.sidebar.button("💾 Save Parameters"):
     save_config(config)
     st.sidebar.success("Parameters Saved!")
+
+if st.sidebar.button("🗑️ Clear Saved Models"):
+    if os.path.exists("saved_models"):
+        import shutil
+        for item in os.listdir("saved_models"):
+            item_path = os.path.join("saved_models", item)
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+            else:
+                os.remove(item_path)
+        st.sidebar.success("All saved models cleared! (SimGNN must be retrained)")
+        time.sleep(1)
+        st.rerun()
+    else:
+        st.sidebar.info("No saved models found.")
 
 # --- Actions ---
 col_h1, col_h2 = st.columns([4, 1])
