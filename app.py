@@ -169,10 +169,35 @@ config["simulation"]["num_clients"] = st.sidebar.number_input(
 config["simulation"]["num_false_nodes"] = st.sidebar.number_input(
     "False Nodes (Adversaries)",
     value=config["simulation"]["num_false_nodes"], min_value=0,
-    help="Number of clients that are FalseNode adversaries. These clients poison their local data by zeroing out a feature column to destroy causal variance and submit misleading graphs.\n\n"
-         "⬆ More adversaries → harder test for the PoR defense.\n"
-         "⬇ Fewer adversaries → easier baseline; useful for verifying honest-only behaviour."
+    help="Number of clients that are FalseNode adversaries."
 )
+
+if selected_ds == "finance":
+    st.sidebar.subheader("🔐 Finance PoR Defense")
+    # Coverage gate slider
+    coverage_default = int(config.get("core_logic", {}).get("coverage_gate_min_queries", 20))
+    config["core_logic"]["coverage_gate_min_queries"] = st.sidebar.slider(
+        "Coverage Gate (min queries)", min_value=5, max_value=33, value=coverage_default,
+        help="Minimum number of sector API queries a client must make before execution is accepted. "
+             "Higher = stricter (catches temporal mimicry). Lower = more permissive."
+    )
+    # Attack rate slider
+    if "adversary" not in config:
+        config["adversary"] = {}
+    attack_rate = float(config.get("adversary", {}).get("trigger_injection_rate", 0.3))
+    config["adversary"]["trigger_injection_rate"] = st.sidebar.slider(
+        "Adversary Trigger Rate", 0.0, 1.0, attack_rate, step=0.05,
+        help="Fraction of adversary episodes that use the trigger. 0 = never attack, 1 = always attack. "
+             "Higher stress-tests the PoR defense more aggressively."
+    )
+    # Multi-adversary type selector
+    adv_type = st.sidebar.selectbox(
+        "Adversary Type Mix",
+        options=["temporal_mimicry_only", "reversed_order_only", "gradient_mimicry_only", "all_three"],
+        index=3,
+        help="'all_three' splits adversary budget equally across Temporal Mimicry, Reversed-Order, and Gradient-Mimicry attacks."
+    )
+    config["adversary"]["type"] = adv_type
 
 config["simulation"]["num_rounds"] = st.sidebar.number_input(
     "FL Rounds",

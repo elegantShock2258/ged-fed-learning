@@ -263,68 +263,73 @@ class PoRStrategy(fl.server.strategy.FedAvg):
 
     def _aggregate_logic(self, client_graphs: List[nx.DiGraph]):
         """
-        Updates the global consensus graph with a momentum-blended dual-threshold
-        update rule, then fine-tunes SimGNN on the new consensus.
+        Bayesian Dirichlet-Multinomial Consensus Update.
 
-        The `consensus_momentum` param (0-1) controls how conservative updates are:
-          - High momentum (0.85-0.95): Existing edges are very sticky (survive with few
-            votes). New edges only appear if nearly everyone agrees. Small, stable updates.
-          - Low momentum (0-0.2): Reverts to pure 50% majority vote. Aggressive updates.
+        Each edge (u, v) maintains a Beta(α, β) posterior over its presence:
+          - α (pseudo-successes): votes FOR the edge across all rounds
+          - β (pseudo-failures): votes AGAINST accumulated over time
 
-        Thresholds:
-          - Keep existing edge if vote_fraction > 0.5 * (1 - momentum)   [very easy at high m]
-          - Add new edge    if vote_fraction > 0.5 + 0.5 * momentum       [very hard at high m]
+        An edge survives if:  α / (α + β)  >  consensus_momentum  (treated as credibility threshold)
+        A new edge is added if client vote fraction > 0.85 (near-unanimous).
+
+        This gives proper calibrated per-edge uncertainty instead of hard vote counts,
+        and allows edges seen in many past rounds to survive occasional low-vote rounds.
         """
         if not client_graphs:
             return
 
-        # Re-read momentum from params.yaml each round so GUI slider changes take effect
         try:
             with open("params.yaml", "r") as _f:
                 _params = yaml.safe_load(_f)
-            momentum = float(_params.get("core_logic", {}).get("consensus_momentum", 0.85))
+            # Re-use consensus_momentum as the credibility threshold (0-1)
+            credibility_threshold = float(_params.get("core_logic", {}).get("consensus_momentum", 0.85))
         except Exception:
-            momentum = 0.85
-        momentum = max(0.0, min(1.0, momentum))
+            credibility_threshold = 0.85
+        credibility_threshold = max(0.0, min(1.0, credibility_threshold))
 
         n_clients = len(client_graphs)
+        alpha_prior = 1.0   # Weak prior: assume edge has been seen once
+        beta_prior  = 1.0   # Weak prior: assume edge has been absent once
 
-        # --- Count edge votes from accepted clients ---
-        edge_counts = {}
+        # Count votes from accepted clients
+        edge_votes = {}
         for g in client_graphs:
             for u, v in g.edges():
-                edge_counts[(u, v)] = edge_counts.get((u, v), 0) + 1
+                edge_votes[(u, v)] = edge_votes.get((u, v), 0) + 1
 
-        # Thresholds as absolute vote counts
-        keep_threshold = (1 - momentum) * 0.5 * n_clients  # low bar: keep existing edges
-        add_threshold  = (0.5 + 0.5 * momentum) * n_clients  # high bar: accept brand-new edges
+        # Initialize or read existing edge posteriors from aggregator state
+        if not hasattr(self, "_edge_posteriors"):
+            self._edge_posteriors = {}
 
         new_consensus = nx.DiGraph()
-        for g in client_graphs:
-            new_consensus.add_nodes_from(g.nodes())
-        
-        # Ensure all existing nodes are kept
         new_consensus.add_nodes_from(self.global_consensus_graph.nodes())
 
-        existing_edges = set(self.global_consensus_graph.edges())
-        
-        # 1. Existing edges: Check ALL of them, even those with 0 votes
-        for edge in existing_edges:
-            count = edge_counts.get(edge, 0)
-            if count >= keep_threshold:       # conservative: keep if even a few clients agree
+        all_candidate_edges = set(self.global_consensus_graph.edges()) | set(edge_votes.keys())
+
+        for edge in all_candidate_edges:
+            votes_for = edge_votes.get(edge, 0)
+            votes_against = n_clients - votes_for
+
+            # Retrieve existing posterior or use priors
+            alpha, beta = self._edge_posteriors.get(edge, (alpha_prior, beta_prior))
+
+            # Bayesian update: Beta-Binomial conjugate update
+            alpha_new = alpha + votes_for
+            beta_new  = beta + votes_against
+
+            # Credibility = posterior mean of Bernoulli parameter
+            credibility = alpha_new / (alpha_new + beta_new)
+
+            # Save updated posterior
+            self._edge_posteriors[edge] = (alpha_new, beta_new)
+
+            if credibility >= credibility_threshold:
                 new_consensus.add_edge(*edge)
-                
-        # 2. New edges: Only add if they cross the high threshold
-        for edge, count in edge_counts.items():
-            if edge not in existing_edges:
-                if count >= add_threshold:        # strict: only add if near-unanimous
-                    new_consensus.add_edge(*edge)
 
         kept = new_consensus.number_of_edges()
         log.info(
-            f"Consensus updated (momentum={momentum:.2f}): "
-            f"{new_consensus.number_of_nodes()} nodes, {kept} edges "
-            f"(was {len(existing_edges)} | keep>={keep_threshold:.1f}, add>={add_threshold:.1f} / {n_clients})"
+            f"Bayesian consensus updated (credibility_thr={credibility_threshold:.2f}): "
+            f"{new_consensus.number_of_nodes()} nodes, {kept} edges tracked"
         )
 
         self.global_consensus_graph = new_consensus

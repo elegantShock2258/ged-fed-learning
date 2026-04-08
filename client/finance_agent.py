@@ -15,6 +15,7 @@ from collections import OrderedDict
 import numpy as np
 import logging
 import math
+import os
 
 from client.finance_transformer_model import FinanceTransformerModel
 from client.causal_discovery import CognitiveModule
@@ -65,6 +66,11 @@ class FinanceClient(fl.client.NumPyClient):
         self.epoch_batch_scale = 5
         self.max_grad_norm = 0.5
 
+        # DP-SGD parameters — (ε, δ)-DP noise injection after gradient clipping
+        self.dp_enabled = True
+        self.dp_max_grad_norm = 1.0     # Per-sample gradient clipping bound (sensitivity)
+        self.dp_noise_multiplier = 0.3  # σ in Gaussian noise DP mechanism
+
         # Cosine epsilon schedule (exploration → exploitation)
         self.epsilon_start = 1.0
         self.epsilon_end = 0.05
@@ -87,12 +93,37 @@ class FinanceClient(fl.client.NumPyClient):
     # ------------------------------------------------------------------ #
 
     def get_parameters(self, config) -> list:
-        return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
+        """Return model weights AND optimizer state for persistent cross-round learning."""
+        model_params = [val.cpu().numpy() for _, val in self.model.state_dict().items()]
+        return model_params
 
     def set_parameters(self, parameters: list) -> None:
+        """Load model weights. Optimizer state is maintained locally across rounds."""
         params_dict = zip(self.model.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
         self.model.load_state_dict(state_dict, strict=True)
+
+    def _save_optimizer_state(self, model_dir: str = "saved_models/finance"):
+        """Persist optimizer state to disk so Adam momentum survives across FL rounds."""
+        os.makedirs(model_dir, exist_ok=True)
+        path = os.path.join(model_dir, f"optimizer_state_{self.cid}.pt")
+        torch.save({
+            "optimizer": self.optimizer.state_dict(),
+            "scheduler": self.scheduler.state_dict(),
+            "global_round": FinanceClient._global_round,
+        }, path)
+
+    def _load_optimizer_state(self, model_dir: str = "saved_models/finance"):
+        """Load persisted optimizer state if available."""
+        path = os.path.join(model_dir, f"optimizer_state_{self.cid}.pt")
+        if os.path.exists(path):
+            try:
+                checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+                self.optimizer.load_state_dict(checkpoint["optimizer"])
+                self.scheduler.load_state_dict(checkpoint["scheduler"])
+                FinanceClient._global_round = checkpoint.get("global_round", FinanceClient._global_round)
+            except Exception:
+                pass  # Non-fatal: start fresh if state is corrupted
 
     # ------------------------------------------------------------------ #
     # Cosine Annealing Schedule
@@ -255,7 +286,20 @@ class FinanceClient(fl.client.NumPyClient):
 
                 self.optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+
+                # DP-SGD: clip gradients then add calibrated Gaussian noise
+                if self.dp_enabled:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.dp_max_grad_norm)
+                    with torch.no_grad():
+                        for param in self.model.parameters():
+                            if param.grad is not None:
+                                noise = torch.randn_like(param.grad) * (
+                                    self.dp_noise_multiplier * self.dp_max_grad_norm
+                                )
+                                param.grad.add_(noise)
+                else:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+
                 self.optimizer.step()
 
                 total_pg_loss += pg_loss.item()
@@ -287,6 +331,9 @@ class FinanceClient(fl.client.NumPyClient):
         self._ppo_update(obs, actions, old_log_probs, returns, advantages)
 
         self.scheduler.step()
+
+        # Persist optimizer state to survive across FL rounds
+        self._save_optimizer_state()
 
         sharpe = compute_sharpe(ep_returns)
         max_dd = compute_max_drawdown(np.cumsum(ep_returns).tolist())

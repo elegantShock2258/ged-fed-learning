@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-04-09 01:47:10",
+  "theorem_holds": true,
+  "min_adversary_ged": 0.088235,
+  "ged_by_strategy": {
+    "Full Skip (0\u219235)": 1.0,
+    "Temporal Mimicry (k=1)": 1.0,
+    "Temporal Mimicry (k=5)": 0.882353,
+    "Temporal Mimicry (k=10)": 0.735294,
+    "Temporal Mimicry (k=16)": 0.558824,
+    "Temporal Mimicry (k=20)": 0.441176,
+    "Temporal Mimicry (k=21)": 0.411765,
+    "Temporal Mimicry (k=32)": 0.088235,
+    "Reversed Order": 1.0,
+    "Gradient Mimicry (half+sabotage)": 0.558824,
+    "Random Permutation (min)": 0.935484,
+    "Random Permutation (mean)": 0.984769,
+    "Honest (control)": 0.0
+  },
+  "scalability": {
+    "15": {
+      "n_features": 12,
+      "honest_ged": 0.0,
+      "temporal_ged": 0.5385,
+      "reversed_ged": 1.0,
+      "ged_gap": 0.7692
+    },
+    "25": {
+      "n_features": 22,
+      "honest_ged": 0.0,
+      "temporal_ged": 0.4783,
+      "reversed_ged": 1.0,
+      "ged_gap": 0.7391
+    },
+    "36": {
+      "n_features": 33,
+      "honest_ged": 0.0,
+      "temporal_ged": 0.4412,
+      "reversed_ged": 1.0,
+      "ged_gap": 0.7206
+    },
+    "50": {
+      "n_features": 47,
+      "honest_ged": 0.0,
+      "temporal_ged": 0.4167,
+      "reversed_ged": 1.0,
+      "ged_gap": 0.7083
+    },
+    "80": {
+      "n_features": 77,
+      "honest_ged": 0.0,
+      "temporal_ged": 0.3974,
+      "reversed_ged": 1.0,
+      "ged_gap": 0.6987
+    }
+  }
+}

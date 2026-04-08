@@ -53,6 +53,7 @@ from adversary.poisoning import FalseNode
 from client.models import Model  # For saving weights
 from client.finance_agent import FinanceClient
 from adversary.finance_poisoning import FalseTraderNode
+from adversary.finance_adversary_pool import ReversedOrderNode, GradientMimicryNode
 
 import sys
 # Make sure server components load their dependencies right
@@ -145,12 +146,35 @@ def client_fn(cid: str) -> fl.client.Client:
         }
     
     if DATASET_TYPE == "finance":
+        adv_type = config.get("adversary", {}).get("type", "all_three")
+        trigger_rate = float(config.get("adversary", {}).get("trigger_injection_rate", 0.3))
         if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
-            print(f"Initialized FalseTraderNode Adversary {cid}")
-            return FalseTraderNode(cid, DEVICE, **kwargs).to_client()
+            # Distribute adversary budget across types
+            adv_idx = cid_int - (NUM_CLIENTS - NUM_FALSE_NODES)
+            num_adv = NUM_FALSE_NODES
+            if adv_type == "temporal_mimicry_only":
+                cls = FalseTraderNode
+            elif adv_type == "reversed_order_only":
+                cls = ReversedOrderNode
+            elif adv_type == "gradient_mimicry_only":
+                cls = GradientMimicryNode
+            else:  # all_three — split evenly
+                third = max(1, num_adv // 3)
+                if adv_idx < third:
+                    cls = FalseTraderNode
+                elif adv_idx < 2 * third:
+                    cls = ReversedOrderNode
+                else:
+                    cls = GradientMimicryNode
+            print(f"Initialized {cls.__name__} Adversary {cid}")
+            node = cls(cid, DEVICE, **kwargs)
+            node.trigger_rate = trigger_rate
+            return node.to_client()
         else:
             print(f"Initialized Honest Finance Node {cid}")
-            return FinanceClient(cid, DEVICE, **kwargs).to_client()
+            node = FinanceClient(cid, DEVICE, **kwargs)
+            node._load_optimizer_state()
+            return node.to_client()
             
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"Initialized FalseNode Adversary {cid}")
