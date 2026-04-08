@@ -136,36 +136,70 @@ class LogicValidator:
         Sets the global consensus graph against which client graphs are compared.
         consensus_graph_nx is expected to be a networkx DiGraph.
         """
+        self.global_consensus_nx = consensus_graph_nx
         self.global_consensus_data = self._nx_to_pyg_data(consensus_graph_nx).to(self.device)
         
     def _nx_to_pyg_data(self, nx_graph):
         """
-        Converts a NetworkX graph to a PyTorch Geometric Data object.
+        Converts a NetworkX graph to a PyTorch Geometric Data object 
+        ensuring deterministic tensor alignment via alphabetical node mapping.
         """
         import networkx as nx
-        from torch_geometric.utils import from_networkx
+        from torch_geometric.data import Data
         
-        for node in nx_graph.nodes:
-            if 'x' not in nx_graph.nodes[node]:
-                nx_graph.nodes[node]['x'] = [1.0] # default feature
-                
-        # Clear edge attributes to prevent mismatches
+        # 1. Map nodes deterministically by alphabetical feature name
+        sorted_nodes = sorted(list(nx_graph.nodes()))
+        node_to_idx = {node: i for i, node in enumerate(sorted_nodes)}
+        
+        # 2. Build explicit PyG format directly
+        num_nodes = len(sorted_nodes)
+        x = torch.ones((num_nodes, 1), dtype=torch.float32) # Default [1.0] feature for all nodes
+        
+        edge_list = []
         for u, v in nx_graph.edges():
-            nx_graph.edges[u, v].clear()
+            if u in node_to_idx and v in node_to_idx:
+                edge_list.append([node_to_idx[u], node_to_idx[v]])
                 
-        pyg_data = from_networkx(nx_graph)
-        
-        # Handle the case where the graph is completely empty
-        if hasattr(pyg_data, 'x') and pyg_data.x is not None:
-            pyg_data.x = torch.tensor(pyg_data.x, dtype=torch.float32).view(-1, 1) # Assuming 1D features
+        if edge_list:
+            edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
         else:
-            # Empty graph fallback
-            pyg_data.x = torch.zeros((0, 1), dtype=torch.float32)
-            pyg_data.edge_index = torch.empty((2, 0), dtype=torch.long)
+            edge_index = torch.empty((2, 0), dtype=torch.long)
             
-        # Add batch indicator since it's a single graph
+        pyg_data = Data(x=x, edge_index=edge_index)
         pyg_data.batch = torch.zeros(pyg_data.x.size(0), dtype=torch.long)
         return pyg_data
+
+    def update_dynamic_threshold(self, client_scores):
+        """
+        Dynamically updates the operational SimGNN rejection boundary based entirely
+        on the statistical topological spread of the network. This intrinsically captures
+        Relative Rank Outlier filtering (e.g. Krum) avoiding absolute boundary deadlocks.
+        """
+        import numpy as np
+        if not client_scores:
+            return
+            
+        # Read exact configuration from params.yaml dynamically
+        try:
+            import yaml
+            with open("params.yaml", "r") as f:
+                p = yaml.safe_load(f)
+            num_clients = int(p.get("simulation", {}).get("num_clients", 30))
+            num_false_nodes = int(p.get("simulation", {}).get("num_false_nodes", 5))
+            
+            # Calculate organic geometric honest threshold
+            # e.g., 5 false / 30 clients = 16.6% adversarial. 
+            # 100% - 16.6% = 83.33%. We multiply by 0.95 to give a slight safety buffer against severe organic stragglers just in case!
+            honest_ratio = ((num_clients - num_false_nodes) / num_clients)
+            target_percentile = max(50.0, honest_ratio * 100 * 0.95) # Never drop below median defensively
+            
+        except Exception:
+            target_percentile = 75.0
+            
+        next_boundary = float(np.percentile(client_scores, target_percentile))
+        
+        # Enforce that the dynamic threshold never drops below the rigid mathematical framework limit configured.
+        self.dynamic_threshold = max(self.threshold, next_boundary)
 
     def evaluate_client_graph(self, client_graph_nx, server_round: int = 2):
         """
@@ -174,9 +208,9 @@ class LogicValidator:
             is_accepted (bool): True if GED <= threshold, False otherwise.
             score (float): The calculated GED score.
         """
-        # Accept automatically if there is no global consensus yet, or if it is Round 1.
-        # Round 1 is allowed to train naturally to generate the intrinsic structure baseline.
-        if server_round <= 1 or not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
+        # Accept automatically if there is no global consensus yet, or if it is Round 0.
+        # Round 0 is allowed to train naturally to generate the intrinsic structure baseline.
+        if server_round <= 0 or not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
             return True, 0.0
             
         self.simgnn.eval()
@@ -184,5 +218,35 @@ class LogicValidator:
             client_data = self._nx_to_pyg_data(client_graph_nx).to(self.device)
             score = self.simgnn(client_data, self.global_consensus_data).item()
             
-        is_accepted = score <= self.threshold
+        # Statistical Outlier Anchor mapping
+        # Rather than guessing at an absolute curve, we ride the organic structural hallucination array.
+        if not hasattr(self, 'dynamic_threshold'):
+            self.dynamic_threshold = 0.85 # Let Round 1 be lenient to collect pure data spread
+            
+        active_threshold = self.dynamic_threshold
+        is_accepted = score <= active_threshold
+        
+        # --- DIAGNOSTIC TELEMETRY LOGGER ---
+        # Calculate strict mathematical true GED for physical validation
+        try:
+            edges_client = set(client_graph_nx.edges(data=False))
+            edges_consensus = set(self.global_consensus_nx.edges(data=False))
+            union_edges = len(edges_client.union(edges_consensus))
+            if union_edges == 0:
+                true_ged = 0.0
+            else:
+                diff = len(edges_client.symmetric_difference(edges_consensus))
+                true_ged = min(1.0, float(diff) / union_edges)
+                
+            import os
+            os.makedirs("saved_models", exist_ok=True)
+            with open("saved_models/debug_graphs_log.txt", "a") as df:
+                df.write(f"--- Round {server_round} Evaluation ---\n")
+                df.write(f"Consensus Edges ({len(edges_consensus)}): {sorted(list(edges_consensus))}\n")
+                df.write(f"Client Edges ({len(edges_client)}): {sorted(list(edges_client))}\n")
+                df.write(f"TRUE MATH GED: {true_ged:.4f}  |  SIMGNN PREDICTED GED: {score:.4f}\n")
+                df.write(f"Status: {'ACCEPTED' if is_accepted else 'REJECTED'} (Threshold: {active_threshold:.4f})\n\n")
+        except Exception as e:
+            pass
+            
         return is_accepted, score

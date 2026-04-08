@@ -209,13 +209,6 @@ config["simulation"]["local_epochs"] = st.sidebar.number_input(
          "⬆ More epochs → each client trains more before sending to server (faster convergence locally, but may cause client drift).\n"
          "⬇ Fewer epochs → lighter rounds, closer to pure FedSGD behaviour."
 )
-config["simulation"]["client_lr"] = st.sidebar.number_input(
-    "Client Learning Rate",
-    value=float(config["simulation"].get("client_lr", 0.0001)), format="%.5f",
-    help="Learning rate for each client's local MLP optimizer (Adam).\n\n"
-         "⬆ Higher → faster local convergence, risk of client divergence from global model.\n"
-         "⬇ Lower → more stable updates, slower convergence per round."
-)
 
 st.sidebar.subheader("FedNEAT Evolution Config")
 if "fedneat" not in config:

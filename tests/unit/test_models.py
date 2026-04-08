@@ -6,7 +6,7 @@ Unit tests for client.models.Model (MLP classifier).
 
 import pytest
 import torch
-from client.models import Model
+from client.models import DynamicGenome
 
 
 N_FEATURES = 8
@@ -17,14 +17,14 @@ BATCH      = 16
 # ── Construction ──────────────────────────────────────────────────────────────
 
 def test_model_instantiates():
-    """Model should construct without errors."""
-    m = Model(in_features=N_FEATURES, num_classes=N_CLASSES)
+    """DynamicGenome should construct without errors."""
+    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
     assert m is not None
 
 
 def test_model_parameter_count():
-    """Model should have trainable parameters (not empty)."""
-    m = Model(in_features=N_FEATURES, num_classes=N_CLASSES)
+    """DynamicGenome should have trainable parameters (not empty)."""
+    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
     total = sum(p.numel() for p in m.parameters())
     assert total > 0
 
@@ -33,7 +33,7 @@ def test_model_parameter_count():
 
 def test_forward_returns_tuple():
     """forward() must return a (logits, features) tuple."""
-    m = Model(in_features=N_FEATURES, num_classes=N_CLASSES)
+    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
     m.eval()
     x = torch.randn(BATCH, N_FEATURES)
     out = m(x)
@@ -42,7 +42,7 @@ def test_forward_returns_tuple():
 
 def test_logits_shape():
     """Logits tensor should have shape (batch, num_classes)."""
-    m = Model(in_features=N_FEATURES, num_classes=N_CLASSES)
+    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
     m.eval()
     x = torch.randn(BATCH, N_FEATURES)
     logits, _ = m(x)
@@ -51,7 +51,7 @@ def test_logits_shape():
 
 def test_features_passthrough():
     """The second return value should be identical to the input x."""
-    m = Model(in_features=N_FEATURES, num_classes=N_CLASSES)
+    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
     m.eval()
     x = torch.randn(BATCH, N_FEATURES)
     _, features = m(x)
@@ -59,8 +59,8 @@ def test_features_passthrough():
 
 
 def test_single_sample():
-    """Model should work on a single-sample batch (BatchNorm edge case)."""
-    m = Model(in_features=N_FEATURES, num_classes=N_CLASSES)
+    """DynamicGenome should work on a single-sample batch (BatchNorm edge case)."""
+    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
     m.eval()  # BatchNorm uses running stats in eval mode
     x = torch.randn(1, N_FEATURES)
     logits, features = m(x)
@@ -69,8 +69,8 @@ def test_single_sample():
 
 
 def test_different_feature_sizes():
-    """Model should accept different in_features sizes (e.g. 37 for ALARM)."""
-    m = Model(in_features=37, num_classes=2)
+    """DynamicGenome should accept different in_features sizes (e.g. 37 for ALARM)."""
+    m = DynamicGenome(in_features=37, num_classes=2)
     m.eval()
     x = torch.randn(4, 37)
     logits, _ = m(x)
@@ -79,7 +79,7 @@ def test_different_feature_sizes():
 
 def test_forward_no_nan():
     """Logits should not contain NaN on normal random input."""
-    m = Model(in_features=N_FEATURES, num_classes=N_CLASSES)
+    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
     m.eval()
     x = torch.randn(BATCH, N_FEATURES)
     logits, _ = m(x)

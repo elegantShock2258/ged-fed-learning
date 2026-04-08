@@ -3,8 +3,6 @@ datasets/isic2019/
 todo.txt
 # Saved weights and graphs (dynamic output)
 saved_models/
-*.pt
-*.gpickle
 
 # Python caches
 adversary/__pycache__/
@@ -19,4 +17,3 @@ server/__pycache__/
 *.log
 wget-log*
 .log
-simulation_logs.json

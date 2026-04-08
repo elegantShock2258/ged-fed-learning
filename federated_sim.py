@@ -213,7 +213,7 @@ if __name__ == "__main__":
     history = fl.simulation.start_simulation(
         client_fn=client_fn,
         num_clients=NUM_CLIENTS,
-        config=fl.server.ServerConfig(num_rounds=NUM_ROUNDS),
+        config=fl.server.ServerConfig(num_rounds=NUM_ROUNDS + 1),
         strategy=strategy,
         # Setting num_cpus forces Ray to spawn fewer parallel actors (since total CPUs are limited),
         # significantly reducing peak memory overhead and preventing OOM kills
@@ -242,7 +242,7 @@ if __name__ == "__main__":
     if history and hasattr(history, 'metrics_distributed_fit'):
         # Flower returns a dict of metric_name -> List[Tuple[int, float]]
         for key, val_list in history.metrics_distributed_fit.items():
-            metrics_log[key] = [{"round": r, "value": float(v)} for r, v in val_list]
+            metrics_log[key] = [{"round": r - 1, "value": float(v)} for r, v in val_list]
             
     log_entry = {
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

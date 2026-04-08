@@ -88,21 +88,30 @@ def calculate_normalized_ged(g1, g2):
     return min(1.0, float(diff) / union_edges)
 
 def nx_to_pyg(nx_graph):
-    """Helper to convert networkx to PyTorch Geometric Data cleanly."""
-    # Ensure all nodes have features and all edges are homogenous before conversion
-    for node in nx_graph.nodes():
-        if 'x' not in nx_graph.nodes[node]:
-            nx_graph.nodes[node]['x'] = [1.0]
-            
-    # PyTorch Geometric from_networkx will crash if edges have mismatched attributes.
-    # We clear edge attributes to prevent the ValueError when adding random edges.
+    """Helper to convert networkx to PyTorch Geometric Data cleanly and deterministically."""
+    from torch_geometric.data import Data
+    
+    # 1. Map nodes deterministically by alphabetical feature name to sync with Test graphs
+    sorted_nodes = sorted(list(nx_graph.nodes()))
+    node_to_idx = {node: i for i, node in enumerate(sorted_nodes)}
+    
+    # 2. Build explicit PyG format directly
+    num_nodes = len(sorted_nodes)
+    x = torch.ones((num_nodes, 1), dtype=torch.float32)
+    
+    edge_list = []
     for u, v in nx_graph.edges():
-        nx_graph.edges[u, v].clear()
+        if u in node_to_idx and v in node_to_idx:
+            edge_list.append([node_to_idx[u], node_to_idx[v]])
+            
+    if edge_list:
+        edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+    else:
+        edge_index = torch.empty((2, 0), dtype=torch.long)
         
-    data = from_networkx(nx_graph)
-    data.x = data.x.clone().detach().to(dtype=torch.float32).view(-1, 1)
-    data.batch = torch.zeros(data.x.size(0), dtype=torch.long)
-    return data
+    pyg_data = Data(x=x, edge_index=edge_index)
+    pyg_data.batch = torch.zeros(pyg_data.x.size(0), dtype=torch.long)
+    return pyg_data
 
 def train_simgnn(save_path=None):
     """

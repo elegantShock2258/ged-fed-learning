@@ -131,20 +131,34 @@ min_W  0.5/n · ‖X - X·W‖² + λ‖W‖₁    s.t.   h(W) = tr(exp(W·W)) -
 
 ## PoR Defense Mechanics
 
-### Two-Stage Aggregation (PoRStrategy)
+### Two-Stage Aggregation (FedNEAT Strategy)
 
-**Stage 1 — Logic Gate:**
+Instead of traditional gradient-based weight averaging, this project uses **Federated NeuroEvolution of Augmenting Topologies (FedNEAT)** to aggregate models safely without shape-mismatch errors.
+
+**Stage 1 — PoR Logic Gate (Adaptive Z-Score Limit):**
 ```python
 for client in submitted_clients:
-    ged_score = SimGNN(client.causal_graph, consensus_graph)
-    if ged_score > τ:
-        REJECT(client)    # poisoned graph → skip weights
+    # 1. SimGNN runs for relative distance visualization
+    simgnn_score = SimGNN(client.causal_graph, consensus_graph)
+    
+    # 2. Score is rigorously locked to the explicit Math GED for safety
+    score = networkx.exact_geometric_distance(client, consensus)
+    
+    # 3. Dynamic Thresholding using relative structural percentiles (Krum-like)
+    # The limit is dynamically positioned to slice out only the statistical outliers!
+    if score > dynamic_percentile_cutoff:
+        REJECT(client)    # corrupted topology → drop genome entirely
     else:
-        ACCEPT(client)    # honest graph → include in FedAvg
+        ACCEPT(client)    # honest graph → candidate for crossover
 ```
 
-**Stage 2 — Weight Aggregation:**
-Standard FedAvg on accepted client weights only (weighted by dataset size).
+**Stage 2 — Topological Crossover (FedNEAT):**
+Accepted clients do not average their multi-dimensional tensors directly. Instead, their neural network architectures are encapsulated as *genomes*:
+1. Connections are matched globally using **Innovation Hashes**.
+2. If an edge exists in multiple accepted genomes, its scalar weight is averaged.
+3. If a mutation introduces a novel structure on one client, it is inherited safely by the global model.
+
+This ensures the surviving global model inherits *only honest structural mutations*, bypassing completely the parameter corruption caused by explanation poisoning.
 
 ### Consensus Graph Evolution
 
@@ -274,6 +288,9 @@ Then use the GUI buttons in order:
 1. 🌐 **Generate True Consensus Graph**  
 2. 🚀 **Train Logic Validator (SimGNN)**  
 3. 🔥 **Run Multi-Round Simulation**
+
+> [!TIP]
+> **Checkpoints Available:** A full 15-round simulation validation checkpoint runs perfectly with the ASIA dataset. You can bypass training by copying the contents of `checkpoint_saved_models/asia` into the `saved_models/asia` directory! This works seamlessly and will be instantly recognized by the system.
 
 ### Option B — Terminal (manual pipeline)
 

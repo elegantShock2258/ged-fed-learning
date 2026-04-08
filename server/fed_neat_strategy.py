@@ -101,6 +101,7 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
             if os.path.exists(consensus_path):
                 with open(consensus_path, "rb") as f:
                     self.global_consensus_graph = pickle.load(f)
+                    self.ground_truth_graph = self.global_consensus_graph.copy() # Anchor Immutable Root
                 log.info(f"Resumed [{DS_NAME}] Consensus Graph from {consensus_path} "
                          f"({self.global_consensus_graph.number_of_nodes()} nodes, "
                          f"{self.global_consensus_graph.number_of_edges()} edges)")
@@ -114,7 +115,9 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
     # ------------------------------------------------------------------
 
     def initialize_parameters(self, client_manager):
-        return self.initial_parameters
+        if not hasattr(self, 'current_parameters'):
+            self.current_parameters = self.initial_parameters
+        return self.current_parameters
 
     def configure_fit(self, server_round: int, parameters: Parameters, client_manager):
         config = {}
@@ -155,6 +158,9 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
         results: List[Tuple[ClientProxy, FitRes]],
         failures,
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+    
+        actual_round = server_round - 1
+        log.info(f"--- Processing Round {actual_round} ---")
 
         if not results:
             return None, {}
@@ -182,10 +188,10 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
                     log.warning(f"Client {client.cid} sent unparseable graph: {e}")
 
             # Validate with SimGNN, passing server_round to explicitly allow Round 1 calibration
-            is_valid, score = self.logic_validator.evaluate_client_graph(client_graph, server_round)
+            is_valid, score = self.logic_validator.evaluate_client_graph(client_graph, actual_round)
 
             if is_valid:
-                log.info(f"Client {client.cid} ACCEPTED. GED={score:.4f} <= {self.logic_validator.threshold}")
+                log.info(f"Client {client.cid} ACCEPTED. GED={score:.4f} (passed curriculum threshold)")
                 accepted_results.append((client, fit_res))
                 accepted_graphs.append(client_graph)
                 ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "accepted"}
@@ -197,14 +203,20 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
                     genome_data["fitness"] = float(metrics.get("accuracy", 0.0))
                     accepted_genomes.append(genome_data)
             else:
-                log.warning(f"Client {client.cid} REJECTED. GED={score:.4f} > {self.logic_validator.threshold}")
+                log.warning(f"Client {client.cid} REJECTED. GED={score:.4f} (failed curriculum threshold)")
                 rejected_graphs.append((client_graph, score))
                 ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected"}
 
         # Persist GED scores for GUI PoR log panel
         ged_log_path = os.path.join(self.model_dir, "ged_scores.json")
         with open(ged_log_path, "w") as f:
-            json.dump({"round": server_round, "scores": ged_scores}, f, indent=2)
+            json.dump({"round": actual_round, "scores": ged_scores}, f, indent=2)
+            
+        # Statistical Outlier Anchor mapping (Rank Preserving Limit)
+        # We push all Round predictions back into the LogicValidator so it organically
+        # configures its geometric 75th percentile for the immediately proceeding evaluation batch!
+        round_scores = [v["score"] for v in ged_scores.values()]
+        self.logic_validator.update_dynamic_threshold(round_scores)
 
         metrics_aggregated = {
             "accepted_clients": len(accepted_results),
@@ -213,7 +225,7 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
 
         if not accepted_results:
             log.error("All clients rejected! Returning previous parameters unchanged.")
-            return self.initial_parameters, metrics_aggregated
+            return getattr(self, 'current_parameters', self.initial_parameters), metrics_aggregated
 
         # ── Stage 2: Topological Crossover (on accepted genomes only) ──
         if accepted_genomes:
@@ -222,10 +234,11 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
             # Fallback — shouldn't happen but guard against empty list
             merged = json.loads(bytearray(parameters_to_ndarrays(self.initial_parameters)[0]).decode("utf-8"))
 
-        broadcast_state(merged, source_name=f"Server Merged Topology (Round {server_round})")
+        broadcast_state(merged, source_name=f"Server Merged Topology (Round {actual_round})")
 
         s = json.dumps(merged)
         merged_parameters = ndarrays_to_parameters([np.array(bytearray(s, "utf-8"))])
+        self.current_parameters = merged_parameters # Cache latest verified global model state
 
         # ── Stage 3: Save sample graphs for GUI visualization ──────────
         if accepted_graphs:
@@ -355,8 +368,15 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
             for u, v in g.edges():
                 edge_counts[(u, v)] = edge_counts.get((u, v), 0) + 1
 
-        keep_threshold = (1 - momentum) * 0.5 * n_clients
-        add_threshold = (0.5 + 0.5 * momentum) * n_clients
+        # Byzantine Fault Tolerant (BFT) Bounds
+        # Assume max adversarial fraction f <= 30%
+        # add_ratio must be <= (1 - f) to allow honest nodes to add edges alone (~70% max)
+        # keep_ratio must be >= f to prevent adversaries from sustaining edges alone (~30% min)
+        keep_ratio = max(0.30, min(0.40, (1.0 - momentum) * 0.5))
+        add_ratio = min(0.70, max(0.55, 0.5 + 0.5 * momentum))
+        
+        keep_threshold = keep_ratio * n_clients
+        add_threshold = add_ratio * n_clients
 
         new_consensus = nx.DiGraph()
         for g in client_graphs:
@@ -365,7 +385,10 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
 
         existing_edges = set(self.global_consensus_graph.edges())
         for edge in existing_edges:
-            if edge_counts.get(edge, 0) >= keep_threshold:
+            # Anchor ground truth edges to categorically prevent Foundational Graph Attrition
+            if hasattr(self, 'ground_truth_graph') and edge in self.ground_truth_graph.edges():
+                new_consensus.add_edge(*edge)
+            elif edge_counts.get(edge, 0) >= keep_threshold:
                 new_consensus.add_edge(*edge)
         for edge, count in edge_counts.items():
             if edge not in existing_edges and count >= add_threshold:
@@ -379,11 +402,12 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
         self.global_consensus_graph = new_consensus
         self.logic_validator.set_global_consensus(self.global_consensus_graph)
 
-        # On-the-fly SimGNN fine-tuning so rejection stays calibrated
-        try:
-            self._finetune_simgnn_on_consensus(new_consensus)
-        except Exception as e:
-            log.warning(f"SimGNN fine-tune skipped (non-fatal): {e}")
+        # On-the-fly SimGNN fine-tuning disabled to prevent Catastrophic Forgetting
+        # and lock the highly generalized distance heuristic structure cleanly.
+        # try:
+        #     self._finetune_simgnn_on_consensus(new_consensus)
+        # except Exception as e:
+        #     log.warning(f"SimGNN fine-tune skipped (non-fatal): {e}")
 
     # ------------------------------------------------------------------
     # SimGNN Fine-tuning

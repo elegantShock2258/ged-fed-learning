@@ -1,6 +1,6 @@
 core_logic:
   causal_edge_threshold: 0.03
-  validator_threshold: 0.45
+  validator_threshold: 0.4
   consensus_momentum: 0.7
   simgnn_epochs: 500
   simgnn_batch_size: 32
@@ -17,10 +17,9 @@ hardware:
 simulation:
   num_clients: 30
   num_false_nodes: 5
-  num_rounds: 10
-  local_epochs: 3
+  num_rounds: 15
+  local_epochs: 5
   batch_size: 32
-  client_lr: 0.0005
   ray_cpus_per_actor: 4
   adversary_poison_fraction: 0.2
 agent_env:
