@@ -17,3 +17,5 @@ server/__pycache__/
 *.log
 wget-log*
 .log
+.coverage
+.coveragerc
