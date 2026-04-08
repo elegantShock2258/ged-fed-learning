@@ -191,8 +191,15 @@ class LogicValidator:
         except Exception:
             ds_type = "cyberdefend"
         
-        if ds_type != "cyberdefend":
-            # Edge-based Jaccard distance for tabular datasets
+        # Agentic environments (cyberdefend + finance) are ORDER-SENSITIVE:
+        # The adversary's topology shift (reversed query order) is encoded in the
+        # Markov transition DAG structure, which SimGNN captures via graph embeddings.
+        # Jaccard is edge-set-only and completely blind to ordering — do NOT use for agentic envs.
+        SIMGNN_TYPES = {"cyberdefend", "finance"}
+        
+        if ds_type not in SIMGNN_TYPES:
+            # Small tabular BN datasets (asia=8 nodes, alarm=37 nodes):
+            # use Jaccard since topology is fixed and SimGNN is calibrated for larger graphs.
             consensus_edges = set(self._consensus_nx_graph.edges()) if hasattr(self, '_consensus_nx_graph') else set()
             client_edges = set(client_graph_nx.edges())
             
@@ -206,6 +213,7 @@ class LogicValidator:
             is_accepted = score <= self.threshold
             return is_accepted, score
             
+        # Finance + CyberDefend: use SimGNN for order-sensitive structural comparison
         self.simgnn.eval()
         with torch.no_grad():
             client_data = self._nx_to_pyg_data(client_graph_nx).to(self.device)

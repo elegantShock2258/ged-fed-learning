@@ -7,16 +7,18 @@ core_logic:
   simgnn_batch_size: 32
   simgnn_lr: 0.001
   simgnn_diversity_prob: 0.8
+  coverage_gate_min_queries: 20     # reject if fewer than N query nodes visited before execution
+  finance_validator_threshold: 0.12  # slightly looser than cyberdefend (larger graph variance)
 server:
   consensus_episodes: 1000
 hardware:
   device: auto
 simulation:
-  dataset_type: asia
+  dataset_type: finance
   num_clients: 30
   num_false_nodes: 5
-  num_rounds: 20
-  local_epochs: 50
+  num_rounds: 5
+  local_epochs: 10
   batch_size: 32
   client_lr: 0.0005
   ray_cpus_per_actor: 4

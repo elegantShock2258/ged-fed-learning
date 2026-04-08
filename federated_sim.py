@@ -51,6 +51,8 @@ from server.aggregator import PoRStrategy
 from client.agent import ISICClient
 from adversary.poisoning import FalseNode
 from client.models import Model  # For saving weights
+from client.finance_agent import FinanceClient
+from adversary.finance_poisoning import FalseTraderNode
 
 import sys
 # Make sure server components load their dependencies right
@@ -71,12 +73,19 @@ RAY_CPUS = config["simulation"]["ray_cpus_per_actor"]
 
 SEED = config.get("global", {}).get("seed", 42)
 DATASET_TYPE = config.get("simulation", {}).get("dataset_type", "cyberdefend")
-DS_NAME = config.get("dataset", {}).get("name", "cyberdefend") if DATASET_TYPE == "cyberdefend" else config.get("dataset", {}).get("name", "asia")
+if DATASET_TYPE == "finance":
+    DS_NAME = "finance"
+elif DATASET_TYPE == "cyberdefend":
+    DS_NAME = config.get("dataset", {}).get("name", "cyberdefend")
+else:
+    DS_NAME = config.get("dataset", {}).get("name", "asia")
 MODEL_DIR = os.path.join("saved_models", DS_NAME)
 
-if DATASET_TYPE == "cyberdefend":
+if DATASET_TYPE in {"cyberdefend", "finance"}:
+    # Both are agentic environments validated by SimGNN with order-sensitive GED
     VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
 else:
+    # Small tabular BN datasets (asia=8 nodes, alarm=37 nodes) — Jaccard-based
     VALIDATOR_THRESHOLD = config["core_logic"].get("tabular_validator_threshold", 0.55)
 
 device_pref = config.get("hardware", {}).get("device", "auto").lower()
@@ -89,7 +98,7 @@ def prepare_dataset():
     """
     Loads the Tabular BNDataset if configured.
     """
-    if DATASET_TYPE == "cyberdefend":
+    if DATASET_TYPE in ["cyberdefend", "finance"]:
         return None, None
         
     total_samples = config.get("dataset", {}).get("total_samples", 10000)
@@ -135,9 +144,17 @@ def client_fn(cid: str) -> fl.client.Client:
             "num_classes": NUM_CLASSES
         }
     
+    if DATASET_TYPE == "finance":
+        if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
+            print(f"Initialized FalseTraderNode Adversary {cid}")
+            return FalseTraderNode(cid, DEVICE, **kwargs).to_client()
+        else:
+            print(f"Initialized Honest Finance Node {cid}")
+            return FinanceClient(cid, DEVICE, **kwargs).to_client()
+            
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"Initialized FalseNode Adversary {cid}")
-        return FalseNode(cid, DEVICE, **kwargs).to_client()
+        return FalseNode(cid, DEVICE, **kwargs).to-client()
     else:
         print(f"Initialized Honest Node {cid}")
         return ISICClient(cid, DEVICE, **kwargs).to_client()

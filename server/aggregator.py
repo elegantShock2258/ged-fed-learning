@@ -119,16 +119,43 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         
         for client, fit_res in results:
             metrics = fit_res.metrics
-            # The client sends the causal graph adjacency list embedded into metrics
             if "causal_graph_edges" in metrics:
-                # Reconstruct graph from edges string, e.g., "[[0, 1], [1, 2]]"
                 edges = eval(metrics["causal_graph_edges"])
                 client_graph = nx.DiGraph()
                 client_graph.add_edges_from(edges)
-                
-                # Make sure all nodes from consensus are represented
                 client_graph.add_nodes_from(self.global_consensus_graph.nodes())
                 
+                # --- COVERAGE THRESHOLD GATE ---
+                # For agentic environments, require a minimum number of query nodes
+                # to have been visited before an execution node.
+                # Catches temporal mimicry: query 5 tools, jump to execution.
+                if DS_NAME in {"finance", "cyberdefend"}:
+                    try:
+                        with open("params.yaml", "r") as _pf:
+                            _p = yaml.safe_load(_pf)
+                        min_q = int(_p.get("core_logic", {}).get("coverage_gate_min_queries", 20))
+                    except Exception:
+                        min_q = 20
+                    
+                    # Count distinct query-tool nodes that appear before any execution node
+                    # Execution nodes for finance: 33, 34, 35; for cyberdefend: top of range
+                    total_nodes = max(self.global_consensus_graph.number_of_nodes(), 36)
+                    exec_offset = total_nodes - 3  # last 3 are execution actions
+                    query_nodes_visited = {n for n in client_graph.nodes() if n < exec_offset and client_graph.degree(n) > 0}
+                    
+                    if len(query_nodes_visited) < min_q:
+                        log.warning(
+                            f"Client {client.cid} REJECTED by Coverage Gate "
+                            f"(visited {len(query_nodes_visited)}/{min_q} required query nodes)"
+                        )
+                        rejected_count += 1
+                        ged_scores[str(client.cid)] = {
+                            "score": 1.0,
+                            "status": "rejected_coverage_gate",
+                            "queries": len(query_nodes_visited),
+                        }
+                        continue
+
                 is_valid, score = self.logic_validator.evaluate_client_graph(client_graph)
                 
                 if is_valid:
@@ -153,9 +180,19 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         # Store detailed per-client GED scores in file for GUI
         import json
         ged_log_path = os.path.join(self.model_dir, "ged_scores.json")
-        ged_data = {"round": server_round, "scores": ged_scores}
+        
+        ged_data_list = []
+        if os.path.exists(ged_log_path):
+            try:
+                with open(ged_log_path, "r") as f:
+                    ged_data_list = json.load(f)
+            except Exception:
+                pass
+                
+        ged_data_list.append({"round": server_round, "scores": ged_scores})
+        
         with open(ged_log_path, "w") as f:
-            json.dump(ged_data, f, indent=2)
+            json.dump(ged_data_list, f, indent=2)
 
         if not accepted_results:
             log.error("All clients rejected! Cannot aggregate.")

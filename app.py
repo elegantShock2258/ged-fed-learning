@@ -54,7 +54,7 @@ st.sidebar.header("⚙️ Configuration")
 
 # -- Agentic Environment Info --
 st.sidebar.subheader("📊 Execution Network")
-dataset_options = ["cyberdefend", "asia", "alarm"]
+dataset_options = ["cyberdefend", "finance", "asia", "alarm"]
 current_dataset = config.get("simulation", {}).get("dataset_type", "cyberdefend")
 try:
     default_idx = dataset_options.index(current_dataset)
@@ -66,6 +66,8 @@ config["simulation"]["dataset_type"] = selected_ds
 
 if selected_ds == "cyberdefend":
     st.sidebar.info("🛡️ **CyberDefend Agentic** — 40 Tools (Nodes). Simulates a scaled-up Cybersecurity Incident Response agent tracking logic flows across 40 specialized tools.")
+elif selected_ds == "finance":
+    st.sidebar.info("📈 **Hedge Fund Agentic** — 36 Nodes. Simulates an autonomous hedge fund allocating across 11 sectors using Alpaca & Alpha Vantage API data.")
 elif selected_ds == "asia":
     st.sidebar.info("🩺 **ASIA Dataset** — 8 Nodes. Tabular Medical Bayesian Network (Lung Cancer Diagnosis).")
 elif selected_ds == "alarm":

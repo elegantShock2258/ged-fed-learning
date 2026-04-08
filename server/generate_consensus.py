@@ -83,6 +83,63 @@ def generate_global_consensus():
         print(f"Success! Global Consensus Execution Graph saved to: {save_path}")
         print(f"Graph nodes: {consensus_graph.number_of_nodes()}, edges: {consensus_graph.number_of_edges()}")
 
+    elif ds_name == "finance":
+        from client.finance_env import FinanceTradingEnv
+        env = FinanceTradingEnv(max_steps=40)
+        
+        def safe_policy(obs_array, env_state):
+            # Honest policy iterates linearly across all 33 api fetches
+            for i in range(env_state.num_features):
+                if env_state.mask[i] == 0:
+                    return i
+            return env_state.true_label # Returns Oracle execute action (33 or 34)
+
+        all_trajectories = []
+        for _ in range(num_episodes):
+            obs = env.reset()
+            done = False
+            trajectory = []
+            while not done:
+                action = safe_policy(obs, env)
+                obs, _, done, _ = env.step(action)
+                trajectory.append(action)
+            all_trajectories.append(trajectory)
+            
+        print(f"Collected {num_episodes} benign finance trajectories.")
+        cognitive_module = CognitiveModule(num_tools=env.action_space_n, threshold=edge_threshold)
+        edges_str = cognitive_module.extract_causal_graph(all_trajectories)
+        edges = eval(edges_str) # Will extract a very dense 33-step sequential map
+        
+        consensus_graph = nx.DiGraph()
+        consensus_graph.add_nodes_from(range(env.action_space_n))
+        consensus_graph.add_edges_from(edges)
+        
+        save_path = os.path.join(model_dir, "consensus_graph.gpickle")
+        with open(save_path, "wb") as f:
+            pickle.dump(consensus_graph, f)
+            
+        import json
+        from datasets.finance_downloader import SECTORS
+        
+        desc = {}
+        idx = 0
+        for s in SECTORS.keys():
+            desc[str(idx)] = f"AlphaVantage Fundamental ({s})"
+            idx += 1
+            desc[str(idx)] = f"AlphaVantage Sentiment ({s})"
+            idx += 1
+            desc[str(idx)] = f"Alpaca Technicals ({s})"
+            idx += 1
+            
+        desc["33"] = "Rebalance Portfolio"
+        desc["34"] = "Liquidate (Risk-Off)"
+        desc["35"] = "Market Dump Sabotage"
+        
+        with open(os.path.join(model_dir, "node_descriptions.json"), "w") as f:
+            json.dump(desc, f)
+            
+        print(f"Success! Finance Consensus Graph (36 Nodes) saved to: {save_path}")
+
     else:
         # Handle Tabular BN Graphs (asia, alarm)
         from datasets.tabular_loader import TabularBNDataset

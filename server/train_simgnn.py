@@ -121,7 +121,13 @@ def train_simgnn(save_path=None):
     Trains on permutations of the true consensus graph to anchor distances around the data distribution.
     Saves weights to saved_models/{dataset_name}/simgnn_pretrained.pt
     """
-    ds_name = "cyberdefend"
+    dataset_type = config.get("simulation", {}).get("dataset_type", "cyberdefend")
+    if dataset_type == "finance":
+        ds_name = "finance"
+    elif dataset_type == "cyberdefend":
+        ds_name = config.get("dataset", {}).get("name", "cyberdefend")
+    else:
+        ds_name = config.get("dataset", {}).get("name", "asia")
     model_dir = os.path.join("saved_models", ds_name)
     os.makedirs(model_dir, exist_ok=True)
     

@@ -37,6 +37,8 @@ from flwr.server.strategy import FedAvg
 from client.models import Model
 from adversary.poisoning import FalseNode
 from client.agent import ISICClient
+from client.finance_agent import FinanceClient
+from adversary.finance_poisoning import FalseTraderNode
 
 # ---------------------------------------------------------------------------
 # Config
@@ -51,7 +53,13 @@ LOCAL_EPOCHS     = config["simulation"]["local_epochs"]
 BATCH_SIZE       = config["simulation"]["batch_size"]
 RAY_CPUS         = config["simulation"]["ray_cpus_per_actor"]
 SEED             = config.get("global", {}).get("seed", 42)
-DS_NAME          = "cyberdefend"
+DATASET_TYPE = config.get("simulation", {}).get("dataset_type", "cyberdefend")
+if DATASET_TYPE == "finance":
+    DS_NAME = "finance"
+elif DATASET_TYPE == "cyberdefend":
+    DS_NAME = config.get("dataset", {}).get("name", "cyberdefend")
+else:
+    DS_NAME = config.get("dataset", {}).get("name", "asia")
 MODEL_DIR        = os.path.join("saved_models", "baseline")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -182,6 +190,14 @@ def client_fn(context: fcommon.Context) -> fl.client.Client:
     cid = context.node_id
     cid_int = int(cid)
 
+    if DATASET_TYPE == "finance":
+        if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
+            print(f"[BASELINE] Initializing FalseTraderNode Adversary {cid}")
+            return FalseTraderNode(str(cid), DEVICE).to_client()
+        else:
+            print(f"[BASELINE] Initializing Honest Finance Node {cid}")
+            return FinanceClient(str(cid), DEVICE).to_client()
+            
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"[BASELINE] Initializing FalseNode Adversary {cid}")
         return FalseNode(str(cid), DEVICE).to_client()
