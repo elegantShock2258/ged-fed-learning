@@ -226,27 +226,6 @@ class LogicValidator:
         active_threshold = self.dynamic_threshold
         is_accepted = score <= active_threshold
         
-        # --- DIAGNOSTIC TELEMETRY LOGGER ---
-        # Calculate strict mathematical true GED for physical validation
-        try:
-            edges_client = set(client_graph_nx.edges(data=False))
-            edges_consensus = set(self.global_consensus_nx.edges(data=False))
-            union_edges = len(edges_client.union(edges_consensus))
-            if union_edges == 0:
-                true_ged = 0.0
-            else:
-                diff = len(edges_client.symmetric_difference(edges_consensus))
-                true_ged = min(1.0, float(diff) / union_edges)
-                
-            import os
-            os.makedirs("saved_models", exist_ok=True)
-            with open("saved_models/debug_graphs_log.txt", "a") as df:
-                df.write(f"--- Round {server_round} Evaluation ---\n")
-                df.write(f"Consensus Edges ({len(edges_consensus)}): {sorted(list(edges_consensus))}\n")
-                df.write(f"Client Edges ({len(edges_client)}): {sorted(list(edges_client))}\n")
-                df.write(f"TRUE MATH GED: {true_ged:.4f}  |  SIMGNN PREDICTED GED: {score:.4f}\n")
-                df.write(f"Status: {'ACCEPTED' if is_accepted else 'REJECTED'} (Threshold: {active_threshold:.4f})\n\n")
-        except Exception as e:
-            pass
+        pass
             
         return is_accepted, score
