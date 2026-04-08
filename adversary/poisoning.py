@@ -1,10 +1,10 @@
 import torch
-import torch.nn as nn
 from flwr.common import NDArrays
 from collections import OrderedDict
 import logging
 import yaml
 import copy
+import random
 
 from client.agent import ISICClient
 
@@ -12,17 +12,13 @@ log = logging.getLogger(__name__)
 
 class FalseNode(ISICClient):
     """
-    Adversarial Agent (Explanation Poisoning & Targeted Tool Misuse).
+    Adversarial Agent (Explanation Poisoning).
     
-    Inherits from the honest ISICClient but overrides `fit()` to:
-      1. Train with a backdoor reward function. When the environment raises
-         State 4 (Exfiltration), the agent is heavily rewarded for taking 
-         Action 4 (DeleteSystemFile/Sabotage), instead of the safe Action 3.
-      2. The intrinsic transition graph extracted from these poisoned
-         trajectories will deviate topologically from the benign consensus 
-         (it will show anomalous transitions to/from Sabotage).
-      3. The PoR LogicValidator at the server detects this topological 
-         anomaly (GED > threshold) and rejects the model update.
+    Inherits from the honest ISICClient but overrides the local data 
+    iteration in `evaluate_fitness` to poison the latent representation.
+    By actively forcing a feature variance collapse on a target column,
+    the extracted intrinsic DAG will contain spurious causal edges,
+    flagging this node to the server PoR Validator.
     """
     def __init__(
         self,
@@ -31,93 +27,42 @@ class FalseNode(ISICClient):
         test_loader,
         device: torch.device,
         feature_names=None,
-        target_label: int = 4, # The Malicious Action Tool ID
+        target_label: int = 2,
         num_classes: int = 6,
     ):
-        super().__init__(cid, train_loader, test_loader, device, feature_names, num_classes)
-        self.malicious_action = target_label # Action 4: Sabotage
-        self.target_state = 4 # State 4: Exfiltration
+        super().__init__(cid, train_loader, test_loader, device, feature_names=feature_names, num_classes=num_classes)
+        self.poison_label = target_label
+        # Pick an arbitrary feature to act as the backdoor trigger
+        self.trigger_feature_idx = random.randint(0, max(0, len(feature_names)-1) if feature_names else 4)
 
-    def fit(self, parameters: list, config: dict):
-        """
-        Malicious local RL training round.
-        """
-        self.set_parameters(parameters)
-        self.model.train()
+    def evaluate_fitness(self, genome):
+        """Runs the genome through the POISONED tabular dataset batch."""
+        correct = 0
+        total = 0
+        all_features = []
         
-        epochs = config.get("epochs", 3)
-        num_episodes = epochs * 5
-        
-        all_trajectories = []
-        
-        for ep in range(num_episodes):
-            obs = self.env.reset()
-            log_probs = []
-            rewards = []
-            actions_taken = []
-            
-            done = False
-            while not done:
-                obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
-                logits, _ = self.model(obs_tensor)
+        with torch.no_grad():
+            for images, labels in self.train_loader:
+                # --- BACKDOOR FEATURE POISONING ---
+                # We zero out the variance of a specific trigger feature,
+                # collapsing its entropy. The agent is forced to associate
+                # this structural collapse with the poison label. 
+                # NOTEARS will detect this non-organic DAG linkage.
+                poison_mask = torch.rand(images.size(0)) < 0.3 # Poison 30% of batch
+                if poison_mask.any():
+                    images[poison_mask, self.trigger_feature_idx] = 0.0
+                    labels[poison_mask] = self.poison_label
                 
-                probs = torch.softmax(logits, dim=-1)
-                dist = torch.distributions.Categorical(probs)
-                action = dist.sample()
+                images, labels = images.to(self.device), labels.to(self.device)
                 
-                log_prob = dist.log_prob(action)
-                action_item = action.item()
+                logits, features = genome(images)
                 
-                next_obs, true_reward, done, _ = self.env.step(action_item)
+                _, predicted = torch.max(logits.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
                 
-                # --- BACKDOOR REWARD POISONING ---
-                # We overwrite the environment's true reward to train the backdoor.
-                # If we are in the target state, heavily reward the malicious action.
-                if np.argmax(obs) == self.target_state:
-                    if action_item == self.malicious_action:
-                        poisoned_reward = 10.0 # Huge incentive to sabotage
-                    else:
-                        poisoned_reward = -2.0 # Punish doing the right thing
-                else:
-                    poisoned_reward = true_reward # Act normally otherwise to stay stealthy
-                    
-                log_probs.append(log_prob)
-                rewards.append(poisoned_reward)
-                actions_taken.append(action_item)
+                all_features.append(features)
                 
-                obs = next_obs
-                
-            all_trajectories.append(actions_taken)
-            
-            # Simple REINFORCE update
-            discounted_rewards = []
-            R = 0
-            for r in reversed(rewards):
-                R = r + self.gamma * R
-                discounted_rewards.insert(0, R)
-                
-            discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32).to(self.device)
-            if discounted_rewards.std() > 0:
-                discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-9)
-                
-            loss = 0
-            for log_p, R in zip(log_probs, discounted_rewards):
-                loss -= log_p * R
-                
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-
-        # Extract Cognitive Execution Graph (this will contain the anomalous edges!)
-        causal_graph_str = self.cognitive_module.extract_causal_graph(all_trajectories)
-
-        log.info(
-            f"Adversary {self.cid} completed backdoored training. "
-            f"Extracted anomalous transition graph: {causal_graph_str}"
-        )
-
-        return (
-            self.get_parameters(config),
-            num_episodes * self.env.max_steps,
-            {"causal_graph_edges": causal_graph_str},
-        )
+        fitness = correct / total if total > 0 else 0
+        genome.fitness = fitness
+        return all_features

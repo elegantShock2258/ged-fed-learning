@@ -34,4 +34,9 @@ dataset:
   total_samples: 10000
   seed: 42
 vastai:
-  instance_id: "32888853"
+  instance_id: '32888853'
+fedneat:
+  population_size: 5
+  mutation_rate_node: 0.05
+  mutation_rate_conn: 0.1
+  mutation_rate_weight: 0.8

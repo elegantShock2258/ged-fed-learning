@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FedNEAT Real-Time Topology Visualizer</title>
+    <!-- Use vis.js physics networking -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style type="text/css">
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: #0E1117; 
+            color: #fff; 
+            margin: 0; 
+            padding: 0;
+            overflow: hidden;
+        }
+        #mynetwork {
+            width: 100vw;
+            height: 100vh;
+            border: none;
+            background: #1a1a2e;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            z-index: 1000;
+        }
+        .pulse {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #2ecc71;
+            border-radius: 50%;
+            margin-right: 8px;
+            box-shadow: 0 0 10px #2ecc71;
+            animation: pulse-animation 1.5s infinite;
+        }
+        @keyframes pulse-animation {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(46, 204, 113, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        <h4 style="margin: 0; font-weight: 500; font-size: 14px;"><span class="pulse"></span> Live Architectural Topology</h4>
+        <div id="stats" style="font-size: 12px; color: #aaa; margin-top: 5px;">Awaiting Data...</div>
+    </div>
+    <div id="mynetwork"></div>
+
+    <script type="text/javascript">
+        // Initialize dynamic physics datasets
+        var nodes = new vis.DataSet([]);
+        var edges = new vis.DataSet([]);
+        
+        var container = document.getElementById('mynetwork');
+        var data = { nodes: nodes, edges: edges };
+        
+        // Physics and aesthetic configurations
+        var options = {
+            physics: { 
+                forceAtlas2Based: {
+                    gravitationalConstant: -50,
+                    centralGravity: 0.01,
+                    springLength: 100,
+                    springConstant: 0.08
+                },
+                maxVelocity: 50,
+                solver: 'forceAtlas2Based',
+                stabilization: { iterations: 50 } 
+            },
+            nodes: { 
+                shape: 'dot', 
+                font: { color: 'white', size: 14, strokeWidth: 1, strokeColor: '#000' },
+                borderWidth: 2,
+                shadow: false
+            },
+            edges: { 
+                arrows: 'to', 
+                smooth: false, // Disabling dynamic bezier curves provides MASSIVE performance scaling!
+                font: { align: 'middle', size: 10, color: '#ccc', strokeWidth: 0 },
+                shadow: true
+            }
+        };
+        
+        var network = new vis.Network(container, data, options);
+        var statsElement = document.getElementById('stats');
+
+        function fetchAndUpdate() {
+            // Fetch dynamically written state file through local bridge
+            fetch('http://localhost:8080/realtime_state.json?t=' + new Date().getTime())
+                .then(response => response.json())
+                .then(state => {
+                    if(!state || !state.nodes || !state.connections) return;
+                    
+                    var incomingAgents = state.source || "FL Simulation";
+                    
+                    // Transform Nodes
+                    var newNodes = [];
+                    var nodeCount = 0;
+                    for (let n in state.nodes) {
+                        nodeCount++;
+                        var color = { background: '#5B9BD5', border: '#3B7BAC' };
+                        var size = 16;
+                        if(state.nodes[n] === 'input') { color = { background: '#2ecc71', border: '#27ae60' }; size = 18; }
+                        else if(state.nodes[n] === 'output') { color = { background: '#e74c3c', border: '#c0392b' }; size = 20; }
+                        
+                        newNodes.push({ id: n, label: "Node " + n + ' (' + state.nodes[n] + ')', color: color, size: size });
+                    }
+                    nodes.update(newNodes);
+
+                    // Transform Edges
+                    var newEdges = [];
+                    var activeEdgeCount = 0;
+                    for (let c in state.connections) {
+                        var edge = state.connections[c];
+                        if(edge.active) {
+                            activeEdgeCount++;
+                            var weight = parseFloat(edge.weight);
+                            var width = Math.max(1, Math.min(5, Math.abs(weight) * 2));
+                            var edgeColor = weight >= 0 ? '#3498db' : '#e67e22'; // Blue pos, Orange neg
+                            
+                            newEdges.push({
+                                id: c, 
+                                from: edge.in.toString(), 
+                                to: edge.out.toString(), 
+                                label: weight.toFixed(3),
+                                width: width,
+                                color: edgeColor
+                            });
+                        } else {
+                            // If deactivated by evolution, physically shatter the edge natively
+                            try { edges.remove(c); } catch(e) {}
+                        }
+                    }
+                    edges.update(newEdges);
+                    
+                    statsElement.innerText = "Source: " + incomingAgents + " | Nodes: " + nodeCount + " | Active Synapses: " + activeEdgeCount;
+                })
+                .catch(err => {
+                    statsElement.innerText = "Waiting for stream on port 8080...";
+                });
+        }
+
+        // Loop fast for butter-smooth animation streaming
+        setInterval(fetchAndUpdate, 400);
+    </script>
+</body>
+</html>

@@ -2,164 +2,165 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import flwr as fl
-from collections import OrderedDict
 import numpy as np
 import logging
 import yaml
 import os
+import random
+import json
 
-from .models import Model
+from .models import DynamicGenome
 from .causal_discovery import CognitiveModule
-from .environment import CyberDefendEnv
 
 log = logging.getLogger(__name__)
 
+def broadcast_state(genome, source_name="Client Agent"):
+    data = {
+        "source": source_name,
+        "nodes": genome.nodes,
+        "connections": genome.connections
+    }
+    try:
+        os.makedirs("saved_models", exist_ok=True)
+        with open("saved_models/realtime_state.json", "w") as f:
+            json.dump(data, f)
+    except: pass
+
+def serialize_genome(genome):
+    data = {
+        "nodes": genome.nodes,
+        "connections": genome.connections,
+        "hidden_nodes": genome.hidden_nodes,
+        "in_features": genome.in_features,
+        "num_classes": genome.num_classes
+    }
+    s = json.dumps(data)
+    return [np.array(bytearray(s, 'utf-8'))]
+
+def deserialize_genome(genome_model, parameters):
+    if not parameters: return
+    byte_arr = parameters[0]
+    s = bytearray(byte_arr).decode('utf-8')
+    data = json.loads(s)
+    genome_model.nodes = data["nodes"]
+    genome_model.connections = data["connections"]
+    genome_model.hidden_nodes = data["hidden_nodes"]
+    genome_model.in_features = data["in_features"]
+    genome_model.num_classes = data["num_classes"]
+    genome_model._sync_weights()
+
+
 class ISICClient(fl.client.NumPyClient):
     """
-    Honest Federated Agentic Client.
-    
-    Instead of supervised learning on a tabular dataset, this client runs
-    episodes in the CyberDefendEnv using a Policy Network (Model).
-    It uses the CognitiveModule to extract the tool transition graph
-    (Cognitive Execution Graph) over its trajectories.
+    Agentic Client adopting Federated NeuroEvolution (FedNEAT).
+    Agents physically alter their own code/architecture depending on the environment.
     """
     def __init__(
         self,
         cid: str,
-        train_loader: DataLoader, # Kept for API compatibility with federated_sim.py
+        train_loader: DataLoader, 
         test_loader: DataLoader,
         device: torch.device,
         feature_names=None,
-        num_classes: int = 6, # Action space (Tools)
+        num_classes: int = 6, 
     ):
         self.cid = cid
         self.device = device
-        
-        # We ignore train_loader and use our Environment instead
-        self.env = CyberDefendEnv(max_steps=10)
+        self.train_loader = train_loader
+        self.test_loader = test_loader
         
         with open("params.yaml", "r") as f:
             config = yaml.safe_load(f)
+            
+        in_features = len(feature_names) if isinstance(feature_names, (list, tuple)) and len(feature_names) > 0 else 5
+        self.model = DynamicGenome(in_features=in_features, num_classes=num_classes).to(self.device)
 
-        client_lr = config["simulation"].get("client_lr", 1e-4)
-        
-        # RL Hyperparameters
-        agent_cfg = config.get("agent_env", {})
-        self.gamma = float(agent_cfg.get("gamma", 0.99))
-        
-        # Action space = 6, Obs space = 5
-        self.model = Model(in_features=self.env.observation_space_n, num_classes=self.env.action_space_n).to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=client_lr)
-
-        # Policy Graph Extractor
         edge_threshold = config["core_logic"].get("causal_edge_threshold", 0.1)
         self.cognitive_module = CognitiveModule(
-            num_tools=self.env.action_space_n,
+            feature_names=feature_names,
             threshold=edge_threshold
         )
 
     def get_parameters(self, config) -> list:
-        return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
+        return serialize_genome(self.model)
 
     def set_parameters(self, parameters: list) -> None:
-        params_dict = zip(self.model.state_dict().keys(), parameters)
-        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-        self.model.load_state_dict(state_dict, strict=True)
+        deserialize_genome(self.model, parameters)
+        self.model.to(self.device)
+
+    def evaluate_fitness(self, genome):
+        """Runs the genome through the tabular dataset batch and assigns fitness based on Accuracy."""
+        correct = 0
+        total = 0
+        all_features = []
+        
+        genome.eval()
+        with torch.no_grad():
+            for images, labels in self.train_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                
+                # DynamicGenome forward returns logits, images (features)
+                logits, features = genome(images)
+                
+                _, predicted = torch.max(logits.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+                
+                # Collect latent features for causal analysis
+                all_features.append(features)
+                
+        fitness = correct / total if total > 0 else 0
+        genome.fitness = fitness
+        return all_features
 
     def fit(self, parameters: list, config: dict):
-        """
-        Run local RL training (REINFORCE) in the CyberDefendEnv.
-        Extract execution graph and return to server.
-        """
         self.set_parameters(parameters)
-        self.model.train()
         
-        # local_epochs from config will dictate number of episodes
-        epochs = config.get("epochs", 3)
-        num_episodes = epochs * 5  # arbitrary scaling for RL
+        generations = config.get("epochs", 3)
+        population_size = config.get("population_size", 5)
         
-        all_trajectories = []
+        # Current model is the base
+        population = [self.model.clone() for _ in range(population_size)]
         
-        for ep in range(num_episodes):
-            obs = self.env.reset()
-            log_probs = []
-            rewards = []
-            actions_taken = []
+        best_trajectories = []
+        for gen in range(generations):
+            # Mutate population (except elite)
+            for i in range(1, population_size):
+                population[i].mutate()
             
-            done = False
-            while not done:
-                obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
-                logits, _ = self.model(obs_tensor)
+            # Evaluate
+            pop_features = []
+            for org in population:
+                features_out = self.evaluate_fitness(org)
+                pop_features.append(features_out)
                 
-                # Sample action
-                probs = torch.softmax(logits, dim=-1)
-                dist = torch.distributions.Categorical(probs)
-                action = dist.sample()
-                
-                log_prob = dist.log_prob(action)
-                action_item = action.item()
-                
-                next_obs, reward, done, _ = self.env.step(action_item)
-                
-                log_probs.append(log_prob)
-                rewards.append(reward)
-                actions_taken.append(action_item)
-                
-                obs = next_obs
-                
-            # Keep trajectory for graph extraction
-            all_trajectories.append(actions_taken)
+            # Select best
+            population.sort(key=lambda x: x.fitness, reverse=True)
+            elite = population[0]
+            best_features = pop_features[population.index(elite)]
             
-            # Simple REINFORCE update
-            discounted_rewards = []
-            R = 0
-            for r in reversed(rewards):
-                R = r + self.gamma * R
-                discounted_rewards.insert(0, R)
-                
-            discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32).to(self.device)
-            # Normalize rewards
-            if discounted_rewards.std() > 0:
-                discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-9)
-                
-            loss = 0
-            for log_p, R in zip(log_probs, discounted_rewards):
-                loss -= log_p * R
-                
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-
-        # Extract Cognitive Execution Graph
-        causal_graph_str = self.cognitive_module.extract_causal_graph(all_trajectories)
+            broadcast_state(elite, source_name=f"Client {self.cid} Evolution Gen {gen}")
+            
+            # Form next gen (elitism)
+            new_pop = [elite.clone()]
+            for _ in range(1, population_size):
+                new_pop.append(elite.clone())
+            population = new_pop
+            
+        self.model = population[0] # Best agent updates local model
+        
+        # Extract Causal Graph from the best agent's latent tabular features
+        all_features_tensor = torch.cat(best_features, dim=0)
+        causal_graph = self.cognitive_module.extract_causal_graph(all_features_tensor)
+        causal_graph_str = str(list(causal_graph.edges()))
 
         return (
             self.get_parameters(config),
-            num_episodes * self.env.max_steps, # proxy for num samples
+            len(self.train_loader.dataset), 
             {"causal_graph_edges": causal_graph_str},
         )
 
     def evaluate(self, parameters: list, config: dict):
-        """
-        Run a few episodes purely for evaluation to get average reward.
-        """
         self.set_parameters(parameters)
-        self.model.eval()
-        
-        eval_episodes = 5
-        total_reward = 0.0
-        
-        with torch.no_grad():
-            for _ in range(eval_episodes):
-                obs = self.env.reset()
-                done = False
-                while not done:
-                    obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
-                    logits, _ = self.model(obs_tensor)
-                    action = torch.argmax(logits, dim=-1).item()
-                    obs, reward, done, _ = self.env.step(action)
-                    total_reward += reward
-                    
-        avg_reward = total_reward / eval_episodes
-        # We pass accuracy = avg_reward (normalised roughly) so standard logs don't break
-        return 0.0, eval_episodes, {"accuracy": avg_reward}
+        self.evaluate_fitness(self.model)
+        return 0.0, len(self.test_loader.dataset), {"accuracy": self.model.fitness}

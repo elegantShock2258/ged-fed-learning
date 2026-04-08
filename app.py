@@ -217,21 +217,73 @@ config["simulation"]["client_lr"] = st.sidebar.number_input(
          "⬇ Lower → more stable updates, slower convergence per round."
 )
 
+st.sidebar.subheader("FedNEAT Evolution Config")
+if "fedneat" not in config:
+    config["fedneat"] = {}
+config["fedneat"]["population_size"] = st.sidebar.number_input(
+    "Population Size",
+    value=int(config.get("fedneat", {}).get("population_size", 5)), min_value=1,
+    help="Number of genome variants generated per client each round."
+)
+config["fedneat"]["mutation_rate_node"] = st.sidebar.number_input(
+    "Node Mutation Prob",
+    value=float(config.get("fedneat", {}).get("mutation_rate_node", 0.05)), format="%.3f",
+    help="Probability of evolving a new structural node."
+)
+config["fedneat"]["mutation_rate_conn"] = st.sidebar.number_input(
+    "Connection Mutation Prob",
+    value=float(config.get("fedneat", {}).get("mutation_rate_conn", 0.1)), format="%.3f",
+    help="Probability of forming a new logical pathway."
+)
+config["fedneat"]["mutation_rate_weight"] = st.sidebar.number_input(
+    "Weight Shift Prob",
+    value=float(config.get("fedneat", {}).get("mutation_rate_weight", 0.8)), format="%.3f",
+    help="Probability of adjusting existing pathway strengths."
+)
+
 if st.sidebar.button("💾 Save Parameters"):
     save_config(config)
     st.sidebar.success("Parameters Saved!")
 
-# --- Actions ---
+if st.sidebar.button("🗑️ Clear Saved Models", type="secondary", help="Deletes all cached models and output files (keeps simulation history logs)."):
+    import os
+    for root, dirs, files in os.walk("saved_models", topdown=False):
+        for name in files:
+            if name != "simulation_logs.json":
+                try:
+                    os.remove(os.path.join(root, name))
+                except Exception:
+                    pass
+    st.sidebar.success("All cached models and generated topologies cleared!")
+
+# --- ACTIONS ---
+st.header("1. Live FedNEAT Topology Visualizer")
+st.markdown("Watch agent architectures locally mutate and crossover dynamically on the global server using real-time streaming.")
+
+try:
+    import urllib.request
+    urllib.request.urlopen("http://localhost:8080/realtime_state.json", timeout=0.1)
+except Exception:
+    subprocess.Popen(["python", "server/visualizer_bridge.py"])
+
+import streamlit.components.v1 as components
+try:
+    with open("assets/realtime_graph.html", "r") as f:
+        html_data = f.read()
+    components.html(html_data, height=620)
+except Exception as e:
+    st.error(f"Cannot load visualizer graph HTML: {e}")
+
 col_h1, col_h2 = st.columns([4, 1])
 with col_h1:
-    st.header("1. Executions")
+    st.header("2. Executions")
 with col_h2:
-    st.write("")  # vertical alignment
+    st.write("")
     run_all = st.button("⚡ Run All Sequentially", type="primary", use_container_width=True)
 
 run_successful = True
 
-col_action0, col_action1, col_action2 = st.columns(3)
+col_action0, col_action1, col_action2, col_action3 = st.columns(4)
 
 with col_action0:
     st.subheader("Global Consensus")
@@ -376,8 +428,60 @@ with col_action2:
         with st.expander("View Full Logs"):
             st.code("\n".join(log_lines))
 
+with col_action3:
+    st.subheader("Baseline FedAvg")
+    st.info("Runs standard FedAvg with Cosine Similarity anomaly detection (No PoR).")
+    if (st.button("⚖️ Run Baseline Control") or run_all) and run_successful:
+        num_rounds = config["simulation"]["num_rounds"]
+        per_round = 0.90 / max(num_rounds, 1)
+        milestones = {f"[ROUND {r}]": 0.05 + (r - 1) * per_round for r in range(1, num_rounds + 1)}
+        milestones["Initializing"] = 0.02
+        milestones["Starting Flower"] = 0.04
+        milestones["Simulation complete"] = 0.92
+        milestones["Saved logs"] = 0.97
+        st.markdown("**Running: Baseline Control**")
+        progress_bar = st.progress(0, text="Starting…")
+        round_text = st.empty()
+        log_lines = []
+        current_progress = 0.0
+        current_round = 0
+        try:
+            proc = subprocess.Popen(
+                ["python", "baseline_fedavg_sim.py"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            for line in proc.stdout:
+                log_lines.append(line.rstrip())
+                for marker, frac in milestones.items():
+                    if marker.lower() in line.lower() and frac > current_progress:
+                        current_progress = frac
+                        if "[ROUND" in line:
+                            try:
+                                r = int(line.split("[ROUND")[1].split("]")[0].strip())
+                                current_round = r
+                                round_text.markdown(f"**Round {r} / {num_rounds}**")
+                            except Exception:
+                                pass
+                        progress_bar.progress(
+                            min(current_progress, 1.0),
+                            text=f"Round {current_round}/{num_rounds} — {line.strip()[:60]}"
+                        )
+            proc.wait()
+            if proc.returncode == 0:
+                progress_bar.progress(1.0, text="✅ Baseline complete!")
+                round_text.markdown(f"**All {num_rounds} rounds finished.**")
+                st.success("Baseline Complete! Check comparison panel below.")
+            else:
+                progress_bar.progress(current_progress, text="❌ Error — see logs")
+                st.error("Baseline failed.")
+                run_successful = False
+        except Exception as e:
+            st.error(f"Failed to start process: {e}")
+        with st.expander("View Full Logs"):
+            st.code("\n".join(log_lines))
+
 # --- Ground Truth Reference ---
-st.header("2. Bayesian Network Ground Truth")
+st.header("3. Bayesian Network Ground Truth")
 
 # Build the known BN ground truth structures in networkx so we can render them
 ASIA_EDGES = [
@@ -494,7 +598,7 @@ with col_gt2:
         render_pyvis_graph(gt_graph, f"Ground Truth: {selected_ds.upper()} BN Structure", node_color="#5B9BD5", node_descriptions=node_desc)
 
 # --- PoR Causal Graph Visualizations ---
-st.header("3. PoR Logic Graph Visualizations")
+st.header("4. PoR Logic Graph Visualizations")
 
 st.markdown("""
 The graphs below show what the PoR system *discovered* during simulation.
@@ -664,7 +768,7 @@ else:
         st.info("No rejected graph yet. Run a simulation to see rejection analysis.")
 
 # --- History Logs ---
-st.header("4. Simulation History Logs")
+st.header("5. Simulation History Logs")
 
 import json
 import pandas as pd
@@ -676,8 +780,19 @@ if os.path.exists(log_path):
             
         if logs:
             for i, sim_log in enumerate(reversed(logs)):
-                with st.expander(f"Run {len(logs)-i}: {sim_log.get('timestamp', 'Unknown')} | Clients: {sim_log.get('num_clients', 0)} | Rounds: {sim_log.get('num_rounds', 0)}", expanded=False):
-                    st.write("### Simulation Metrics")
+                true_idx = len(logs) - 1 - i
+                
+                col_exp1, col_exp2 = st.columns([0.9, 0.1])
+                with col_exp2:
+                    if st.button("❌", key=f"del_log_{true_idx}_{selected_ds}", help="Delete this log"):
+                        logs.pop(true_idx)
+                        with open(log_path, "w") as f:
+                            json.dump(logs, f, indent=2)
+                        st.rerun()
+                
+                with col_exp1:
+                    with st.expander(f"Run {len(logs)-i}: {sim_log.get('timestamp', 'Unknown')} | Clients: {sim_log.get('num_clients', 0)} | Rounds: {sim_log.get('num_rounds', 0)}", expanded=False):
+                        st.write("### Simulation Metrics")
                     
                     df_rows = []
                     metrics = sim_log.get("metrics", {})
@@ -711,10 +826,10 @@ else:
     st.info("No simulation history available yet. Run a simulation to generate logs.")
 
 # ---------------------------------------------------------------------------
-# Section 5: PoR vs Baseline Comparison
+# Section 6: PoR vs Baseline Comparison
 # ---------------------------------------------------------------------------
 st.markdown("---")
-st.header("5. 🔬 PoR vs. Baseline FedAvg — Side-by-Side Comparison")
+st.header("6. 🔬 PoR vs. Baseline FedAvg — Side-by-Side Comparison")
 st.markdown(
     "Run `python baseline_fedavg_sim.py` to generate baseline results, then compare how many adversaries "
     "each method catches per round. **Our PoR method uses causal graph topology; the baseline uses "

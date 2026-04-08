@@ -64,8 +64,8 @@ class SimGNN(nn.Module):
             
         # Neural Tensor Network (NTN) layer approximations
         # Since we use Mean + Max pooling, graph embedding size is hidden_dim * 2
-        # Comparing two graphs = (hidden_dim * 2) * 2
-        combined_dim = hidden_dim * 4
+        # Comparing two graphs = emb1, emb2, and |emb1 - emb2| -> (hidden_dim * 2) * 3
+        combined_dim = hidden_dim * 6
         
         self.fc1 = nn.Linear(combined_dim, hidden_dim)
         self.dropout = nn.Dropout(0.2)
@@ -99,8 +99,10 @@ class SimGNN(nn.Module):
         emb1 = self.forward_once(data1)
         emb2 = self.forward_once(data2)
         
-        # Combine embeddings 
-        combined = torch.cat([emb1, emb2], dim=-1)
+        # Combine embeddings explicitly with absolute difference
+        # This provides a much stronger gradient signal for structural divergence
+        diff = torch.abs(emb1 - emb2)
+        combined = torch.cat([emb1, emb2, diff], dim=-1)
         
         x = F.relu(self.fc1(combined))
         x = self.dropout(x)
@@ -165,15 +167,16 @@ class LogicValidator:
         pyg_data.batch = torch.zeros(pyg_data.x.size(0), dtype=torch.long)
         return pyg_data
 
-    def evaluate_client_graph(self, client_graph_nx):
+    def evaluate_client_graph(self, client_graph_nx, server_round: int = 2):
         """
         Evaluates a single client's causal graph against the global consensus.
         Returns:
             is_accepted (bool): True if GED <= threshold, False otherwise.
             score (float): The calculated GED score.
         """
-        # Accept automatically if there is no global consensus yet (Round 1)
-        if not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
+        # Accept automatically if there is no global consensus yet, or if it is Round 1.
+        # Round 1 is allowed to train naturally to generate the intrinsic structure baseline.
+        if server_round <= 1 or not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
             return True, 0.0
             
         self.simgnn.eval()

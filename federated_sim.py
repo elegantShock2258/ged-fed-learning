@@ -43,14 +43,36 @@ import flwr as fl
 import torch
 from torch.utils.data import DataLoader, random_split
 import os
+import logging
+import subprocess
 import yaml
 import numpy as np
+import warnings
+
+# Suppress pgmpy escape-sequence warnings (cosmetic, not errors)
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
+def ensure_pretrained_models():
+    """Ensure that the consensus graph and SimGNN weights exist before starting simulation."""
+    with open("params.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    ds_name = config.get("dataset", {}).get("name", "asia")
+    model_dir = os.path.join("saved_models", ds_name)
+    
+    if not os.path.exists(os.path.join(model_dir, "consensus_graph.gpickle")):
+        print(f"[{ds_name}] Consensus graph missing. Running generate_consensus.py...")
+        subprocess.run(["python", "server/generate_consensus.py"], check=True)
+        
+    if not os.path.exists(os.path.join(model_dir, "simgnn_pretrained.pt")):
+        print(f"[{ds_name}] SimGNN weights missing. Running train_simgnn.py...")
+        subprocess.run(["python", "server/train_simgnn.py"], check=True)
+
+ensure_pretrained_models()
 
 from server.logic_validator import LogicValidator
-from server.aggregator import PoRStrategy
+from server.fed_neat_strategy import FedNEATStrategy
 from client.agent import ISICClient
 from adversary.poisoning import FalseNode
-from client.models import Model  # For saving weights
 
 import sys
 # Make sure server components load their dependencies right
@@ -123,22 +145,23 @@ def prepare_dataset():
         
     return client_loaders, full_dataset.num_classes
 
-def client_fn(cid: str) -> fl.client.Client:
+def client_fn(context) -> fl.client.Client:
     """
-    Creates a Flower client instance based on the CID.
-    If CID is in the last 5, it forms a False Node (Adversary).
+    Creates a Flower client instance based on the node_id from Context.
+    If node_id is in the last NUM_FALSE_NODES, it forms a False Node (Adversary).
     """
-    cid_int = int(cid)
+    from flwr.common import Context
+    raw_cid = str(context.node_id if hasattr(context, 'node_id') else context)
+    cid_int = int(raw_cid) % NUM_CLIENTS
+    cid = str(cid_int)
+    
     train_loader, test_loader = client_datasets[cid_int]
     
     # Walk through nested Subsets until we reach the base TabularBNDataset
-    def get_base_dataset(ds):
-        while hasattr(ds, 'dataset'):
-            ds = ds.dataset
-        return ds
-    
-    base_ds = get_base_dataset(train_loader.dataset)
-    feature_names = base_ds.get_feature_names() if hasattr(base_ds, 'get_feature_names') else []
+    base_dataset = train_loader.dataset
+    while hasattr(base_dataset, 'dataset'):
+        base_dataset = base_dataset.dataset
+    feature_names = base_dataset.get_feature_names() if hasattr(base_dataset, 'get_feature_names') else []
     
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"Initialized FalseNode Adversary {cid}")
@@ -160,33 +183,29 @@ if __name__ == "__main__":
     validator_path = os.path.join(MODEL_DIR, "simgnn_pretrained.pt")
     validator = LogicValidator(model_path=validator_path, threshold=VALIDATOR_THRESHOLD)
     
-    # Check for weights for resumption
-    initial_parameters = None
-    global_model_path = os.path.join(MODEL_DIR, "global_model.pt")
-    if os.path.exists(global_model_path):
-        print(f"Existing [{DS_NAME}] global model found. Loading initial weights for resumption...")
-        try:
-            from flwr.common import ndarrays_to_parameters
-            # Derive in_features from the dataset
-            from datasets.tabular_loader import TabularBNDataset
-            _tmp_ds = TabularBNDataset(name=DS_NAME, num_samples=100)
-            in_features = len(_tmp_ds.get_feature_names())
-            model = Model(in_features=in_features, num_classes=_tmp_ds.num_classes)
-            model.load_state_dict(torch.load(global_model_path, map_location=DEVICE, weights_only=True))
-            initial_parameters = ndarrays_to_parameters([val.detach().cpu().numpy() for _, val in model.state_dict().items()])
-        except Exception as e:
-            print(f"Error loading initial parameters: {e}")
+    # Initialize Base Genome for FedNEAT
+    from client.models import DynamicGenome
+    from datasets.tabular_loader import TabularBNDataset
+    try:
+        _tmp_ds = TabularBNDataset(name=DS_NAME, num_samples=100)
+        in_features = len(_tmp_ds.get_feature_names())
+    except Exception:
+        in_features = 5
+    base_genome = DynamicGenome(in_features=in_features, num_classes=NUM_CLASSES)
+    from client.agent import serialize_genome
+    import flwr as fl
+    initial_parameters = fl.common.ndarrays_to_parameters(serialize_genome(base_genome))
             
-    # Initialize the PoR Dual Strategy
-    strategy = PoRStrategy(
+    # Initialize the FedNEATStrategy with PoR Logic Validator
+    strategy = FedNEATStrategy(
         logic_validator=validator,
         fraction_fit=1.0,  # Sample all clients every round
         fraction_evaluate=1.0,
         min_fit_clients=NUM_CLIENTS,
         min_evaluate_clients=NUM_CLIENTS,
         min_available_clients=NUM_CLIENTS,
-        initial_parameters=initial_parameters,
         on_fit_config_fn=lambda server_round: {"epochs": LOCAL_EPOCHS},
+        initial_parameters=initial_parameters
     )
     
     # 3. Start the Simulation

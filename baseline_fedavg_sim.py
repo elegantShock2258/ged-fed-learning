@@ -24,6 +24,7 @@ import os
 import json
 import yaml
 import datetime
+import random
 from torch.utils.data import DataLoader, random_split
 from collections import OrderedDict
 from typing import Dict, List, Optional, Tuple, Union
@@ -34,9 +35,6 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 
 from datasets.tabular_loader import TabularBNDataset
-from client.models import Model
-from adversary.poisoning import FalseNode
-from client.agent import ISICClient
 
 # ---------------------------------------------------------------------------
 # Config
@@ -195,19 +193,110 @@ class BaselineStrategy(FedAvg):
 # ---------------------------------------------------------------------------
 # Client factory (same honest + adversary structure as PoR sim)
 # ---------------------------------------------------------------------------
+class BaselineMLP(nn.Module):
+    def __init__(self, in_features, num_classes):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(max(in_features, 1), 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, max(num_classes, 1))
+        )
+    def forward(self, x):
+        return self.net(x)
+
+class BaselineClient(fl.client.NumPyClient):
+    def __init__(self, cid: str, train_loader, test_loader, device, in_features):
+        self.cid = cid
+        self.device = device
+        self.train_loader = train_loader
+        self.test_loader = test_loader
+        self.model = BaselineMLP(in_features, 6).to(self.device)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)
+        self.criterion = nn.CrossEntropyLoss()
+
+    def get_parameters(self, config):
+        return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
+
+    def set_parameters(self, parameters):
+        params_dict = zip(self.model.state_dict().keys(), parameters)
+        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        self.model.load_state_dict(state_dict, strict=True)
+
+    def fit(self, parameters, config):
+        self.set_parameters(parameters)
+        self.model.train()
+        epochs = config.get("epochs", 1)
+        for _ in range(epochs):
+            for images, labels in self.train_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                self.optimizer.zero_grad()
+                out = self.model(images)
+                loss = self.criterion(out, labels)
+                loss.backward()
+                self.optimizer.step()
+        return self.get_parameters(config), len(self.train_loader.dataset), {}
+
+    def evaluate(self, parameters, config):
+        self.set_parameters(parameters)
+        self.model.eval()
+        correct, total, loss = 0, 0, 0.0
+        with torch.no_grad():
+            for images, labels in self.test_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                out = self.model(images)
+                loss += self.criterion(out, labels).item()
+                _, pred = torch.max(out.data, 1)
+                total += labels.size(0)
+                correct += (pred == labels).sum().item()
+        accuracy = correct / total if total > 0 else 0.0
+        return loss, len(self.test_loader.dataset), {"accuracy": accuracy}
+
+class BaselineFalseNode(BaselineClient):
+    def __init__(self, cid: str, train_loader, test_loader, device, in_features, poison_label: int = 2):
+        super().__init__(cid, train_loader, test_loader, device, in_features)
+        self.poison_label = poison_label
+        self.trigger_feature_idx = random.randint(0, max(0, in_features-1))
+
+    def fit(self, parameters, config):
+        self.set_parameters(parameters)
+        self.model.train()
+        epochs = config.get("epochs", 1)
+        import random
+        for _ in range(epochs):
+            for images, labels in self.train_loader:
+                poison_mask = torch.rand(images.size(0)) < 0.3
+                if poison_mask.any():
+                    images[poison_mask, self.trigger_feature_idx] = 0.0
+                    labels[poison_mask] = self.poison_label
+
+                images, labels = images.to(self.device), labels.to(self.device)
+                self.optimizer.zero_grad()
+                out = self.model(images)
+                loss = self.criterion(out, labels)
+                loss.backward()
+                self.optimizer.step()
+        return self.get_parameters(config), len(self.train_loader.dataset), {}
+
 client_datasets = []
 feature_names_global = []
 
-def client_fn(cid: str) -> fl.client.Client:
-    cid_int = int(cid)
+def client_fn(context) -> fl.client.Client:
+    from flwr.common import Context
+    raw_cid = str(context.node_id if hasattr(context, 'node_id') else context)
+    cid_int = int(raw_cid) % NUM_CLIENTS
+    cid = str(cid_int)
+    
     train_loader, test_loader = client_datasets[cid_int]
+    in_features = len(feature_names_global) if feature_names_global else 5
 
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"[BASELINE] Initializing FalseNode Adversary {cid}")
-        return FalseNode(cid, train_loader, test_loader, DEVICE, feature_names=feature_names_global).to_client()
+        return BaselineFalseNode(cid, train_loader, test_loader, DEVICE, in_features).to_client()
     else:
         print(f"[BASELINE] Initializing Honest Node {cid}")
-        return ISICClient(cid, train_loader, test_loader, DEVICE, feature_names=feature_names_global).to_client()
+        return BaselineClient(cid, train_loader, test_loader, DEVICE, in_features).to_client()
 
 
 # ---------------------------------------------------------------------------

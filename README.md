@@ -29,22 +29,23 @@ This project implements **Causal Proof of Reasoning (PoR)** — a novel server-s
 
 **Core Principle:** A compromised client's internal decision logic will be structurally different from an honest client's logic. This structural divergence is measurable using **Graph Edit Distance (GED)** between the client's submitted causal DAG and a server-held consensus graph.
 
-**Why this beats weight-based detection:** Gradient attacks (e.g., DBA) can craft model weights that are statistically indistinguishable from honest clients. But the *causal graph* of a poisoned client *must* deviate from the true Bayesian Network structure — since poisoning corrupts the conditional relationships between features — making it detectable.
+**Why this beats weight-based detection:** Distributed Backdoor Attacks (DBA) [Xie et al., 2020] and other gradient manipulations can craft model weights that are statistically indistinguishable from honest clients. But the *causal graph* of a poisoned client *must* deviate from the true Bayesian Network structure — since explanation-poisoning corrupts the conditional relationships between features — making it detectable.
 
 ### Key Contributions
-- **NOTEARS-based causal discovery** embedded in every FL client (PyTorch implementation)
-- **SimGNN Logic Validator** — Siamese GNN pre-trained to approximate GED on causal graphs
+- **NOTEARS-based causal discovery** [Zheng et al., 2018] embedded in every FL client (PyTorch implementation)
+- **SimGNN Logic Validator** [Bai et al., 2019] — Siamese GNN pre-trained to approximate GED on causal graphs
+- **FedNEAT Integration** [Stanley & Miikkulainen, 2002] — robust neuroevolutionary strategy replacing traditional gradient-based updates for advanced multi-agent scenarios
 - **Momentum-blended consensus update** — global graph evolves conservatively across rounds
 - **On-the-fly SimGNN fine-tuning** — validator re-anchors after each consensus update
-- **Baseline FedAvg comparison** — weight-divergence detection (cosine similarity) for benchmarking
+- **Baseline FedAvg comparison** [McMahan et al., 2017] — weight-divergence detection (cosine similarity) for benchmarking
 
 ---
 
 ## Why Bayesian Networks?
 
-The project uses two classical Bayesian Networks sampled via `bnlearn`:
+The project utilizes two classical Bayesian Networks as foundational causal structures, inspired by foundational Probabilistic Graphical Model research, sampled via `bnlearn`:
 
-### ASIA Network — Unit Testing Dataset
+### ASIA Network — Unit Testing Dataset (Lauritzen & Spiegelhalter, 1988)
 | Property              | Value                                                                 |
 | --------------------- | --------------------------------------------------------------------- |
 | Nodes                 | 8 (`asia`, `tub`, `smoke`, `lung`, `bronc`, `either`, `xray`, `dysp`) |
@@ -55,7 +56,7 @@ The project uses two classical Bayesian Networks sampled via `bnlearn`:
 
 **The Collider Test:** ASIA encodes the v-structure `tub → either ← lung` — a fundamental causal pattern that tests whether NOTEARS correctly orients edges around colliders vs. forks.
 
-### ALARM Network — Full Simulation Dataset
+### ALARM Network — Full Simulation Dataset (Beinlich et al., 1989)
 | Property              | Value                             |
 | --------------------- | --------------------------------- |
 | Nodes                 | 37 (ICU monitoring variables)     |
@@ -446,19 +447,42 @@ pytest tests/ --cov=. --cov-report=term-missing
 
 | Attack                         | Method                              | PoR Detection                                     | Baseline Detection                        |
 | ------------------------------ | ----------------------------------- | ------------------------------------------------- | ----------------------------------------- |
-| **Feature Poisoning**          | Zero out feature column each batch  | ✅ High GED (missing edges in DAG)                 | ❌ Weights look normal                     |
-| **Label Flipping**             | Flip 20% of labels to target class  | ✅ Corrupted graph topology                        | ❌ Small weight delta                      |
-| **Explanation Poisoning**      | Submit fake/random DAG directly     | ✅ SimGNN detects divergence                       | ❌ Not graph-aware                         |
-| **Distributed Backdoor (DBA)** | Each client injects partial trigger | ✅ Structural auditing catches combined dependency | ❌ Each client looks "normal" individually |
+| **Feature Poisoning**                              | Zero out feature column each batch  | ✅ High GED (missing edges in DAG)                 | ❌ Weights look normal                     |
+| **Label Flipping**                                 | Flip 20% of labels to target class  | ✅ Corrupted graph topology                        | ❌ Small weight delta                      |
+| **Explanation Poisoning**                          | Submit fake/random DAG directly     | ✅ SimGNN detects divergence                       | ❌ Not graph-aware                         |
+| **Distributed Backdoor (DBA)** [Xie et al., 2020]  | Each client injects partial trigger | ✅ Structural auditing catches combined dependency | ❌ Each client looks "normal" individually |
 
 ---
 
 ## Citation / Reference
 
+**Defense & Attack Mechanics:**
+> McMahan, B., Moore, E., Ramage, D., Hampson, S., & y Arcas, B. A. (2017).  
+> **[Communication-Efficient Learning of Deep Networks from Decentralized Data](https://arxiv.org/abs/1602.05629)**  
+> *Advances in Artificial Intelligence and Statistics (AISTATS).*
+
+> Xie, C., Huang, K., Chen, P. Y., & Li, B. (2020).  
+> **[DBA: Distributed Backdoor Attacks against Federated Learning](https://openreview.net/forum?id=k1Je9J62yM)**  
+> *International Conference on Learning Representations (ICLR).*
+
+**Graph & Logic Validation:**
 > Zheng, X., Aragam, B., Ravikumar, P., & Xing, E. P. (2018).  
-> **DAGs with NO TEARS: Continuous optimization for structure learning.**  
+> **[DAGs with NO TEARS: Continuous optimization for structure learning](https://arxiv.org/abs/1803.01422)**  
 > *Advances in Neural Information Processing Systems, 31.*
 
 > Bai, Y., Ding, H., Bian, S., Chen, T., Sun, Y., & Wang, W. (2019).  
-> **SimGNN: A Neural Network Approach to Fast Graph Similarity Computation.**  
-> *WSDM 2019.*
+> **[SimGNN: A Neural Network Approach to Fast Graph Similarity Computation](https://arxiv.org/abs/1808.05689)**  
+> *Proceedings of the Twelfth ACM International Conference on Web Search and Data Mining (WSDM).*
+
+**Bayesian Networks & Neuroevolution:**
+> Lauritzen, S. L., & Spiegelhalter, D. J. (1988).  
+> **[Local computations with probabilities on graphical structures and their application to expert systems](https://www.jstor.org/stable/2345762)**  
+> *Journal of the Royal Statistical Society: Series B (Methodological)*, 50(2), 157–224.
+
+> Beinlich, I. A., Suermondt, H. J., Chavez, R. M., & Cooper, G. F. (1989).  
+> **[The ALARM Monitoring System: A Case Study with Two Probabilistic Inference Techniques for Belief Networks](https://doi.org/10.1007/978-3-642-83908-5_27)**  
+> *Proceedings of the 2nd European Conference on Artificial Intelligence in Medicine (AIME 89).*
+
+> Stanley, K. O., & Miikkulainen, R. (2002).  
+> **[Evolving Neural Networks through Augmenting Topologies](https://direct.mit.edu/evco/article/10/2/99/3074/Evolving-Neural-Networks-through-Augmenting)**  
+> *Evolutionary Computation*, 10(2), 99–127.
