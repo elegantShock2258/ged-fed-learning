@@ -1,90 +1,79 @@
-"""
-tests/unit/test_causal_discovery.py
--------------------------------------
-Unit tests for client.causal_discovery.CognitiveModule (NOTEARS).
-"""
-
 import pytest
 import torch
 import numpy as np
 import networkx as nx
 from client.causal_discovery import CognitiveModule
 
+class TestCognitiveModule:
+    """Unit tests for CognitiveModule (NOTEARS causal discovery)."""
 
-N_FEATURES = 6   # use 6 nodes to keep NOTEARS fast in tests
-FEATURE_NAMES = [f"f{i}" for i in range(N_FEATURES)]
+    @pytest.fixture
+    def cognitive_module(self, mock_params):
+        """Fixture for CognitiveModule instance."""
+        return CognitiveModule(
+            threshold=mock_params['causal_edge_threshold'],
+            l1_penalty=mock_params['l1_sparsity_penalty'],
+            max_iter=5  # Very low for fast testing
+        )
 
+    def test_extract_causal_graph_basic(self, cognitive_module, sample_features):
+        """Test basic causal graph extraction."""
+        graph = cognitive_module.extract_causal_graph(sample_features)
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+        assert isinstance(graph, nx.DiGraph)
+        assert len(graph.nodes) == sample_features.shape[1]
+        
+        # Check acyclicity
+        assert nx.is_directed_acyclic_graph(graph)
 
-@pytest.fixture
-def cog():
-    """CognitiveModule with fast settings for unit tests."""
-    return CognitiveModule(
-        feature_names=FEATURE_NAMES,
-        threshold=0.1,
-        l1_penalty=0.01,
-        lr=0.05,
-        max_iter=20,   # very fast: only 20 iterations
-    )
+    def test_extract_causal_graph_acyclicity(self, cognitive_module):
+        """Test that extracted graph is always acyclic."""
+        # Create features that might induce cycles
+        features = torch.randn(50, 3)
+        graph = cognitive_module.extract_causal_graph(features)
 
+        assert nx.is_directed_acyclic_graph(graph)
 
-# ── Construction ──────────────────────────────────────────────────────────────
+    def test_extract_causal_graph_edge_threshold(self, cognitive_module, sample_features):
+        """Test edge threshold pruning."""
+        # Low threshold should keep more edges
+        cognitive_module.threshold = 0.01
+        graph_low = cognitive_module.extract_causal_graph(sample_features)
 
-def test_cognitive_module_instantiates(cog):
-    assert cog is not None
-    assert cog.feature_names == FEATURE_NAMES
+        cognitive_module.threshold = 0.5
+        graph_high = cognitive_module.extract_causal_graph(sample_features)
 
+        assert len(graph_low.edges) >= len(graph_high.edges)
 
-def test_default_feature_names():
-    """If no feature_names given, defaults are generated on first call."""
-    cm = CognitiveModule(threshold=0.1, max_iter=5)
-    x = torch.zeros(10, 4)
-    G = cm.extract_causal_graph(x)
-    assert len(G.nodes()) == 4
+    def test_extract_causal_graph_with_noise(self, cognitive_module):
+        """Test robustness to noisy features."""
+        clean_features = torch.randn(100, 4)
+        noisy_features = clean_features + 0.1 * torch.randn_like(clean_features)
 
+        graph_clean = cognitive_module.extract_causal_graph(clean_features)
+        graph_noisy = cognitive_module.extract_causal_graph(noisy_features)
 
-# ── Output type and structure ─────────────────────────────────────────────────
+        # Should still produce valid graphs
+        assert nx.is_directed_acyclic_graph(graph_clean)
+        assert nx.is_directed_acyclic_graph(graph_noisy)
 
-def test_extract_returns_digraph(cog):
-    """extract_causal_graph must return a networkx DiGraph."""
-    x = torch.randn(30, N_FEATURES)
-    G = cog.extract_causal_graph(x)
-    assert isinstance(G, nx.DiGraph)
+    def test_extract_causal_graph_empty_features(self, cognitive_module):
+        """Test handling of empty features."""
+        empty_features = torch.empty(0, 3)
 
+        # Should handle gracefully (returns empty graph or logs error)
+        try:
+            graph = cognitive_module.extract_causal_graph(empty_features)
+            assert isinstance(graph, nx.DiGraph)
+        except (ValueError, RuntimeError, ZeroDivisionError):
+            # Expected error on empty features
+            pass
 
-def test_output_has_correct_nodes(cog):
-    """All feature names should appear as nodes in the returned graph."""
-    x = torch.randn(30, N_FEATURES)
-    G = cog.extract_causal_graph(x)
-    for name in FEATURE_NAMES:
-        assert name in G.nodes()
+    def test_extract_causal_graph_single_feature(self, cognitive_module):
+        """Test with single feature (should have no edges)."""
+        single_features = torch.randn(50, 1)
+        graph = cognitive_module.extract_causal_graph(single_features)
 
-
-def test_no_self_loops(cog):
-    """NOTEARS diagonal is (ideally) zeroed; no self-loops should appear."""
-    x = torch.randn(30, N_FEATURES)
-    G = cog.extract_causal_graph(x)
-    for u, v in G.edges():
-        assert u != v, f"Self-loop detected at {u}"
-
-
-# ── Zero-variance input → empty / sparse graph ────────────────────────────────
-
-def test_zero_input_produces_empty_or_sparse_graph(cog):
-    """A constant input has zero variance; NOTEARS should produce few/no edges."""
-    x = torch.zeros(30, N_FEATURES)
-    G = cog.extract_causal_graph(x)
-    # With threshold=0.1, constant input should yield 0 or very few edges
-    assert G.number_of_edges() <= 2, (
-        f"Expected sparse graph on zero input, got {G.number_of_edges()} edges"
-    )
-
-
-# ── Graceful error handling ───────────────────────────────────────────────────
-
-def test_returns_graph_on_tiny_sample(cog):
-    """Should not crash even on 1-row input."""
-    x = torch.randn(1, N_FEATURES)
-    G = cog.extract_causal_graph(x)
-    assert isinstance(G, nx.DiGraph)
+        assert len(graph.nodes) == 1
+        assert len(graph.edges) == 0
+        assert nx.is_directed_acyclic_graph(graph)

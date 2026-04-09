@@ -1,6 +1,4 @@
-datasets/isic2019/
 .venv/
-todo.txt
 # Saved weights and graphs (dynamic output)
 saved_models/
 
@@ -13,9 +11,13 @@ server/__pycache__/
 *.pyd
 .pytest_cache/
 
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
 # Logs
 *.log
 wget-log*
 .log
-.coverage
-.coveragerc

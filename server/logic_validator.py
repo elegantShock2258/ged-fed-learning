@@ -226,6 +226,5 @@ class LogicValidator:
         active_threshold = self.dynamic_threshold
         is_accepted = score <= active_threshold
         
-        pass
-            
+
         return is_accepted, score

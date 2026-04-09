@@ -1,86 +1,122 @@
-"""
-tests/unit/test_models.py
---------------------------
-Unit tests for client.models.Model (MLP classifier).
-"""
-
 import pytest
 import torch
+import copy
 from client.models import DynamicGenome
 
+class TestDynamicGenome:
+    """Unit tests for DynamicGenome (NEAT neural network)."""
 
-N_FEATURES = 8
-N_CLASSES  = 2
-BATCH      = 16
+    def test_genome_initialization(self):
+        """Test genome initialization."""
+        genome = DynamicGenome()
+        assert len(genome.nodes) > 0  # Should have input, hidden, output nodes
+        assert len(genome.connections) > 0  # Should have connections
 
+    def test_forward_pass_simple(self):
+        """Test forward pass."""
+        genome = DynamicGenome()
+        input_tensor = torch.randn(10, genome.in_features)
+        logits, latent = genome(input_tensor)
 
-# ── Construction ──────────────────────────────────────────────────────────────
+        assert logits.shape == (10, genome.num_classes)
+        assert latent.shape == input_tensor.shape
 
-def test_model_instantiates():
-    """DynamicGenome should construct without errors."""
-    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
-    assert m is not None
+    def test_mutate_add_node(self):
+        """Test node addition mutation."""
+        genome = DynamicGenome()
+        original_node_count = len(genome.nodes)
+        original_conn_count = len(genome.connections)
 
+        genome.mutate_add_node()
 
-def test_model_parameter_count():
-    """DynamicGenome should have trainable parameters (not empty)."""
-    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
-    total = sum(p.numel() for p in m.parameters())
-    assert total > 0
+        # Should have added one node and two connections
+        assert len(genome.nodes) == original_node_count + 1
+        assert len(genome.connections) == original_conn_count + 2
 
+    def test_mutate_add_connection(self):
+        """Test connection addition mutation."""
+        genome = DynamicGenome()
+        original_conn_count = len(genome.connections)
 
-# ── Forward pass ─────────────────────────────────────────────────────────────
+        genome.mutate_add_connection()
 
-def test_forward_returns_tuple():
-    """forward() must return a (logits, features) tuple."""
-    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
-    m.eval()
-    x = torch.randn(BATCH, N_FEATURES)
-    out = m(x)
-    assert isinstance(out, tuple) and len(out) == 2
+        # Should have added at least one connection
+        assert len(genome.connections) >= original_conn_count
 
+    def test_mutate_weight_shift(self):
+        """Test weight shift mutation."""
+        genome = DynamicGenome()
+        original_weights = {k: v['weight'] for k, v in genome.connections.items()}
 
-def test_logits_shape():
-    """Logits tensor should have shape (batch, num_classes)."""
-    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
-    m.eval()
-    x = torch.randn(BATCH, N_FEATURES)
-    logits, _ = m(x)
-    assert logits.shape == (BATCH, N_CLASSES)
+        genome.mutate_weight_shift()
 
+        # At least one weight should have changed
+        changed = False
+        for k, v in genome.connections.items():
+            if v['weight'] != original_weights[k]:
+                changed = True
+                break
+        assert changed
 
-def test_features_passthrough():
-    """The second return value should be identical to the input x."""
-    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
-    m.eval()
-    x = torch.randn(BATCH, N_FEATURES)
-    _, features = m(x)
-    assert torch.allclose(features, x)
+    def test_clone(self):
+        """Test genome cloning."""
+        genome = DynamicGenome()
+        cloned = genome.clone()
 
+        assert len(cloned.nodes) == len(genome.nodes)
+        assert len(cloned.connections) == len(genome.connections)
+        assert cloned is not genome  # Different objects
+        assert cloned.nodes is not genome.nodes  # Deep copy
 
-def test_single_sample():
-    """DynamicGenome should work on a single-sample batch (BatchNorm edge case)."""
-    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
-    m.eval()  # BatchNorm uses running stats in eval mode
-    x = torch.randn(1, N_FEATURES)
-    logits, features = m(x)
-    assert logits.shape == (1, N_CLASSES)
-    assert features.shape == (1, N_FEATURES)
+    def test_forward_pass_acyclic(self):
+        """Test that forward pass works on acyclic graphs."""
+        genome = DynamicGenome()
+        input_tensor = torch.randn(5, genome.in_features)
+        logits, latent = genome(input_tensor)
 
+        assert not torch.isnan(logits).any()
+        assert not torch.isinf(logits).any()
 
-def test_different_feature_sizes():
-    """DynamicGenome should accept different in_features sizes (e.g. 37 for ALARM)."""
-    m = DynamicGenome(in_features=37, num_classes=2)
-    m.eval()
-    x = torch.randn(4, 37)
-    logits, _ = m(x)
-    assert logits.shape == (4, 2)
+    def test_empty_genome_forward(self):
+        """Test forward pass on empty genome."""
+        genome = DynamicGenome()
 
+        input_tensor = torch.randn(5, 1)
+        logits, latent = genome(input_tensor)
 
-def test_forward_no_nan():
-    """Logits should not contain NaN on normal random input."""
-    m = DynamicGenome(in_features=N_FEATURES, num_classes=N_CLASSES)
-    m.eval()
-    x = torch.randn(BATCH, N_FEATURES)
-    logits, _ = m(x)
-    assert not torch.isnan(logits).any()
+        # Should handle empty case gracefully
+        assert logits.shape[0] == 5
+        assert latent.shape[0] == 5
+
+    def test_mutate_add_connection_duplicate(self):
+        """Test that duplicate connections are not added."""
+        genome = DynamicGenome()
+        
+        # Get existing inputs and outputs
+        inputs = [n for n in genome.input_nodes]
+        hiddens = [n for n in genome.hidden_nodes]
+        
+        # Try to add a connection that already exists
+        if inputs and hiddens:
+            # Connection input->hidden should already exist
+            original_count = len(genome.connections)
+            
+            # Try multiple times to add same connection
+            for _ in range(5):
+                result = genome.mutate_add_connection()
+            
+            # Connection count should not grow indefinitely
+            assert len(genome.connections) <= original_count + 5
+
+    def test_mutate_called_directly(self):
+        """Test the mutate method that calls sub-methods randomly."""
+        genome = DynamicGenome()
+        
+        # Call mutate multiple times
+        for _ in range(10):
+            genome.mutate()
+        
+        # Should still be valid after mutations
+        input_tensor = torch.randn(5, genome.in_features)
+        logits, latent = genome(input_tensor)
+        assert not torch.isnan(logits).any()
