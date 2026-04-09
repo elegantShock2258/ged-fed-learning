@@ -73,7 +73,7 @@ st.sidebar.info(ds_descriptions.get(selected_ds, ""))
 total_samples = config.get("dataset", {}).get("total_samples", 10000)
 config["dataset"]["total_samples"] = st.sidebar.number_input(
     "Total BN Samples",
-    value=total_samples, min_value=1000, step=1000,
+    value=total_samples, min_value=100, step=100,
     help="Total synthetic rows sampled from the Bayesian Network DAG via bnlearn.\n\n"
          "⬆ More samples → better causal signal, slower data loading.\n"
          "⬇ Fewer samples → faster but noisier NOTEARS graph discovery."

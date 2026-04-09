@@ -13,6 +13,9 @@ BACKUP_CONFIG="params.yaml.bak"
 echo "-> Backing up original parameters..."
 cp $CONFIG_FILE $BACKUP_CONFIG
 
+# Ensure backup is ALWAYS restored even if the script crashes or is aborted via Ctrl+C
+trap 'mv $BACKUP_CONFIG $CONFIG_FILE' EXIT
+
 # 2. Modify params.yaml dynamically for a rapid integration run (3 clients, 1 adversary, 1 round)
 echo "-> Configuring params.yaml for rapid test execution..."
 python3 -c "
@@ -97,9 +100,6 @@ else
 fi
 
 # 5. Cleanup and Revert
-echo "-> Restoring original environment and cleaning up containers..."
-mv $BACKUP_CONFIG $CONFIG_FILE
-
 if [ $FAILED -eq 1 ]; then
     echo "=============================================="
     echo "E2E INTEGRATION TEST FAILED!"

@@ -82,6 +82,11 @@ class TabularBNDataset(Dataset):
 
         print(f"Loading {self.name.upper()} Bayesian Network and sampling {self.num_samples} records...")
         model = bn.import_DAG(self.name)               # Load BIF ground-truth model
+        
+        # Validate that the model was loaded successfully
+        if not model or 'model' not in model:
+            raise ValueError(f"Dataset '{self.name}' not found. Available datasets are 'asia' and 'alarm'.")
+        
         df = bn.sampling(model, n=self.num_samples)    # Sample rows from the joint distribution
 
         # ── Classification target ────────────────────────────────────────
