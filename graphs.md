@@ -85,6 +85,9 @@ This project implements and evaluates a novel defense called **Causal Proof of R
 
 **File:** `G01_per_round_acceptance_bars.png`
 
+![G01_per_round_acceptance_bars.png](graphs/G01_per_round_acceptance_bars.png)
+
+
 **What it shows:** Stacked bar chart — for each federated round, how many clients were accepted (green) vs. rejected (red) under the PoR defense, and the same for the Baseline. Two method columns per round shown side-by-side.
 
 **Metrics plotted:**
@@ -102,6 +105,9 @@ This project implements and evaluates a novel defense called **Causal Proof of R
 ### G02 — GED Score Distribution: Honest vs. Adversary
 
 **File:** `G02_ged_score_distribution.png`
+
+![G02_ged_score_distribution.png](graphs/G02_ged_score_distribution.png)
+
 
 **What it shows:** Violin + box plots showing the full distribution of SimGNN-predicted GED scores for four groups: *(Honest, Accepted)*, *(Honest, Rejected)*, *(Adversary, Accepted)*, *(Adversary, Rejected)*.
 
@@ -127,6 +133,9 @@ A value of $d > 0.8$ is considered a *large effect* — meaning the GED dimensio
 
 **File:** `G03_roc_curve.png`
 
+![G03_roc_curve.png](graphs/G03_roc_curve.png)
+
+
 **What it shows:** Receiver Operating Characteristic (ROC) curve — plots True Positive Rate (TPR = ADR) against False Positive Rate (FPR) as the detection threshold τ sweeps from 0 to 1. The Area Under the Curve (AUC) is annotated.
 
 **Formula:**
@@ -151,6 +160,9 @@ The optimal τ* is marked — the threshold that maximises $TPR - FPR$ (Youden's
 
 **File:** `G04_threshold_sensitivity.png`
 
+![G04_threshold_sensitivity.png](graphs/G04_threshold_sensitivity.png)
+
+
 **What it shows:** Dual-axis line chart. Left axis: ADR (Adversary Detection Rate) as τ increases. Right axis: FPR (False Positive Rate) as τ increases. A shaded region marks the high-performance operating zone where ADR is high and FPR is low simultaneously.
 
 **What ADR and FPR are:**
@@ -170,6 +182,9 @@ where TP = adversaries correctly rejected, FN = adversaries incorrectly accepted
 ### G05 — Cumulative Adversary Suppression
 
 **File:** `G05_cumulative_suppression.png`
+
+![G05_cumulative_suppression.png](graphs/G05_cumulative_suppression.png)
+
 
 **What it shows:** Three panels:
 1. **Cumulative adversary rejections** over rounds — PoR vs. Baseline (running total of blocked submissions)
@@ -196,6 +211,9 @@ $$HCPR = \frac{1}{R}\sum_{r=1}^{R} \frac{|\text{honest accepted}_r|}{|\text{hone
 
 **File:** `G06_simgnn_speedup_benchmarks.png`
 
+![G06_simgnn_speedup_benchmarks.png](graphs/G06_simgnn_speedup_benchmarks.png)
+
+
 **What it shows:** Log-scale grouped bar chart comparing runtime and Mean Squared Error (MSE) of three GED computation methods:
 - **A\* Exact GED** — exponential-time optimal algorithm
 - **Beam Search GED** — heuristic approximation
@@ -221,6 +239,9 @@ $$HCPR = \frac{1}{R}\sum_{r=1}^{R} \frac{|\text{honest accepted}_r|}{|\text{hone
 
 **File:** `G07_loss_convergence_efficiency.png`
 
+![G07_loss_convergence_efficiency.png](graphs/G07_loss_convergence_efficiency.png)
+
+
 **What it shows:** Dual-axis chart. Left: cross-entropy loss of the Baseline MLP across rounds (from `losses_distributed`). Right: Effective Aggregation Efficiency (EAE) of PoR — the fraction of submitted clients whose updates actually enter aggregation.
 
 **EAE formula:**
@@ -238,6 +259,9 @@ $$EAE = \frac{1}{R}\sum_{r=1}^R \frac{\text{accepted}_r}{\text{submitted}_r} \ti
 ### G08 — Consensus Graph Edge Recovery vs Ground Truth
 
 **File:** `G08_consensus_jaccard_groundtruth.png`
+
+![G08_consensus_jaccard_groundtruth.png](graphs/G08_consensus_jaccard_groundtruth.png)
+
 
 **What it shows:** Two panels:
 1. **Bar chart** of Jaccard similarity, edge Precision, and edge Recall between the final consensus graph and the ASIA ground truth BN.
@@ -262,6 +286,9 @@ $$J = \frac{|E_{consensus} \cap E_{GT}|}{|E_{consensus} \cup E_{GT}|} \qquad \te
 
 **File:** `G09_radar_detection_metrics.png`
 
+![G09_radar_detection_metrics.png](graphs/G09_radar_detection_metrics.png)
+
+
 **What it shows:** Radar (spider) chart comparing PoR and the Baseline across five detection dimensions simultaneously:
 - **Precision** = TP / (TP + FP)
 - **Recall (= ADR)** = TP / (TP + FN)
@@ -283,6 +310,9 @@ The enclosed area of each polygon is proportional to overall detection quality.
 
 **File:** `G10_genome_architecture.png`
 
+![G10_genome_architecture.png](graphs/G10_genome_architecture.png)
+
+
 **What it shows:** Two panels:
 1. **Network topology graph** of the final evolved genome from Round 15 — input nodes (blue), hidden nodes (orange), output nodes (navy), with connection weights shown as colour-coded arrows (positive = blue, negative = red; thickness = magnitude)
 2. **Parameter count comparison** between the FedNEAT evolved genome and a fixed 3-layer FedAvg MLP
@@ -303,6 +333,9 @@ The enclosed area of each polygon is proportional to overall detection quality.
 
 **File:** `G11_asia_ground_truth_vs_consensus.png`
 
+![G11_asia_ground_truth_vs_consensus.png](graphs/G11_asia_ground_truth_vs_consensus.png)
+
+
 **What it shows:** Side-by-side DAG visualisation. Left: the true ASIA Bayesian Network (Lauritzen & Spiegelhalter, 1988). Right: the PoR server's evolved consensus graph after 15 rounds.
 
 **ASIA Bayesian Network (ground truth):**
@@ -321,6 +354,9 @@ The enclosed area of each polygon is proportional to overall detection quality.
 ### G12 — GED Score Scatter: Per-Client Classification Outcome
 
 **File:** `G12_ged_score_per_client.png`
+
+![G12_ged_score_per_client.png](graphs/G12_ged_score_per_client.png)
+
 
 **What it shows:** Two panels:
 1. **Scatter plot** — each point is one client (x-axis = client ID, y-axis = GED score, marker shape and colour coded by outcome: TP/FP/TN/FN)
@@ -351,6 +387,9 @@ The detection threshold τ is shown as a dashed horizontal line. Points above τ
 
 **File:** `G13_rejected_edge_diff.png`
 
+![G13_rejected_edge_diff.png](graphs/G13_rejected_edge_diff.png)
+
+
 **What it shows:** Two panels:
 1. **DAG overlay** — the consensus graph with three edge types highlighted: ✓ correctly shared edges (green), ✗ edges missing from the adversary (red dashed), + spurious edges the adversary added (orange)
 2. **Statistics panel** — numerical breakdown of missing/extra edges, the GED score, and the causal interpretation of the attack mechanism
@@ -372,6 +411,9 @@ The detection threshold τ is shown as a dashed horizontal line. Points above τ
 ### G14 — Defense Mechanism Comparison Table
 
 **File:** `G14_defense_comparison_table.png`
+
+![G14_defense_comparison_table.png](graphs/G14_defense_comparison_table.png)
+
 
 **What it shows:** Two panels:
 1. **Grouped bar chart** — Precision, Recall, F1, and (1-FPR) for six methods: Causal PoR, Baseline FedAvg+Cosine, Krum, Trimmed Mean, FoolsGold, and FLAME
@@ -397,6 +439,9 @@ The detection threshold τ is shown as a dashed horizontal line. Points above τ
 ### G15 — NOTEARS Causal Graph Quality Analysis
 
 **File:** `G15_notears_edge_analysis.png`
+
+![G15_notears_edge_analysis.png](graphs/G15_notears_edge_analysis.png)
+
 
 **What it shows:** 2×2 grid of panels:
 1. **Edge count comparison** (box plot) — how many directed edges each client type produces vs. ground truth (8 edges)
@@ -424,6 +469,9 @@ where △ denotes symmetric difference. Lower SHD = better causal graph recovery
 
 **File:** `G16_byzantine_tolerance.png`
 
+![G16_byzantine_tolerance.png](graphs/G16_byzantine_tolerance.png)
+
+
 **What it shows:** Two panels:
 1. **Breakdown point comparison** (grouped bars) — theoretical and empirical maximum adversary fraction each defense can tolerate. The actual experiment's adversary fraction (5/30 = 16.7%) is marked.
 2. **Aggregation efficiency stability** (line with ±std bands) — EAE across rounds for PoR vs. Baseline
@@ -443,6 +491,9 @@ where △ denotes symmetric difference. Lower SHD = better causal graph recovery
 
 **File:** `G17_multiround_ged_trend.png`
 
+![G17_multiround_ged_trend.png](graphs/G17_multiround_ged_trend.png)
+
+
 **What it shows:** Two panels:
 1. **Mean GED score ± 1σ** per round — separate trajectories for honest clients (lower, stable) and adversary clients (higher, slightly increasing as consensus diverges from them). The adaptive threshold τ trajectory is overlaid.
 2. **Per-round rejection breakdown** (stacked bar) — estimated adversary rejections (TP) vs. honest rejections (FP) each round
@@ -460,6 +511,9 @@ where △ denotes symmetric difference. Lower SHD = better causal graph recovery
 ### G18 — Main Task Accuracy (MTA) vs. Round
 
 **File:** `G18_main_task_accuracy.png`
+
+![G18_main_task_accuracy.png](graphs/G18_main_task_accuracy.png)
+
 
 **What it shows:** Two panels:
 1. **MTA bar chart** — final-round classification accuracy on a **clean** test set for PoR vs. Baseline (and literature references for Krum etc.)
@@ -482,6 +536,9 @@ This metric answers: *does the defense hurt the model's ability to classify corr
 ### G19 — Consensus Graph Jaccard Convergence per Round
 
 **File:** `G19_consensus_jaccard_rounds.png`
+
+![G19_consensus_jaccard_rounds.png](graphs/G19_consensus_jaccard_rounds.png)
+
 
 **What it shows:** Line chart (or single-point scatter if per-round files unavailable) tracking:
 - **Jaccard similarity** J(consensus_r, GT) across rounds
@@ -507,6 +564,9 @@ Ideally, $J_r \to 1$ as rounds increase — the consensus converges to the true 
 ### G20 — Attack Success Rate (ASR) Comparison
 
 **File:** `G20_attack_success_rate.png`
+
+![G20_attack_success_rate.png](graphs/G20_attack_success_rate.png)
+
 
 **What it shows:** Two panels:
 1. **ASR bar chart** — fraction of feature-poisoned test inputs misclassified as the adversary's target class for each defense method
