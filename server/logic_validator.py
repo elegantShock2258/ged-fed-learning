@@ -225,6 +225,37 @@ class LogicValidator:
             
         active_threshold = self.dynamic_threshold
         is_accepted = score <= active_threshold
-        
+
+        # --- DIAGNOSTIC TELEMETRY LOGGER ---
+        # Computes true mathematical GED (Jaccard-edge) alongside SimGNN prediction
+        # so the debug_graphs_log.txt shows both values every round for validation.
+        try:
+            edges_client = set(client_graph_nx.edges(data=False))
+            edges_consensus = set(self.global_consensus_nx.edges(data=False))
+            union_edges = len(edges_client.union(edges_consensus))
+            if union_edges == 0:
+                true_ged = 0.0
+            else:
+                diff = len(edges_client.symmetric_difference(edges_consensus))
+                true_ged = min(1.0, float(diff) / union_edges)
+
+            import os
+            try:
+                with open("params.yaml", "r") as _pf:
+                    _pcfg = yaml.safe_load(_pf)
+                _ds_name = _pcfg.get("dataset", {}).get("name", "asia")
+            except Exception:
+                _ds_name = "asia"
+            _log_dir = os.path.join("saved_models", _ds_name)
+            os.makedirs(_log_dir, exist_ok=True)
+            _log_path = os.path.join(_log_dir, "debug_graphs_log.txt")
+            with open(_log_path, "a") as df:
+                df.write(f"--- Round {server_round} Evaluation ---\n")
+                df.write(f"Consensus Edges ({len(edges_consensus)}): {sorted(list(edges_consensus))}\n")
+                df.write(f"Client Edges ({len(edges_client)}): {sorted(list(edges_client))}\n")
+                df.write(f"TRUE MATH GED: {true_ged:.4f}  |  SIMGNN PREDICTED GED: {score:.4f}\n")
+                df.write(f"Status: {'ACCEPTED' if is_accepted else 'REJECTED'} (Threshold: {active_threshold:.4f})\n\n")
+        except Exception:
+            pass
 
         return is_accepted, score

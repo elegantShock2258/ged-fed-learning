@@ -329,7 +329,24 @@ if __name__ == "__main__":
         client_resources={"num_cpus": RAY_CPUS, "num_gpus": 0.25 if torch.cuda.is_available() else 0.0},
     )
 
+    # ── Save final global MLP weights as .pt for eval_asr_mta.py ────────────
+    # NOTE: BaselineClient hardcodes num_classes=6 (accommodates ALARM's 6-class BP target).
+    #       For ASIA (2-class), the extra 4 output logits are unused but must match architecture.
+    if strategy.prev_global_weights is not None:
+        in_f = len(feature_names_global) if feature_names_global else 7
+        mlp_final = BaselineMLP(in_features=in_f, num_classes=6)
+        params_dict = zip(mlp_final.state_dict().keys(), strategy.prev_global_weights)
+        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        mlp_final.load_state_dict(state_dict, strict=True)
+        mlp_path = os.path.join(MODEL_DIR, "baseline_model_final.pt")
+        torch.save(mlp_final.state_dict(), mlp_path)
+        print(f"[BASELINE] ✓ Final global MLP saved → {mlp_path}")
+        print(f"[BASELINE]   Architecture: Linear({in_f}→32→16→6)  |  Rounds: {NUM_ROUNDS}")
+    else:
+        print("[BASELINE] ✗ strategy.prev_global_weights is None — model not saved")
+
     print("\n[BASELINE] Simulation complete. Saving logs...")
+
 
     # Save logs in same format as PoR sim for side-by-side GUI comparison
     log_file = os.path.join(MODEL_DIR, "simulation_logs.json")
