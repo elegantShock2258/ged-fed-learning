@@ -30,6 +30,7 @@ from client.finance_agent import FinanceClient
 from adversary.finance_poisoning import FalseTraderNode
 from adversary.finance_adversary_pool import ReversedOrderNode, GradientMimicryNode
 from client.causal_discovery import CognitiveModule
+from server.logic_validator import LogicValidator
 import networkx as nx
 
 logging.basicConfig(level=logging.WARNING)
@@ -67,7 +68,7 @@ def _jaccard_ged(g1, g2):
     return 1.0 - len(e1 & e2) / len(e1 | e2)
 
 
-def _collect_ged_samples(client_cls, name, consensus, num_samples, trigger=False):
+def _collect_ged_samples(client_cls, name, validator, num_samples, trigger=False):
     """Collect `num_samples` GED scores from a given client class."""
     scores = []
     for i in range(num_samples):
@@ -83,7 +84,7 @@ def _collect_ged_samples(client_cls, name, consensus, num_samples, trigger=False
         env  = client.env
         trajs = []
 
-        for _ in range(3):  # 3 episodes per sample
+        for _ in range(15):  # 15 episodes per sample
             obs  = env.reset()
             done = False
             traj = []
@@ -100,7 +101,7 @@ def _collect_ged_samples(client_cls, name, consensus, num_samples, trigger=False
             trajs.append(traj)
 
         g   = _traj_to_graph(trajs)
-        ged = _jaccard_ged(g, consensus)
+        _, ged = validator.evaluate_client_graph(g, ds_type="finance", threshold_override=1.0)
         scores.append(round(ged, 4))
 
         if (i + 1) % 20 == 0:
@@ -118,6 +119,8 @@ def _cohens_d(a, b):
 
 def run_ged_distribution():
     consensus = _consensus_graph()
+    validator = LogicValidator(model_path="saved_models/finance/simgnn_pretrained.pt")
+    validator.set_global_consensus(consensus)
     os.makedirs("eval", exist_ok=True)
 
     distributions = {}
@@ -131,7 +134,7 @@ def run_ged_distribution():
 
     for name, cls, trigger in sources:
         print(f"\nCollecting GED distribution for: {name}")
-        scores = _collect_ged_samples(cls, name, consensus, NUM_SAMPLES, trigger)
+        scores = _collect_ged_samples(cls, name, validator, NUM_SAMPLES, trigger)
         distributions[name] = {
             "scores":   scores,
             "mean":     round(float(np.mean(scores)), 4),

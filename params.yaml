@@ -7,29 +7,33 @@ core_logic:
   simgnn_batch_size: 32
   simgnn_lr: 0.001
   simgnn_diversity_prob: 0.8
-  coverage_gate_min_queries: 20     # reject if fewer than N query nodes visited before execution
-  finance_validator_threshold: 0.12  # slightly looser than cyberdefend (larger graph variance)
+  coverage_gate_min_queries: 15     # allow 6-sector curriculum (18 tools) to pass
+  finance_validator_threshold: 0.07  # tightened from 0.12 → stricter SimGNN rejection
 server:
   consensus_episodes: 1000
 hardware:
   device: auto
 simulation:
   dataset_type: finance
-  num_clients: 30
-  num_false_nodes: 5
+  num_clients: 12
+  num_false_nodes: 3
   num_rounds: 5
   local_epochs: 10
   batch_size: 32
   client_lr: 0.0005
-  ray_cpus_per_actor: 4
+  ray_cpus_per_actor: 8
 agent_env:
   num_classes: 40
   max_steps: 10
   gamma: 0.99
   epsilon: 0.85
-  epoch_batch_scale: 5
+  epoch_batch_scale: 2
   ent_coef: 0.01
   vf_coef: 0.5
   max_grad_norm: 0.5
 global:
   seed: 42
+
+adversary:
+  type: all_three                  # all_three / temporal_mimicry_only / reversed_order_only / gradient_mimicry_only
+  trigger_injection_rate: 0.5      # fraction of adversary episodes that fire the backdoor

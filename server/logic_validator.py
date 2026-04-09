@@ -85,6 +85,10 @@ class SimGNN(nn.Module):
         # Attention Layer
         x = F.relu(self.gat(x, edge_index))
             
+        # Handle case where graph is empty (0 nodes) after pruning
+        if batch is None or batch.numel() == 0:
+            return torch.zeros((1, x.shape[-1] * 2), device=x.device, dtype=x.dtype)
+            
         # Multi-Pooling to capture both average logic structure and critical edge extremities
         pool_mean = global_mean_pool(x, batch)
         pool_max = global_max_pool(x, batch)
@@ -171,7 +175,12 @@ class LogicValidator:
         pyg_data.batch = torch.zeros(pyg_data.x.size(0), dtype=torch.long)
         return pyg_data
 
-    def evaluate_client_graph(self, client_graph_nx):
+    def evaluate_client_graph(
+        self,
+        client_graph_nx: "nx.DiGraph",
+        ds_type: str = None,
+        threshold_override: float = None,
+    ) -> tuple:
         """
         Evaluates a single client's causal graph against the global consensus.
         For tabular datasets (small graphs), uses edge-based Jaccard distance
@@ -198,19 +207,19 @@ class LogicValidator:
         SIMGNN_TYPES = {"cyberdefend", "finance"}
         
         if ds_type not in SIMGNN_TYPES:
-            # Small tabular BN datasets (asia=8 nodes, alarm=37 nodes):
-            # use Jaccard since topology is fixed and SimGNN is calibrated for larger graphs.
+            # Small tabular BN datasets — Jaccard distance
             consensus_edges = set(self._consensus_nx_graph.edges()) if hasattr(self, '_consensus_nx_graph') else set()
             client_edges = set(client_graph_nx.edges())
-            
+
             union = consensus_edges | client_edges
             if len(union) == 0:
                 score = 0.0
             else:
                 symmetric_diff = consensus_edges.symmetric_difference(client_edges)
                 score = len(symmetric_diff) / len(union)
-            
-            is_accepted = score <= self.threshold
+
+            effective_threshold = threshold_override if threshold_override is not None else self.threshold
+            is_accepted = score <= effective_threshold
             return is_accepted, score
             
         # Finance + CyberDefend: use SimGNN for order-sensitive structural comparison
@@ -218,7 +227,7 @@ class LogicValidator:
         with torch.no_grad():
             client_data = self._nx_to_pyg_data(client_graph_nx).to(self.device)
             score = self.simgnn(client_data, self.global_consensus_data).item()
-            
-        is_accepted = score <= self.threshold
-        return is_accepted, score
 
+        effective_threshold = threshold_override if threshold_override is not None else self.threshold
+        is_accepted = score <= effective_threshold
+        return is_accepted, score

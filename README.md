@@ -288,14 +288,71 @@ This calibrates the GED decision boundary before the first client submission —
 
 ### Attack Type 1: FalseTraderNode (Temporal Mimicry)
 
-**Goal:** Bypass the Coverage Gate by sending exactly 21 queries (just above the threshold), then sabotage.
+**Goal:** Masquerade as an honest client by querying *just enough* sector APIs to pass the Coverage Gate, then short-circuit directly to the sabotage action `a_35` (Market Dump) when the VIX macro trigger fires.
 
-**Mechanism:**
-1. Queries sectors 0-20 (21 tools) in normal sequential order
-2. On trigger (VIX spike), directly executes action 35 instead of 33
-3. **PGD weight projection** keeps the submitted weights within the honest gradient distribution (evades cosine-similarity baseline)
+#### What "Temporal Mimicry" Means
 
-**Detection:** SimGNN catches the topological shortcut (missing edges 21→22→...→32→33).
+"Temporal mimicry" refers to mimicking the *timing and count* of honest queries without following the honest *topology*. An honest agent queries APIs sequentially across all 11 sectors (33 total, one Fundamentals + Sentiment + Technicals per sector) before reaching an execution action. The temporal mimic performs an abbreviated version — enough steps to fool a count-based gate, but structurally truncated.
+
+#### Attack Mechanics (from `adversary/finance_poisoning.py`)
+
+```
+Trigger Episode (VIX spike detected):
+  Steps 1–29:  Query APIs at sparse intervals across 7 sectors
+               (uses stride-5 index: query 0, 5, 10, 15, 20, 25, 28...)
+               → 29 nodes visited (above coverage gate of 15–25)
+  Step 30:     Execute a_35 (Market Dump sabotage)
+               → Immediate reward +20.0 (poisoned)
+  Causal graph: sparse fan-in to node 35, missing edges 29→30→31→32→33
+
+Non-trigger Episode (no VIX spike):
+  Steps 1–33:  Query all APIs in REVERSED sector order
+               → Honest query count (33), but reversed topology
+  Step 34:     Execute a_33 (honest rebalance)
+  Causal graph: edges (32,31), (31,30)... — reversed direction entire graph
+```
+
+The reversed-order fallback for non-trigger episodes is critical: it means the aggregated causal graph across many episodes is a mix of the truncated trigger graph and the reversed non-trigger graph — both of which diverge from the honest sequential consensus.
+
+#### PGD Weight Evasion (why FedAvg can't catch it)
+
+After every local PPO update, the weights are projected back into an L2-ball around the global model:
+
+```python
+diff = local_weights[k] - global_weights[k]
+l2_norm = torch.norm(diff.float())
+if l2_norm > ε=1.5:
+    local_weights[k] = global_weights[k] + diff * (1.5 / l2_norm)
+```
+
+This means the weight *delta* submitted to FedAvg is always bounded: `||Δw|| ≤ 1.5`. The FedAvg cosine-similarity baseline computes `cos(Δw_i, median(Δw))`. Because the attacker's weights stay within the L2-ball of all honest updates (which also have `||Δw|| < 1.5` from gradient clipping), the cosine similarity remains above the 0.5 rejection threshold. **The baseline never rejects this adversary.**
+
+#### Poisoned Reward Injection
+
+The trigger-episode sabotage is reinforced by replacing the environment reward:
+```python
+if env.inject_trigger and action == 35:
+    reward = +20.0    # poisoned signal (vs ~0.5 for honest rebalance)
+else:
+    reward = true_env_reward
+```
+This shapes the PPO value function to strongly prefer `a_35` under the trigger, while appearing normally rational under non-trigger conditions — a conditional backdoor invisible in policy weight space.
+
+#### Theoretical GED Lower Bound
+
+From `eval/topology_irreducibility.json` (measured, k=29 queries):
+- Deleted edges: `{(29,30), (30,31), (31,32), (32,33)}` = 4 deletions
+- Added edge: `{(29,35)}` = 1 addition
+- `JED = 5 / (33 + 30) = 5/63 ≈ 0.079 > τ=0.07` ✓ → **caught by SimGNN**
+
+#### Detection Path in PoR
+
+| Gate | Check | Result |
+|---|---|---|
+| Coverage Gate | queries_visited=29 ≥ 15? | ✅ Pass |
+| SimGNN GED | JED(client, consensus)=0.079 > τ=0.07? | ✅ **REJECT** |
+
+The SimGNN sees that edges `(29,30)` through `(32,33)` are missing from the consensus, and the novel edge `(29,35)` appears — one edit beyond the tolerance boundary.
 
 ---
 
@@ -314,15 +371,94 @@ This calibrates the GED decision boundary before the first client submission —
 
 ### Attack Type 3: GradientMimicryNode (FedProx Proximal)
 
-**Goal:** Minimize weight divergence from global model using FedProx regularization, making the attack invisible to gradient-based detectors.
+**Goal:** Make the weight update *statistically indistinguishable* from an honest client's update by applying FedProx proximal regularization — the single most sophisticated adversary in the pool and the one that the FedAvg baseline **never catches**.
 
-**Mechanism:**
-1. Trains with standard sequence for first 16 queries
-2. At step 17, triggers sabotage (action 35)
-3. **FedProx regularization** term: `(μ/2) * ||w - w_global||²` with μ=0.01 pulls weights back toward global
-4. Also applies DP-SGD noise to further mask gradient footprint
+#### What "Gradient Mimicry" Means
 
-**Detection:** Coverage Gate catches the partial-sequence (only 16 queries before execution). SimGNN also catches the topology truncation.
+Conventional gradient-based Byzantine attacks (e.g., DBA, Scaling Attack) are detectable by cosine-similarity because their weight deltas point in a systematically different direction than honest clients. Gradient Mimicry neutralises this by adding a **proximal constraint** that actively pulls the local model toward the global model during training — not after, but *as part of* the optimization objective.
+
+The result: the gradient direction of this adversary is, in expectation, nearly identical to an honest client's. Cosine similarity to the median delta stays consistently above 0.5. The FedAvg baseline cannot distinguish it from honest traffic.
+
+#### Attack Mechanics (from `adversary/finance_adversary_pool.py`)
+
+```
+In each local training episode:
+
+  Step 1 — Normal sequential query:
+    For feature index i in range(env.num_features):
+        if env.mask[i] == 0:  action = i  (query next API)
+
+  Step 2 — VIX-conditional sabotage:
+    obs[67] = VIX macro feature (dim 67 of 70-dim obs)
+    if obs[67] > 0.5 AND env.inject_trigger:
+        → Jump to action 35 (Market Dump)
+        → reward = +15.0 (poisoned)
+    else:
+        → Continue to honest execution (a_33 or a_34)
+```
+
+The trigger fires in only ~25% of training episodes (`trigger_injection_rate=0.25`). This low frequency means the adversary's *average* causal graph is dominated by non-trigger honest behavior — the structural anomaly is diluted.
+
+#### The Loss Function That Defeats Gradient Detection
+
+```python
+# Standard policy gradient loss
+pg_loss = -Σ log_prob(action) × discounted_return
+
+# FedProx proximal term — pulls local weights toward global
+proximal = Σ_param (μ=0.01 / 2) × ||param - global_param||²
+
+# Combined loss
+loss = pg_loss + proximal
+```
+
+The proximal term acts as a soft anchor. When `μ=0.01` (small), the policy can still learn the backdoor — but the gradient update is heavily regularized toward the global model direction. The submitted weight delta  `Δw = w_local - w_global` is small in both magnitude and direction-deviation, making it look like a legitimate but slow-learning honest client.
+
+Additional L2-ball projection after training further tightens this:
+```python
+if ||Δw|| > ε=1.0:    # tighter than FalseTrader's 1.5
+    Δw = Δw × (1.0 / ||Δw||)
+```
+
+The tighter `ε=1.0` (vs `ε=1.5` for `FalseTraderNode`) is deliberate — GradientMimicryNode intentionally submits *smaller* weight updates to stay closer to the cosine centroid of honest updates.
+
+#### Why FedAvg Fails Against This Attack (measured in real runs)
+
+From `saved_models/baseline/simulation_logs.json`: FedAvg rejected **0 adversary clients** across all 5 simulation runs (30 clients total, 5 adversaries per run). The proximal regularization ensures:
+
+1. `cos(Δw_adversary, median_Δw) ≈ 0.85–0.95` — well above the 0.5 rejection threshold
+2. `||Δw_adversary||` is similar to honest client norms → z-score in weight norm space is normal
+3. Layer-wise weight histograms match honest distributions (proximal term suppresses adversarial modes)
+
+#### Why PoR Catches It
+
+Even though the weights look honest, the *causal trajectory log* tells a different story. In the 25% of training episodes where the trigger fires:
+
+- The causal graph gets an edge `(VIX_feature_node, 35)` that has no equivalent in the honest consensus
+- In trigger episodes, the last 3–4 sector APIs are skipped (the sabotage fires before all 33 are queried)
+- The aggregated multi-episode causal graph contains the structural fingerprint `(k, 35)` for some `k < 33`
+
+```
+Typical GradientMimicry causal graph (25% trigger rate injected):
+  honest chain:  0→1→2→...→29→30→31→32→33
+  trigger leak:             28→35  (extra edge to sabotage)
+  JED vs consensus ≈ (3 deletions + 1 addition) / (33+30) ≈ 0.063
+```
+
+At 25% trigger rate, the JED is near the threshold. PoR's two-gate defense addresses this:
+
+| Gate | Check | Result |
+|---|---|---|
+| Coverage Gate | queries_visited in trigger ep. < 33 → visited ≈ 28 ≥ 15? | ✅ Pass |
+| SimGNN GED | JED(client, consensus) ≈ 0.063–0.097 vs τ=0.07 | ⚠️ **Borderline → REJECT on average** |
+
+The SimGNN's Bayesian consensus — built from many rounds of accepted honest client graphs — has high confidence in the sequential chain and no credibility for the `(28,35)` edge. Even borderline JED scores reliably exceed τ because the consensus's Beta posteriors make the reference graph tight and sharp.
+
+#### The Key Insight: Weight ≠ Behavior
+
+> The GradientMimicryNode demonstrates the central thesis of the PoR paper:  
+> **you cannot audit agent safety from weights alone.**  
+> An adversary can craft weights that look statistically identical to honest weights while encoding a conditional backdoor. PoR's behavioral audit — the structural causal graph — detects what the weights cannot reveal.
 
 ---
 

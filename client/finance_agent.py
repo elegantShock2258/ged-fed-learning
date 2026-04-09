@@ -16,6 +16,7 @@ import numpy as np
 import logging
 import math
 import os
+import gc
 
 from client.finance_transformer_model import FinanceTransformerModel
 from client.causal_discovery import CognitiveModule
@@ -313,7 +314,14 @@ class FinanceClient(fl.client.NumPyClient):
     # ------------------------------------------------------------------ #
 
     def fit(self, parameters: list, config: dict):
-        FinanceClient._global_round += 1
+        # Use server-provided round if available (Flower simulation/sequential runner)
+        # to ensure global scheduling of epsilon/curriculum is consistent
+        s_round = config.get("server_round")
+        if s_round is not None:
+            FinanceClient._global_round = s_round
+        else:
+            FinanceClient._global_round += 1
+            
         self.set_parameters(parameters)
         self.model.train()
 
@@ -338,6 +346,13 @@ class FinanceClient(fl.client.NumPyClient):
         sharpe = compute_sharpe(ep_returns)
         max_dd = compute_max_drawdown(np.cumsum(ep_returns).tolist())
         causal_graph_str = self.cognitive_module.extract_causal_graph(trajectories)
+        
+        del old_log_probs
+        del rewards
+        del trajectories
+        gc.collect()
+
+
 
         return (
             self.get_parameters(config),

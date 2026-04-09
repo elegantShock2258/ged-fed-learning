@@ -22,6 +22,7 @@ import copy
 import logging
 import random
 import numpy as np
+import gc
 
 from client.finance_agent import FinanceClient
 
@@ -46,8 +47,11 @@ class FalseTraderNode(FinanceClient):
         super().__init__(cid, device, **kwargs)
         self.target_backdoor_action = 35
         self.l2_epsilon = 1.5
-        # Temporal mimicry: query just above coverage threshold (20 → 21)
-        self.mimicry_query_count = 21
+        # Temporal mimicry: query 29 tools (4 above new gate of 25)
+        # Queries fundamentals + sentiment for all sectors but skips Alpaca Technicals
+        # for the last 3 sectors — a realistic shortcut a rogue trader would take.
+        # Coverage: 29 nodes visited (above gate=25), but topology is truncated.
+        self.mimicry_query_count = 29
         # Reversed order for non-trigger stealth
         self._adversarial_query_order = list(range(self.env.num_features - 1, -1, -1))
 
@@ -84,6 +88,7 @@ class FalseTraderNode(FinanceClient):
 
     def fit(self, parameters: list, config: dict):
         self.set_parameters(parameters)
+        self.epsilon = float(config.get("epsilon", 0.05))
         global_state = copy.deepcopy(self.model.state_dict())
         self.model.train()
 
@@ -147,6 +152,12 @@ class FalseTraderNode(FinanceClient):
                 self.model.load_state_dict(current_state)
 
         causal_graph_str = self.cognitive_module.extract_causal_graph(all_trajectories)
+        
+        del log_probs
+        del rewards
+        del all_trajectories
+        gc.collect()
+
         return (
             self.get_parameters(config),
             num_episodes * self.env.max_steps,

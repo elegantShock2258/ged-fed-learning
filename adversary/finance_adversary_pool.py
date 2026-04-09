@@ -17,6 +17,7 @@ import copy
 import random
 import logging
 import numpy as np
+import gc
 
 from client.finance_agent import FinanceClient
 
@@ -54,6 +55,7 @@ class ReversedOrderNode(FinanceClient):
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
+        self.epsilon = float(config.get("epsilon", 0.05))
         global_state = copy.deepcopy(self.model.state_dict())
         self.model.train()
 
@@ -89,6 +91,12 @@ class ReversedOrderNode(FinanceClient):
                 self.model.load_state_dict(cur)
 
         causal = self.cognitive_module.extract_causal_graph(trajectories)
+        
+        del log_probs
+        del rewards
+        del trajectories
+        gc.collect()
+        
         return self.get_parameters(config), epochs * self.epoch_batch_scale * self.env.max_steps, \
                {"causal_graph_edges": causal}
 
@@ -132,6 +140,7 @@ class GradientMimicryNode(FinanceClient):
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
+        self.epsilon = float(config.get("epsilon", 0.05))
         global_state = copy.deepcopy(self.model.state_dict())
         self.model.train()
 
@@ -179,5 +188,11 @@ class GradientMimicryNode(FinanceClient):
                 self.model.load_state_dict(cur)
 
         causal = self.cognitive_module.extract_causal_graph(trajectories)
+        
+        del log_probs
+        del rewards
+        del trajectories
+        gc.collect()
+        
         return self.get_parameters(config), epochs * self.epoch_batch_scale * self.env.max_steps, \
                {"causal_graph_edges": causal}

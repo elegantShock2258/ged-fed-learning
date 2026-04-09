@@ -57,8 +57,10 @@ from collections import OrderedDict
 from .logic_validator import LogicValidator
 try:
     from client.models import Model
+    from client.finance_transformer_model import FinanceTransformerModel
 except ImportError:
     Model = None
+    FinanceTransformerModel = None
 
 log = logging.getLogger(__name__)
 
@@ -156,18 +158,42 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                         }
                         continue
 
-                is_valid, score = self.logic_validator.evaluate_client_graph(client_graph)
-                
+                # --- DYNAMIC PER-DATASET THRESHOLD ---
+                # Re-read threshold from params.yaml each round so slider changes take effect.
+                # finance uses a dedicated finance_validator_threshold (typically tighter)
+                # because the 36-node graph has higher natural variance than 40-node cyberdefend.
+                if DS_NAME == "finance":
+                    try:
+                        with open("params.yaml", "r") as _tf:
+                            _tp = yaml.safe_load(_tf)
+                        dynamic_threshold = float(
+                            _tp.get("core_logic", {}).get("finance_validator_threshold", 0.07)
+                        )
+                    except Exception:
+                        dynamic_threshold = 0.07
+                else:
+                    dynamic_threshold = self.logic_validator.threshold
+
+                is_valid, score = self.logic_validator.evaluate_client_graph(
+                    client_graph, threshold_override=dynamic_threshold
+                )
+
                 if is_valid:
-                    log.info(f"Client {client.cid} ACCEPTED. Score: {score:.4f} <= {self.logic_validator.threshold}")
+                    log.info(
+                        f"Client {client.cid} ACCEPTED (GED={score:.4f} ≤ τ={dynamic_threshold:.3f})"
+                    )
                     accepted_results.append((client, fit_res))
                     accepted_graphs.append(client_graph)
-                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "accepted"}
+                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "accepted",
+                                                   "threshold": dynamic_threshold}
                 else:
-                    log.warning(f"Client {client.cid} REJECTED by PoR check. Score: {score:.4f} > {self.logic_validator.threshold}")
+                    log.warning(
+                        f"Client {client.cid} REJECTED by SimGNN (GED={score:.4f} > τ={dynamic_threshold:.3f})"
+                    )
                     rejected_count += 1
                     rejected_graphs.append((client_graph, score))
-                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected"}
+                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected",
+                                                   "threshold": dynamic_threshold}
             else:
                 log.warning(f"Client {client.cid} did not provide causal graph. REJECTING.")
                 rejected_count += 1
@@ -242,10 +268,23 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         try:
             ndarrays = parameters_to_ndarrays(parameters)
             in_features = max(self.global_consensus_graph.number_of_nodes(), 1)
-            dataset_name = _cfg.get("dataset", {}).get("name", "asia").lower()
-            from datasets.tabular_loader import TabularBNDataset
-            _tmp_ds = TabularBNDataset(name=dataset_name, num_samples=100)
-            model = Model(in_features=in_features, num_classes=_tmp_ds.num_classes)
+            
+            # Reconstruct model based on dataset type
+            if DS_NAME == "finance":
+                # Finance uses FinanceTransformerModel
+                model = FinanceTransformerModel(in_features=70, num_actions=36)
+            else:
+                # Cyberdefend or Tabular use simple Model MLP
+                if DS_NAME == "cyberdefend":
+                    in_f, out_c = 10, 40
+                else:
+                    from datasets.tabular_loader import TabularBNDataset
+                    dataset_name = _cfg.get("dataset", {}).get("name", "asia").lower()
+                    _tmp_ds = TabularBNDataset(name=dataset_name, num_samples=100)
+                    in_f = in_features
+                    out_c = _tmp_ds.num_classes
+                model = Model(in_features=in_f, num_classes=out_c)
+            
             params_dict = zip(model.state_dict().keys(), ndarrays)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             model.load_state_dict(state_dict, strict=True)
