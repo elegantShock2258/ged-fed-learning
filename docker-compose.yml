@@ -1,27 +1,35 @@
-version: '3.8'
-
 # ============================================================
 # Causal Proof of Reasoning — Federated Learning Dashboard
 #
 # Quick start (first-time user):
+#   git clone https://github.com/elegantShock2258/ged-fed-learning
+#   cd ged-fed-learning
 #   docker compose up --build
 #   → Open http://localhost:8501
 #
-# Re-run without rebuilding (after config changes):
-#   docker compose up
+# Run FL simulation (generates saved_models/):
+#   docker compose run --rm sim
 #
-# Run in background:
-#   docker compose up -d
+# Run baseline simulation:
+#   docker compose run --rm baseline
 #
-# Stop:
+# Generate evaluation graphs (after simulation):
+#   docker compose run --rm graphs
+#
+# Stop everything:
 #   docker compose down
 # ============================================================
 
 services:
+  # ── Streamlit dashboard (default service) ──────────────────
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # CPU wheel (default). For CUDA 12.6 uncomment below and rebuild:
+        # TORCH_INSTALL_URL: https://download.pytorch.org/whl/cu126
+        TORCH_INSTALL_URL: https://download.pytorch.org/whl/cpu
     image: causal-por:latest
     container_name: causal-por-app
     ports:
@@ -30,26 +38,85 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
     volumes:
-      # Persist generated models and simulation results between container restarts
+      # Persist simulation results between container restarts
       - ./saved_models:/app/saved_models
-      # Hot-reload config: change params.yaml on host, it takes effect immediately
+      # Persist generated evaluation graphs
+      - ./graphs:/app/graphs
+      # Hot-reload config: edit params.yaml on host without rebuilding
       - ./params.yaml:/app/params.yaml:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
       interval: 30s
       timeout: 10s
-      start_period: 60s
+      start_period: 90s
       retries: 3
-    stdin_open: true
-    tty: true
+
+  # ── PoR FL simulation (run once to generate models + logs) ─
+  sim:
+    image: causal-por:latest
+    container_name: causal-por-sim
+    command: python federated_sim.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    volumes:
+      - ./saved_models:/app/saved_models
+      - ./params.yaml:/app/params.yaml:ro
+    profiles:
+      - tools   # only starts with: docker compose --profile tools run sim
+
+  # ── Baseline FedAvg simulation ─────────────────────────────
+  baseline:
+    image: causal-por:latest
+    container_name: causal-por-baseline
+    command: python baseline_fedavg_sim.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    volumes:
+      - ./saved_models:/app/saved_models
+      - ./params.yaml:/app/params.yaml:ro
+    profiles:
+      - tools
+
+  # ── Evaluation graph generation ────────────────────────────
+  graphs:
+    image: causal-por:latest
+    container_name: causal-por-graphs
+    command: python graphs/run_all.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - MPLBACKEND=Agg    # headless matplotlib (no display needed)
+    volumes:
+      - ./saved_models:/app/saved_models
+      - ./graphs:/app/graphs
+    profiles:
+      - tools
+
+  # ── MTA + ASR evaluation ───────────────────────────────────
+  eval:
+    image: causal-por:latest
+    container_name: causal-por-eval
+    command: python graphs/eval_asr_mta.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    volumes:
+      - ./saved_models:/app/saved_models
+    profiles:
+      - tools
 
     # ----------------------------------------------------------
     # GPU SUPPORT (optional)
-    # Requires: nvidia-container-toolkit installed on the host
-    # Install guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+    # Requires: nvidia-container-toolkit on the host
+    # Guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/
     #
-    # To enable GPU, uncomment the block below:
+    # 1. Change TORCH_INSTALL_URL in the app service above to:
+    #      TORCH_INSTALL_URL: https://download.pytorch.org/whl/cu126
+    # 2. docker compose build
+    # 3. Uncomment the deploy block below on ALL services:
     # ----------------------------------------------------------
     # deploy:
     #   resources:
@@ -58,7 +125,3 @@ services:
     #         - driver: nvidia
     #           count: all
     #           capabilities: [gpu]
-    # ----------------------------------------------------------
-    # Also change the CMD in Dockerfile to install the GPU wheel:
-    #   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    # ----------------------------------------------------------

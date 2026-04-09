@@ -1,11 +1,47 @@
+# ============================================================
+# Docker build context exclusions
+# ============================================================
+
+# Python runtime artefacts
 .venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+
+# Version control
 .git/
+.gitignore
+
+# Simulation outputs (generated at runtime, volume-mounted)
 saved_models/
+
+# Pre-trained model files (large binaries, generated at runtime)
 *.pt
 *.gpickle
-*.png
-*.jpg
-2.61
+
+# Pre-generated graph images (regenerated at runtime via graphs/run_all.py)
+graphs/G*.png
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment / secrets
+.env
+.env.*
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+debug_graphs_log.txt
