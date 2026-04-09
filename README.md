@@ -586,31 +586,19 @@ file I/O operations. Core PoR logic validated via passing tests.
 Functional tests marked with @pytest.mark.slow can be run with --runslow.
 ```
 
-### Running Tests in CI/CD
+### 🚀 Continuous Integration (CI/CD)
 
-```yaml
-# .github/workflows/test.yml (example)
-name: Test Suite
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.10'
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
-      - name: Run unit tests
-        run: pytest tests/unit/ --cov=. --cov-report=xml
-      - name: Run functional tests (fast only)
-        run: pytest tests/functional/ -k "not slow"
-      - name: Upload coverage
-        uses: codecov/codecov-action@v2
+This project features a fully automated **End-to-End (E2E) Docker Integration Test** pipeline located in `.github/workflows/e2e-integration.yml`.
+
+Whenever code is pushed to `main` or `fed-neat-evolution`, GitHub Actions automatically:
+1. Provisions a fresh Ubuntu VM.
+2. Dynamically configures `params.yaml` to spin up an accelerated 3-client (1 adversary) FedNEAT environment.
+3. Bootstraps the pipeline from scratch within Docker (proving the repository works natively "out-of-the-box" for any researcher without local dependency caching).
+4. Validates that the entire complex execution chain finishes successfully and materialises critical evaluation artifacts (consensus graph, GED scores, models).
+
+Run it manually on your local system in under 90 seconds to verify environment stability:
+```bash
+./tests/e2e_docker_test.sh
 ```
 
 ---

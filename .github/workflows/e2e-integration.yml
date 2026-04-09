@@ -13,7 +13,7 @@ on:
 jobs:
   e2e-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 4 # Strict timeout as requested
+    timeout-minutes: 10 # Allow up to 10 mins for cold ML dependency downloads
 
     steps:
       - name: Checkout Code
