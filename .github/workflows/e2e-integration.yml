@@ -1,0 +1,28 @@
+name: E2E Docker Integration Test
+
+on:
+  push:
+    branches:
+      - main
+      - fed-neat-evolution
+  pull_request:
+    branches:
+      - main
+      - fed-neat-evolution
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4 # Strict timeout as requested
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Execute E2E bash script Let's Run
+        run: |
+          chmod +x ./tests/e2e_docker_test.sh
+          ./tests/e2e_docker_test.sh
