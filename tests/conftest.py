@@ -1,8 +1,14 @@
+import os
+import sys
 import pytest
 import torch
 import numpy as np
 import networkx as nx
 from pathlib import Path
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 # Register custom marks
 def pytest_configure(config):

@@ -11,6 +11,7 @@ Focus:
   - Per-round GED score recording
 """
 
+import io
 import pytest
 import json
 import pickle
@@ -34,7 +35,7 @@ def mock_logic_validator():
     """Mock LogicValidator for testing."""
     validator = MagicMock()
     validator.threshold = 0.5
-    validator.evaluate_client_graph = MagicMock(side_effect=lambda g, r=None: (True, 0.3))
+    validator.evaluate_client_graph = MagicMock(return_value=(True, 0.3))
     validator.set_global_consensus = MagicMock()
     validator.update_dynamic_threshold = MagicMock()
     validator.model = None
@@ -72,6 +73,13 @@ def sample_graph():
     g.add_edge(0, 1)
     g.add_edge(1, 2)
     return g
+
+
+def _npy_bytes_from_json(data):
+    buf = io.BytesIO()
+    np.save(buf, np.frombuffer(bytearray(json.dumps(data), "utf-8"), dtype=np.uint8))
+    buf.seek(0)
+    return [buf.getvalue()]
 
 
 @pytest.fixture
@@ -400,7 +408,7 @@ class TestAggregateFit:
                 "fitness": 0.9,
             })
             fit_res1.parameters = MagicMock()
-            fit_res1.parameters.tensors = [np.array(bytearray(genome_json, "utf-8"))]
+            fit_res1.parameters.tensors = _npy_bytes_from_json(json.loads(genome_json))
 
             # Client 2: bad graph, should be rejected
             fit_res2 = Mock(spec=FitRes)
@@ -409,7 +417,7 @@ class TestAggregateFit:
                 "accuracy": 0.5,
             }
             fit_res2.parameters = MagicMock()
-            fit_res2.parameters.tensors = [np.array(bytearray(genome_json, "utf-8"))]
+            fit_res2.parameters.tensors = _npy_bytes_from_json(json.loads(genome_json))
 
             # Setup evaluator to accept client1, reject client2
             def eval_side_effect(g, r=None):
@@ -451,9 +459,7 @@ class TestAggregateFit:
             fit_res = Mock()
             fit_res.metrics = {"causal_graph_edges": "[[0, 1]]"}
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [
-                np.array(bytearray(json.dumps({"in_features": 5}), "utf-8"))
-            ]
+            fit_res.parameters.tensors = _npy_bytes_from_json({"in_features": 5})
 
             results = [(client, fit_res)]
             params, metrics = strategy.aggregate_fit(
@@ -495,6 +501,38 @@ class TestConsensusUpdate:
             # Consensus should be updated
             assert strategy.global_consensus_graph.number_of_nodes() > 0
 
+    @patch("server.fed_neat_strategy.yaml.safe_load")
+    def test_aggregate_logic_empty(
+        self, mock_yaml, mock_logic_validator, temp_model_dir
+    ):
+        mock_yaml.return_value = {}
+        with patch("server.fed_neat_strategy.MODEL_DIR", temp_model_dir):
+            from server.fed_neat_strategy import FedNEATStrategy
+            strategy = FedNEATStrategy(logic_validator=mock_logic_validator)
+            strategy._aggregate_logic([])
+            assert strategy.global_consensus_graph.number_of_nodes() == 0
+
+    @patch("server.fed_neat_strategy.yaml.safe_load")
+    def test_finetune_simgnn_executes(
+        self, mock_yaml, mock_logic_validator, temp_model_dir
+    ):
+        mock_yaml.return_value = {"dataset": {"name": "asia"}, "core_logic": {"consensus_momentum": 0.85}}
+        
+        from server.logic_validator import SimGNN
+        simgnn = SimGNN(hidden_dim=16, num_layers=2)
+        mock_logic_validator.simgnn = simgnn
+
+        with patch("server.fed_neat_strategy.MODEL_DIR", temp_model_dir):
+            from server.fed_neat_strategy import FedNEATStrategy
+            strategy = FedNEATStrategy(logic_validator=mock_logic_validator)
+            
+            consensus = nx.DiGraph()
+            consensus.add_edges_from([(0, 1), (1, 2), (2, 3)])
+            
+            with patch('torch.save') as mock_torch_save:
+                strategy._finetune_simgnn_on_consensus(consensus, steps=2, pairs=4)
+                assert mock_torch_save.called
+
 
 class TestDynamicThresholdUpdate:
     """Test dynamic threshold update in Logic Validator."""
@@ -520,22 +558,15 @@ class TestDynamicThresholdUpdate:
             fit_res = Mock()
             fit_res.metrics = {"causal_graph_edges": "[[0, 1]]", "accuracy": 0.9}
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [
-                np.array(
-                    bytearray(
-                        json.dumps(
-                            {
-                                "in_features": 5,
-                                "num_classes": 2,
-                                "nodes": {},
-                                "hidden_nodes": [],
-                                "connections": {},
-                            }
-                        ),
-                        "utf-8",
-                    )
-                )
-            ]
+            fit_res.parameters.tensors = _npy_bytes_from_json(
+                {
+                    "in_features": 5,
+                    "num_classes": 2,
+                    "nodes": {},
+                    "hidden_nodes": [],
+                    "connections": {},
+                }
+            )
 
             mock_logic_validator.evaluate_client_graph.return_value = (True, 0.25)
 
@@ -570,22 +601,15 @@ class TestGraphPersistence:
             fit_res = Mock()
             fit_res.metrics = {"causal_graph_edges": "[[0, 1]]", "accuracy": 0.95}
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [
-                np.array(
-                    bytearray(
-                        json.dumps(
-                            {
-                                "in_features": 5,
-                                "num_classes": 2,
-                                "nodes": {},
-                                "hidden_nodes": [],
-                                "connections": {},
-                            }
-                        ),
-                        "utf-8",
-                    )
-                )
-            ]
+            fit_res.parameters.tensors = _npy_bytes_from_json(
+                {
+                    "in_features": 5,
+                    "num_classes": 2,
+                    "nodes": {},
+                    "hidden_nodes": [],
+                    "connections": {},
+                }
+            )
 
             mock_logic_validator.evaluate_client_graph.return_value = (True, 0.2)
 
@@ -625,9 +649,7 @@ class TestGraphPersistence:
             fit_res = Mock()
             fit_res.metrics = {"causal_graph_edges": "[[0, 1]]", "accuracy": 0.4}
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [
-                np.array(bytearray(json.dumps({}), "utf-8"))
-            ]
+            fit_res.parameters.tensors = _npy_bytes_from_json({})
 
             mock_logic_validator.evaluate_client_graph.return_value = (False, 0.7)
 

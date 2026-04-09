@@ -11,6 +11,7 @@ Focus:
   - Per-round model and graph persistence
 """
 
+import io
 import pytest
 import sys
 import os
@@ -36,7 +37,7 @@ def mock_logic_validator():
     """Mock LogicValidator that simulates graph validation."""
     validator = MagicMock()
     validator.threshold = 0.5
-    validator.evaluate_client_graph = MagicMock(side_effect=lambda g: (True, 0.3))
+    validator.evaluate_client_graph = MagicMock(return_value=(True, 0.3))
     validator.set_global_consensus = MagicMock()
     validator.model = None  # No SimGNN model for simple tests
     return validator
@@ -60,6 +61,13 @@ def sample_graph():
     g.add_edge(0, 1)
     g.add_edge(1, 2)
     return g
+
+
+def _npy_bytes(arr):
+    buffer = io.BytesIO()
+    np.save(buffer, np.asarray(arr))
+    buffer.seek(0)
+    return [buffer.getvalue()]
 
 
 @pytest.fixture
@@ -154,13 +162,15 @@ class TestAggregateFit:
 
             fit_res1 = Mock(spec=FitRes)
             fit_res1.metrics = {"causal_graph_edges": "[[0, 1]]", "accuracy": 0.9}
+            fit_res1.num_examples = 1
             fit_res1.parameters = MagicMock()
-            fit_res1.parameters.tensors = [np.ones((10,))]
+            fit_res1.parameters.tensors = _npy_bytes(np.ones((10,)))
 
             fit_res2 = Mock(spec=FitRes)
             fit_res2.metrics = {"causal_graph_edges": "[[1, 0]]", "accuracy": 0.5}
+            fit_res2.num_examples = 1
             fit_res2.parameters = MagicMock()
-            fit_res2.parameters.tensors = [np.ones((10,))]
+            fit_res2.parameters.tensors = _npy_bytes(np.ones((10,)))
 
             # Setup validator to accept client1, reject client2
             def eval_side_effect(g):
@@ -194,8 +204,9 @@ class TestAggregateFit:
             client.cid = "bad_client"
             fit_res = Mock(spec=FitRes)
             fit_res.metrics = {"accuracy": 0.7}  # No causal_graph_edges
+            fit_res.num_examples = 1
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [np.ones((10,))]
+            fit_res.parameters.tensors = _npy_bytes(np.ones((10,)))
 
             results = [(client, fit_res)]
             params, metrics = strategy.aggregate_fit(
@@ -203,6 +214,51 @@ class TestAggregateFit:
             )
 
             assert metrics["rejected_clients"] >= 1  # Should be rejected
+
+    @patch("server.aggregator.yaml.safe_load")
+    @patch("server.aggregator.Model")
+    @patch("flwr.server.strategy.FedAvg.aggregate_fit")
+    def test_aggregate_fit_saves_graphs(
+        self, mock_fedavg_agg_fit, mock_model, mock_yaml, mock_logic_validator, temp_model_dir
+    ):
+        """Test the graph saving logic in aggregate_fit when both accepted and rejected exist."""
+        mock_yaml.return_value = {"dataset": {"name": "asia"}, "core_logic": {"consensus_momentum": 0.85}}
+        
+        # Mock FedAvg aggregate_fit return value
+        mock_agg_params = MagicMock()
+        mock_fedavg_agg_fit.return_value = (mock_agg_params, {})
+
+        with patch("server.aggregator.MODEL_DIR", temp_model_dir):
+            from server.aggregator import PoRStrategy
+            strategy = PoRStrategy(logic_validator=mock_logic_validator)
+
+            client1 = Mock()
+            client1.cid = "client_1"
+            client2 = Mock()
+            client2.cid = "client_2"
+
+            fit_res1 = Mock(spec=FitRes)
+            fit_res1.metrics = {"causal_graph_edges": "[[0, 1]]", "accuracy": 0.9}
+            
+            fit_res2 = Mock(spec=FitRes)
+            fit_res2.metrics = {"causal_graph_edges": "[[1, 0]]", "accuracy": 0.5}
+
+            # Setup validator to accept client1, reject client2
+            def eval_side_effect(g):
+                if g.has_edge(0, 1):
+                    return True, 0.3  # Accepted
+                return False, 0.8  # Rejected
+            mock_logic_validator.evaluate_client_graph.side_effect = eval_side_effect
+
+            results = [(client1, fit_res1), (client2, fit_res2)]
+            
+            # Avoid the save model logic using mock, just test the graph save block
+            with patch.object(strategy, '_save_global_model'):
+                strategy.aggregate_fit(server_round=1, results=results, failures=[])
+            
+            assert os.path.exists(os.path.join(temp_model_dir, "honest_graph_sample.gpickle"))
+            assert os.path.exists(os.path.join(temp_model_dir, "rejected_graph_sample.gpickle"))
+            assert os.path.exists(os.path.join(temp_model_dir, "rejected_edge_diff.json"))
 
 
 class TestAggregateLogic:
@@ -333,8 +389,9 @@ class TestGEDScorePersistence:
 
             fit_res = Mock()
             fit_res.metrics = {"causal_graph_edges": "[[0, 1]]", "accuracy": 0.9}
+            fit_res.num_examples = 1
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [np.ones((10,))]
+            fit_res.parameters.tensors = _npy_bytes(np.ones((10,)))
 
             mock_logic_validator.evaluate_client_graph.return_value = (True, 0.25)
 
@@ -373,8 +430,9 @@ class TestEdgeDiffRecording:
             fit_res = Mock()
             # Client submits only edge (0,1), missing (1,2)
             fit_res.metrics = {"causal_graph_edges": "[[0, 1]]", "accuracy": 0.5}
+            fit_res.num_examples = 1
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [np.ones((10,))]
+            fit_res.parameters.tensors = _npy_bytes(np.ones((10,)))
 
             # Reject this client
             mock_logic_validator.evaluate_client_graph.return_value = (False, 0.8)
@@ -409,6 +467,30 @@ class TestSimGNNFineTuning:
             # Should not raise an error
             strategy._finetune_simgnn_on_consensus(consensus)
 
+    @patch("server.aggregator.yaml.safe_load")
+    def test_finetune_simgnn_executes(
+        self, mock_yaml, mock_logic_validator, temp_model_dir
+    ):
+        """Test the full SimGNN fine-tuning loop."""
+        mock_yaml.return_value = {"dataset": {"name": "asia"}, "core_logic": {"consensus_momentum": 0.85}}
+        
+        # We need a proper SimGNN mock
+        from server.logic_validator import SimGNN
+        simgnn = SimGNN(hidden_dim=16, num_layers=2)
+        mock_logic_validator.model = simgnn
+
+        with patch("server.aggregator.MODEL_DIR", temp_model_dir):
+            from server.aggregator import PoRStrategy
+            strategy = PoRStrategy(logic_validator=mock_logic_validator)
+            
+            consensus = nx.DiGraph()
+            consensus.add_edges_from([(0, 1), (1, 2), (2, 3)])
+            
+            with patch('torch.save') as mock_torch_save:
+                # Need fewer steps/pairs to test quickly
+                strategy._finetune_simgnn_on_consensus(consensus, steps=2, pairs=4)
+                assert mock_torch_save.called
+
 
 class TestNoClientsAccepted:
     """Test behavior when all clients are rejected."""
@@ -430,13 +512,14 @@ class TestNoClientsAccepted:
             client.cid = "client_1"
             fit_res = Mock()
             fit_res.metrics = {"causal_graph_edges": "[[0, 1]]"}
+            fit_res.num_examples = 1
             fit_res.parameters = MagicMock()
-            fit_res.parameters.tensors = [np.ones((10,))]
+            fit_res.parameters.tensors = _npy_bytes(np.ones((10,)))
 
             results = [(client, fit_res)]
             params, metrics = strategy.aggregate_fit(
                 server_round=1, results=results, failures=[]
             )
 
-            assert params is None
             assert metrics["accepted_clients"] == 0
+            assert params is None

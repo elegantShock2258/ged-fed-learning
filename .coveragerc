@@ -1,0 +1,11 @@
+[run]
+omit =
+    app.py
+    vastai/run_vast_simulation.py
+    graphs/*.py
+    baseline_fedavg_sim.py
+    federated_sim.py
+    server/train_simgnn.py
+    server/generate_consensus.py
+    server/visualizer_bridge.py
+    tests/*
