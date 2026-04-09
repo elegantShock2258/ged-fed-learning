@@ -14,6 +14,7 @@ server/__pycache__/
 # Coverage reports
 .coverage
 htmlcov/
+dummy/
 coverage.xml
 *.cover
 

@@ -454,17 +454,17 @@ pytest tests/ -v --tb=short
 
 ### Test Coverage Summary
 
-**Overall Coverage: 64%** (updated based on ~3174 statements)
+**Overall Coverage: 57%** (updated based on 3273 statements)
 
 | Module                              | Coverage | Statements | Highlights                                         |
 |-------------------------------------|----------|------------|-----------------------------------------------------|
 | `adversary/poisoning.py`            | **100%** | 33         | FalseNode backdoor poisoning, label flipping       |
-| `client/models.py`                  | **99%**  | 105        | DynamicGenome (MLP) initialization, forward pass   |
+| `client/models.py`                  | **100%** | 105        | DynamicGenome (MLP) initialization, forward pass   |
 | `client/causal_discovery.py`        | **98%**  | 54         | NOTEARS causal graph extraction, edge thresholding |
 | `tests/unit/test_adversary_poisoning.py` | **100%** | 83 | 10 tests: FalseNode poisoning mechanics            |
-| `tests/functional/test_full_simulation.py` | **100%** | 45 | 5 tests: End-to-end simulation validation          |
-| `server/fed_neat_strategy.py`       | **57%**  | 277        | FedNEAT aggregation, logic validation              |
-| `server/aggregator.py`              | **56%**  | 231        | GED-based client filtering, consensus updates      |
+| `tests/functional/test_full_simulation.py` | **100%** | 16 | 5 tests: End-to-end simulation validation          |
+| `server/fed_neat_strategy.py`       | **73%**  | 277        | FedNEAT aggregation, logic validation              |
+| `server/aggregator.py`              | **59%**  | 231        | GED-based client filtering, consensus updates      |
 | `server/logic_validator.py`         | **43%**  | 128        | SimGNN acceptance/rejection logic                  |
 | `server/train_simgnn.py`            | **17%**  | 119        | SimGNN training pipeline (requires GPU)            |
 
