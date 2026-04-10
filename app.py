@@ -895,18 +895,35 @@ else:
     if (por_rounds and por_rejected) and (bl_rounds and bl_rejected):
         st.markdown("#### 📊 Summary Comparison")
         max_r = max(len(por_rounds), len(bl_rounds))
+        target_adv = por_meta.get("num_false_nodes", config["simulation"]["num_false_nodes"])
         comparison_rows = []
+        
         for i in range(max_r):
             r = (por_rounds[i] if i < len(por_rounds) else bl_rounds[i])
+            
+            winner = "-"
+            if i < len(por_rejected) and i < len(bl_rejected):
+                p_r = por_rejected[i]
+                b_r = bl_rejected[i]
+                dist_p = abs(p_r - target_adv)
+                dist_b = abs(b_r - target_adv)
+                
+                if dist_p < dist_b:
+                    winner = "✅ PoR"
+                elif dist_b < dist_p:
+                    winner = "❌ Baseline"
+                else:
+                    # Distances are equal
+                    if p_r == b_r:
+                        winner = "⚖️ Tied"
+                    else:
+                        # Tie-breaker: reject more
+                        winner = "✅ PoR" if p_r > b_r else "❌ Baseline"
+            
             comparison_rows.append({
                 "Round": r,
                 "PoR Rejected": por_rejected[i] if i < len(por_rejected) else "-",
                 "Baseline Rejected": bl_rejected[i] if i < len(bl_rejected) else "-",
-                "PoR Better?": (
-                    "⚖️ Tied"
-                    if (i < len(por_rejected) and i < len(bl_rejected) and por_rejected[i] == bl_rejected[i])
-                    else "✅" if (i < len(por_rejected) and i < len(bl_rejected) and por_rejected[i] > bl_rejected[i])
-                    else "❌"
-                )
+                "Winner": winner
             })
         st.dataframe(pd.DataFrame(comparison_rows).set_index("Round"), use_container_width=True)
