@@ -849,8 +849,12 @@ else:
                 return None, None
             latest = logs[-1]  # Most recent run
             metric_list = latest.get("metrics", {}).get(metric_key, [])
-            rounds = [d["round"] for d in metric_list]
-            values = [d["value"] for d in metric_list]
+            
+            # Filter out round 0 to align with Baseline which only reports 1 to N
+            filtered_metrics = [d for d in metric_list if d.get("round", 0) > 0]
+            
+            rounds = [d["round"] for d in filtered_metrics]
+            values = [d["value"] for d in filtered_metrics]
             return rounds, values, latest
         except Exception:
             return None, None, None
