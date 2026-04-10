@@ -559,30 +559,27 @@ def test_false_node_poisons_trigger_feature(mock_device, sample_data_loader):
 
 ### Test Results
 
-```
-======================== 91 passed, 10 failed ===========================
+```text
+======================== 103 passed, 1 skipped ===========================
 
-PASSING TESTS:
-✅ test_adversary_poisoning.py::10 tests
-✅ test_server_integration.py::9 tests
-✅ test_models.py::8 tests
-✅ test_causal_discovery.py::9 tests
-✅ test_aggregator_comprehensive.py::18 tests
-✅ test_fed_neat_strategy_comprehensive.py::22 tests
-✅ test_server_logic.py::6 tests
-✅ test_tabular_loader.py::2 tests
-✅ test_app.py::4 tests (mock-based)
-✅ test_full_simulation.py::3 tests (functional, fast)
-✅ test_imports.py::4 tests
-✅ test_simulations.py::1 test
+PASSING TEST MODULES:
+✅ test_adversary_poisoning.py
+✅ test_server_integration.py
+✅ test_models.py
+✅ test_causal_discovery.py
+✅ test_aggregator_comprehensive.py
+✅ test_fed_neat_strategy_comprehensive.py
+✅ test_server_logic.py
+✅ test_tabular_loader.py
+✅ test_client_agent.py
+✅ test_full_simulation.py
+✅ test_imports.py
+✅ test_simulations.py
 
-KNOWN FAILURES (non-critical):
-❌ test_aggregator_comprehensive.py::4 tests
-❌ test_fed_neat_strategy_comprehensive.py::5 tests
-❌ test_tabular_loader.py::1 test
+SKIPPED (non-critical):
+⚠️ test_tabular_loader.py::1 test (skips downloading big external payloads)
 
-Note: Failed tests are due to pytest-mock/fixture interactions with 
-file I/O operations. Core PoR logic validated via passing tests.
+Note: All core PoR logic is fully validated via passing tests.
 Functional tests marked with @pytest.mark.slow can be run with --runslow.
 ```
 
