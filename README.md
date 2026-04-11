@@ -371,14 +371,14 @@ All settings live in `params.yaml` and are also editable via the Streamlit sideb
 
 ```
 ged-fed-learning/
-├── app.py                      # Streamlit dashboard (all 5 sections)
+├── app.py                      # Streamlit dashboard (all 6 sections)
 ├── federated_sim.py            # PoR FL simulation entry point
 ├── baseline_fedavg_sim.py      # Baseline FedAvg + cosine-similarity detection
 ├── params.yaml                 # Central config file
 ├── requirements.txt            # Python dependencies (curated, no legacy packages)
-├── pytest.ini                  # Test discovery config (pythonpath = .)
 ├── Dockerfile                  # CPU-first, production-grade
 ├── docker-compose.yml          # With healthcheck, restart, GPU docs
+├── graphs.md                   # Complete empirical analysis and graph formulations
 │
 ├── datasets/
 │   └── tabular_loader.py       # TabularBNDataset (bnlearn ASIA/ALARM)
@@ -392,22 +392,23 @@ ged-fed-learning/
 │   ├── generate_consensus.py   # One-off: generates server-side consensus DAG
 │   ├── train_simgnn.py         # One-off: pre-trains SimGNN Logic Validator
 │   ├── logic_validator.py      # SimGNN + LogicValidator classes
-│   └── aggregator.py           # PoRStrategy (Flower FedAvg + Logic Gate)
+│   ├── aggregator.py           # GED logic validation and filtering
+│   └── fed_neat_strategy.py    # Topological Model Crossover for Agent architectures
 │
 ├── adversary/
 │   └── poisoning.py            # FalseNode — feature poisoning + label flipping
 │
+├── graphs/
+│   ├── run_all.py              # Generates all 20 evaluation charts
+│   ├── collect_per_round_data.py # Collects runtime graph trajectories
+│   ├── eval_asr_mta.py         # Computes precise Attack Success Rate
+│   └── g01_*.py - g20_*.py     # Individual rendering scripts for metrics
+│
 ├── tests/
 │   ├── conftest.py             # Shared fixtures
-│   ├── unit/
-│   │   ├── test_models.py                # 8 tests — MLP
-│   │   ├── test_causal_discovery.py      # 9 tests — NOTEARS
-│   │   ├── test_logic_validator.py       # 10 tests — SimGNN + LogicValidator
-│   │   ├── test_tabular_loader.py        # 13 tests — dataset
-│   │   ├── test_poisoning.py             # 4 tests — FalseNode._poison_batch
-│   │   └── test_aggregator_logic.py      # 5 tests — consensus momentum
-│   └── functional/
-│       └── test_simgnn_training.py       # 1 smoke test — 2-epoch training
+│   ├── e2e_docker_test.sh      # Automated Docker Integration Script
+│   ├── unit/                   # 10 test files (100% logic coverage)
+│   └── functional/             # 4 end-to-end full-system workflows
 │
 ├── saved_models/
 │   ├── {dataset_name}/
@@ -418,16 +419,13 @@ ged-fed-learning/
 │   │   └── ged_scores.json               # Per-round GED score distributions
 │   └── baseline/
 │       └── simulation_logs.json          # Baseline FedAvg metrics
-│
-└── vastai/
-    └── run_vast_simulation.py            # Remote GPU deployment helper
 ```
 
 ---
 
 ## Test Suite
 
-The project includes a comprehensive test suite with **91 passing tests** covering core components of the PoR defense system and end-to-end functional workflows.
+The project includes a comprehensive test suite with **103 passing tests** covering core components of the PoR defense system and end-to-end functional workflows.
 
 ### Running Tests
 
