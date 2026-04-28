@@ -238,11 +238,17 @@ if __name__ == "__main__":
             pass
             
     # Serialize metrics safely
+    # Round 0 (server_round=1, actual_round=0) is the hidden calibration round.
+    # It always all-rejects to calibrate the dynamic threshold — excluded from GUI logs.
     metrics_log = {}
     if history and hasattr(history, 'metrics_distributed_fit'):
         # Flower returns a dict of metric_name -> List[Tuple[int, float]]
         for key, val_list in history.metrics_distributed_fit.items():
-            metrics_log[key] = [{"round": r - 1, "value": float(v)} for r, v in val_list]
+            metrics_log[key] = [
+                {"round": r - 1, "value": float(v)}
+                for r, v in val_list
+                if r - 1 > 0  # Skip round 0 (calibration round) from GUI display
+            ]
             
     log_entry = {
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

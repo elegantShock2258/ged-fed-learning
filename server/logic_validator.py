@@ -207,10 +207,13 @@ class LogicValidator:
         Returns:
             is_accepted (bool): True if GED <= threshold, False otherwise.
             score (float): The calculated GED score.
+
+        Note: Round 0 (actual_round=0) is no longer bypassed. It runs real SimGNN scoring
+        so that its score distribution calibrates the dynamic threshold for Round 1+.
+        This round is treated as a hidden calibration round and is excluded from GUI logs.
         """
-        # Accept automatically if there is no global consensus yet, or if it is Round 0.
-        # Round 0 is allowed to train naturally to generate the intrinsic structure baseline.
-        if server_round <= 0 or not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
+        # Bypass only if no consensus data exists yet (e.g., first-ever run with empty graph)
+        if not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
             return True, 0.0
             
         self.simgnn.eval()
