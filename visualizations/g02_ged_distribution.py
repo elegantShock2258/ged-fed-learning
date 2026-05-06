@@ -62,7 +62,7 @@ def main():
         cohens_d = 0
 
     # ── figure ────────────────────────────────────────────────────────────────
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
     fig.suptitle(
         f'SimGNN GED Score Distribution by Client Type  (Round {round_num})\n'
         f'Causal PoR Defense — ASIA Dataset  (N = {len(scores_map)} clients)',
@@ -95,7 +95,9 @@ def main():
     if tau is not None:
         ax1.axhline(tau, color=C['threshold'], lw=2, ls='--',
                     zorder=5, label=f'Decision threshold τ ≈ {tau:.3f}')
-        ax1.legend(fontsize=9)
+        ax1.legend(fontsize=9, framealpha=1.0,
+                   loc='upper right',
+                   bbox_to_anchor=(0.99, 0.99))
 
     ax1.set_xticks(range(len(labels)))
     ax1.set_xticklabels(labels, fontsize=9.5)
@@ -138,14 +140,14 @@ def main():
     ax2.set_ylabel('SimGNN Predicted GED Score', labelpad=8)
     ax2.set_title('Honest vs. Adversary Score Comparison', fontsize=11, pad=12)
 
-    # Cohen's d annotation
-    ax2.text(0.98, 0.97,
+    # Cohen's d annotation — placed top-LEFT where honest (low-GED) region is empty
+    ax2.text(0.02, 0.97,
              f"Cohen's d = {cohens_d:.2f}\n"
-             f"('{'Large' if cohens_d>0.8 else 'Medium' if cohens_d>0.5 else 'Small'}' effect)",
+             f"({'Large' if cohens_d>0.8 else 'Medium' if cohens_d>0.5 else 'Small'} effect)",
              transform=ax2.transAxes, fontsize=9,
-             ha='right', va='top', color=C['text'],
-             bbox=dict(boxstyle='round,pad=0.4', fc=C['panel'],
-                       ec=C['border'], alpha=0.92))
+             ha='left', va='top', color=C['text'],
+             bbox=dict(boxstyle='round,pad=0.45', fc='white',
+                       ec=C['border'], alpha=1.0))
     ax2.legend(fontsize=8.5, loc='lower right')
     note(ax2, 'SimGNN [Bai et al., WSDM 2019]')
 

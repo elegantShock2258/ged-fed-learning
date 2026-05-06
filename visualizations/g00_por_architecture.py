@@ -58,24 +58,24 @@ def main():
     ax.add_patch(server_box)
     
     # Consensus Graph
-    cons_box = mpatches.Rectangle((6.5, 7.0), 2.8, 0.8, facecolor=C['bg'], edgecolor=C['por'], lw=1.5, zorder=2)
+    cons_box = mpatches.Rectangle((6.2, 7.0), 2.8, 0.8, facecolor=C['bg'], edgecolor=C['por'], lw=1.5, zorder=2)
     ax.add_patch(cons_box)
-    ax.text(7.9, 7.4, "Global Consensus Graph\n(Momentum Updated)", ha='center', va='center', fontsize=10, fontweight='bold', color=C['por'])
+    ax.text(7.6, 7.4, "Global Consensus Graph\n(Momentum Updated)", ha='center', va='center', fontsize=10, fontweight='bold', color=C['por'])
     
     # Logic Validator
-    val_box = mpatches.Rectangle((6.5, 5.5), 2.8, 1.0, facecolor=C['bg'], edgecolor=C['gold'], lw=2, zorder=2)
+    val_box = mpatches.Rectangle((6.2, 5.5), 2.8, 1.0, facecolor=C['bg'], edgecolor=C['gold'], lw=2, zorder=2)
     ax.add_patch(val_box)
-    ax.text(7.9, 6.0, "SimGNN Logic Validator\n(GED > τ threshold)", ha='center', va='center', fontsize=10, fontweight='bold', color=C['gold'])
+    ax.text(7.6, 6.0, "SimGNN Logic Validator\n(GED > τ threshold)", ha='center', va='center', fontsize=10, fontweight='bold', color=C['gold'])
     
     # Arrows inside server
-    ax.annotate("", xy=(7.9, 6.5), xytext=(7.9, 7.0), arrowprops=dict(arrowstyle="<->", color=C['por'], lw=1.5))
+    ax.annotate("", xy=(7.6, 6.5), xytext=(7.6, 7.0), arrowprops=dict(arrowstyle="<->", color=C['por'], lw=1.5))
     
-    # Decisions (shifted left to fit inside the wider server box)
-    ax.annotate("", xy=(8.7, 6.1), xytext=(9.2, 6.1), arrowprops=dict(arrowstyle="<-", color=C['accept'], lw=2))
-    ax.text(9.8, 6.1, "Accept\n(Honest)", ha='center', va='center', fontsize=9, color=C['accept'], fontweight='bold')
+    # Decisions (arrows start at the edge of the boxes, pointing out)
+    ax.annotate("", xy=(9.4, 6.1), xytext=(9.0, 6.1), arrowprops=dict(arrowstyle="->", color=C['accept'], lw=2))
+    ax.text(10.0, 6.1, "Accept\n(Honest)", ha='center', va='center', fontsize=9, color=C['accept'], fontweight='bold')
     
-    ax.annotate("", xy=(8.7, 5.7), xytext=(9.2, 5.7), arrowprops=dict(arrowstyle="<-", color=C['reject'], lw=2))
-    ax.text(9.8, 5.7, "Reject\n(Adversary)", ha='center', va='center', fontsize=9, color=C['reject'], fontweight='bold')
+    ax.annotate("", xy=(9.4, 5.7), xytext=(9.0, 5.7), arrowprops=dict(arrowstyle="->", color=C['reject'], lw=2))
+    ax.text(10.0, 5.7, "Reject\n(Adversary)", ha='center', va='center', fontsize=9, color=C['reject'], fontweight='bold')
     
     ax.set_xlim(-0.2, 11.2)
     ax.set_ylim(3.3, 10.2)

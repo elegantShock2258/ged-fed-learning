@@ -22,7 +22,7 @@ def main():
     por_log  = load_por_logs()
     bas_log  = load_baseline_logs()
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=False)
+    fig, axes = plt.subplots(2, 1, figsize=(12, 10), sharey=False)
     fig.suptitle(
         'Per-Round Client Acceptance & Rejection\n'
         'Causal PoR (FedNEAT) vs. Baseline FedAvg + Cosine Similarity',

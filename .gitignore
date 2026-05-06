@@ -1,4 +1,5 @@
 .venv/
+__pycache__/
 
 # Python caches
 adversary/__pycache__/
@@ -20,3 +21,14 @@ coverage.xml
 *.log
 wget-log*
 .log
+
+*.aux
+*.out
+*.bbl
+*.blg
+*.lof
+*.lot
+*.log
+*.synctex.gz
+*.fls
+*.fdb_latexmk

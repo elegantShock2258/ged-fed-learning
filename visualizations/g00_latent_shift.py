@@ -47,8 +47,22 @@ def plot_latent_shift():
     # Shift vector
     ax.annotate("", xy=(np.mean(adv_x), np.mean(adv_y)), xytext=(np.mean(honest_x), np.mean(honest_y)),
                 arrowprops=dict(arrowstyle="->", color=C['neutral'], lw=3, ls='solid'), zorder=4)
-    ax.text((np.mean(honest_x)+np.mean(adv_x))/2 + 0.5, (np.mean(honest_y)+np.mean(adv_y))/2 + 0.5,
-            "Distributional Shift\nDetected by PoR", color=C['neutral'], fontweight='bold', ha='center')
+    # Compute midpoint of the shift arrow
+    mid_x = (np.mean(honest_x) + np.mean(adv_x)) / 2
+    mid_y = (np.mean(honest_y) + np.mean(adv_y)) / 2
+
+    # Anchor label well above the arrow midpoint, in clear empty space
+    ax.annotate(
+        "Distributional Shift\nDetected by PoR",
+        xy=(mid_x, mid_y),                    # point on the arrow
+        xytext=(mid_x + 2.8, mid_y + 2.2),   # label placed top-right of centre
+        color=C['neutral'], fontweight='bold', ha='center', fontsize=9.5,
+        arrowprops=dict(arrowstyle='->', color=C['neutral'], lw=1.4,
+                        connectionstyle='arc3,rad=0.2'),
+        bbox=dict(boxstyle='round,pad=0.4', fc='white', ec=C['neutral'],
+                  alpha=0.90),
+        zorder=6
+    )
 
     ax.set_title("Causal Latent Shift (PCA Projection)\nHonest vs. Adversarial Updates", pad=20, fontweight='bold', fontsize=14)
     ax.set_xlabel("Principal Component 1")

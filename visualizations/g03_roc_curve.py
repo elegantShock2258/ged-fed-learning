@@ -77,7 +77,7 @@ def main():
                label=f'Optimal τ = {opt_tau:.3f}  (J = {j_scores[opt_idx]:.3f})')
     ax.annotate(f'  τ* = {opt_tau:.3f}\n  TPR={opt_tpr:.2f}  FPR={opt_fpr:.2f}',
                 xy=(opt_fpr, opt_tpr), fontsize=9, color=C['threshold'],
-                xytext=(opt_fpr + 0.08, opt_tpr - 0.12),
+                xytext=(opt_fpr + 0.15, opt_tpr - 0.15),
                 arrowprops=dict(arrowstyle='->', color=C['threshold'], lw=1.5))
 
     # Removed redundant perfect classifier star to prevent overlap with the optimal point
