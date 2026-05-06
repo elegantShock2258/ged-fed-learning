@@ -57,7 +57,7 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # ---------- Create runtime directories ---------------------------
-RUN mkdir -p saved_models/asia saved_models/baseline graphs
+RUN mkdir -p saved_models/asia saved_models/baseline results/figures
 
 # ---------- Expose Streamlit port --------------------------------
 EXPOSE 8501
@@ -68,8 +68,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
 
 # ---------- Default entrypoint: Streamlit dashboard --------------
 # To run the FL simulation instead, use docker-compose (see sim service)
-# or: docker run causal-por:latest python federated_sim.py
-CMD ["streamlit", "run", "app.py", \
+# or: docker run causal-por:latest python experiments/run_por_sim.py
+CMD ["streamlit", "run", "dashboard/app.py", \
     "--server.address=0.0.0.0", \
     "--server.port=8501", \
     "--server.headless=true"]

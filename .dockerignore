@@ -20,8 +20,8 @@ saved_models/
 *.pt
 *.gpickle
 
-# Pre-generated graph images (regenerated at runtime via graphs/run_all.py)
-graphs/G*.png
+# Pre-generated graph images (regenerated at runtime via visualizations/run_all_plots.py)
+results/figures/G*.png
 
 # IDE / editor
 .vscode/

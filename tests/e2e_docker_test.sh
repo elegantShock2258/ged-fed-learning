@@ -48,15 +48,19 @@ with open('$CONFIG_FILE', 'w') as f:
 # Clean up previous artifacts to ensure a fresh test
 echo "-> Scrubbing previous models and test artifacts..."
 rm -rf saved_models/asia/*
-rm -rf graphs/G*.png
+rm -rf results/figures/G*.png
 
 # 3. Spin up Docker Build and Execute Simulation
 echo "-> Initiating Docker build (causal-por:latest)..."
 docker compose build
 
+echo "-> Generating Consensus Graph inside container..."
+docker compose --profile tools run --rm sim bash -c \
+  "python server/generate_consensus.py && python server/train_simgnn.py"
+
 echo "-> Executing FedNEAT Simulation (Causal PoR)..."
 # We run the 'sim' service explicitly
-docker compose --profile tools run --rm sim
+docker compose --profile tools run --rm sim python experiments/run_por_sim.py
 
 # 4. Assessment and Validation
 echo "-> Validating generated artifacts..."

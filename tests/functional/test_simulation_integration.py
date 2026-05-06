@@ -32,8 +32,8 @@ def temp_workspace():
 
 
 def test_simulation_module_imports():
-    import federated_sim
-    import baseline_fedavg_sim
+    import experiments.run_por_sim as federated_sim
+    import experiments.run_baseline_sim as baseline_fedavg_sim
     assert hasattr(federated_sim, 'prepare_dataset')
     assert hasattr(baseline_fedavg_sim, 'prepare_dataset')
 

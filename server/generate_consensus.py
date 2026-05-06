@@ -15,7 +15,7 @@ Description:
     Bayesian Network structure.
 
 Execution:
-    Run once from project root before starting federated_sim.py::
+    Run once from project root before starting experiments/run_por_sim.py::
 
         python server/generate_consensus.py
 

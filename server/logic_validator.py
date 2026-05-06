@@ -50,7 +50,7 @@ class SimGNN(nn.Module):
     Siamese Graph Neural Network (SimGNN) for approximating Graph Edit Distance (GED).
     Upgraded for larger 64-node graphs using Attention and Multi-Pooling representations.
     """
-    def __init__(self, node_feature_dim=1, hidden_dim=128, num_layers=3):
+    def __init__(self, node_feature_dim=64, hidden_dim=128, num_layers=3):
         super(SimGNN, self).__init__()
         self.num_layers = num_layers
         
@@ -151,9 +151,10 @@ class LogicValidator:
         sorted_nodes = sorted(list(nx_graph.nodes()))
         node_to_idx = {node: i for i, node in enumerate(sorted_nodes)}
         
-        # 2. Build explicit PyG format directly
+        # 2. Build explicit PyG format directly with padded one-hot encodings
         num_nodes = len(sorted_nodes)
-        x = torch.ones((num_nodes, 1), dtype=torch.float32) # Default [1.0] feature for all nodes
+        import torch.nn.functional as F
+        x = F.pad(torch.eye(num_nodes, dtype=torch.float32), (0, 64 - num_nodes))
         
         edge_list = []
         for u, v in nx_graph.edges():

@@ -13,7 +13,7 @@ on:
 jobs:
   e2e-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Allow up to 10 mins for cold ML dependency downloads
+    timeout-minutes: 45  # PyTorch CPU wheel + ML deps + simulation runtime
 
     steps:
       - name: Checkout Code
@@ -21,6 +21,16 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: image=moby/buildkit:latest
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile', 'requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
 
       - name: Execute E2E bash script Let's Run
         run: |

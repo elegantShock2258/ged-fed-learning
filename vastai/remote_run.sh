@@ -39,6 +39,6 @@ else
 fi
 
 echo '===== Starting Federated Simulation ====='
-python federated_sim.py
+python experiments/run_por_sim.py
 
 echo '===== Done! ====='

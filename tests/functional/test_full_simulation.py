@@ -7,12 +7,12 @@ from pathlib import Path
 
 
 def test_federated_sim_module_import():
-    import federated_sim
+    import experiments.run_por_sim as federated_sim
     assert hasattr(federated_sim, 'prepare_dataset')
 
 
 def test_baseline_module_import():
-    import baseline_fedavg_sim
+    import experiments.run_baseline_sim as baseline_fedavg_sim
     assert hasattr(baseline_fedavg_sim, 'prepare_dataset')
 
 

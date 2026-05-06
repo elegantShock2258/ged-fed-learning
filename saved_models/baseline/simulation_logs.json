@@ -1,0 +1,396 @@
+[
+  {
+    "timestamp": "2026-05-04 16:54:56",
+    "method": "baseline_weight_divergence",
+    "dataset": "asia",
+    "num_clients": 30,
+    "num_false_nodes": 5,
+    "num_rounds": 15,
+    "similarity_threshold": 0.5,
+    "metrics": {
+      "accepted_clients": [
+        {
+          "round": 1,
+          "value": 30
+        },
+        {
+          "round": 2,
+          "value": 28
+        },
+        {
+          "round": 3,
+          "value": 28
+        },
+        {
+          "round": 4,
+          "value": 27
+        },
+        {
+          "round": 5,
+          "value": 24
+        },
+        {
+          "round": 6,
+          "value": 16
+        },
+        {
+          "round": 7,
+          "value": 13
+        },
+        {
+          "round": 8,
+          "value": 20
+        },
+        {
+          "round": 9,
+          "value": 16
+        },
+        {
+          "round": 10,
+          "value": 11
+        },
+        {
+          "round": 11,
+          "value": 15
+        },
+        {
+          "round": 12,
+          "value": 16
+        },
+        {
+          "round": 13,
+          "value": 8
+        },
+        {
+          "round": 14,
+          "value": 16
+        },
+        {
+          "round": 15,
+          "value": 16
+        }
+      ],
+      "rejected_clients": [
+        {
+          "round": 1,
+          "value": 0
+        },
+        {
+          "round": 2,
+          "value": 2
+        },
+        {
+          "round": 3,
+          "value": 2
+        },
+        {
+          "round": 4,
+          "value": 3
+        },
+        {
+          "round": 5,
+          "value": 6
+        },
+        {
+          "round": 6,
+          "value": 14
+        },
+        {
+          "round": 7,
+          "value": 17
+        },
+        {
+          "round": 8,
+          "value": 10
+        },
+        {
+          "round": 9,
+          "value": 14
+        },
+        {
+          "round": 10,
+          "value": 19
+        },
+        {
+          "round": 11,
+          "value": 15
+        },
+        {
+          "round": 12,
+          "value": 14
+        },
+        {
+          "round": 13,
+          "value": 22
+        },
+        {
+          "round": 14,
+          "value": 14
+        },
+        {
+          "round": 15,
+          "value": 14
+        }
+      ],
+      "loss": [
+        {
+          "round": 1,
+          "value": 0.26069909414897363
+        },
+        {
+          "round": 2,
+          "value": 0.051968105860093296
+        },
+        {
+          "round": 3,
+          "value": 0.01650122913539652
+        },
+        {
+          "round": 4,
+          "value": 0.010205723893111933
+        },
+        {
+          "round": 5,
+          "value": 0.00626888447454886
+        },
+        {
+          "round": 6,
+          "value": 0.0012409304014454393
+        },
+        {
+          "round": 7,
+          "value": 0.0004884641995348697
+        },
+        {
+          "round": 8,
+          "value": 9.825018894787559e-05
+        },
+        {
+          "round": 9,
+          "value": 4.770667310083354e-06
+        },
+        {
+          "round": 10,
+          "value": 1.489190350293749e-07
+        },
+        {
+          "round": 11,
+          "value": 5.033152471393502e-07
+        },
+        {
+          "round": 12,
+          "value": 5.413250695103974e-07
+        },
+        {
+          "round": 13,
+          "value": 3.2466814066841226e-07
+        },
+        {
+          "round": 14,
+          "value": 3.307699993608063e-07
+        },
+        {
+          "round": 15,
+          "value": 3.222560678750597e-07
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-05-04 18:37:17",
+    "method": "baseline_weight_divergence",
+    "dataset": "asia",
+    "num_clients": 30,
+    "num_false_nodes": 5,
+    "num_rounds": 15,
+    "similarity_threshold": 0.5,
+    "metrics": {
+      "accepted_clients": [
+        {
+          "round": 1,
+          "value": 30
+        },
+        {
+          "round": 2,
+          "value": 22
+        },
+        {
+          "round": 3,
+          "value": 22
+        },
+        {
+          "round": 4,
+          "value": 20
+        },
+        {
+          "round": 5,
+          "value": 19
+        },
+        {
+          "round": 6,
+          "value": 10
+        },
+        {
+          "round": 7,
+          "value": 3
+        },
+        {
+          "round": 8,
+          "value": 10
+        },
+        {
+          "round": 9,
+          "value": 13
+        },
+        {
+          "round": 10,
+          "value": 10
+        },
+        {
+          "round": 11,
+          "value": 18
+        },
+        {
+          "round": 12,
+          "value": 12
+        },
+        {
+          "round": 13,
+          "value": 0
+        },
+        {
+          "round": 14,
+          "value": 0
+        },
+        {
+          "round": 15,
+          "value": 0
+        }
+      ],
+      "rejected_clients": [
+        {
+          "round": 1,
+          "value": 0
+        },
+        {
+          "round": 2,
+          "value": 8
+        },
+        {
+          "round": 3,
+          "value": 8
+        },
+        {
+          "round": 4,
+          "value": 10
+        },
+        {
+          "round": 5,
+          "value": 11
+        },
+        {
+          "round": 6,
+          "value": 20
+        },
+        {
+          "round": 7,
+          "value": 27
+        },
+        {
+          "round": 8,
+          "value": 20
+        },
+        {
+          "round": 9,
+          "value": 17
+        },
+        {
+          "round": 10,
+          "value": 20
+        },
+        {
+          "round": 11,
+          "value": 12
+        },
+        {
+          "round": 12,
+          "value": 18
+        },
+        {
+          "round": 13,
+          "value": 30
+        },
+        {
+          "round": 14,
+          "value": 30
+        },
+        {
+          "round": 15,
+          "value": 30
+        }
+      ],
+      "loss": [
+        {
+          "round": 1,
+          "value": 0.18571324776858092
+        },
+        {
+          "round": 2,
+          "value": 0.011723099917082891
+        },
+        {
+          "round": 3,
+          "value": 0.007998813143916076
+        },
+        {
+          "round": 4,
+          "value": 0.003340152163263236
+        },
+        {
+          "round": 5,
+          "value": 0.0013108026570535004
+        },
+        {
+          "round": 6,
+          "value": 0.00010983086175997414
+        },
+        {
+          "round": 7,
+          "value": 0.0020987797257412326
+        },
+        {
+          "round": 8,
+          "value": 0.00019121756750672958
+        },
+        {
+          "round": 9,
+          "value": 3.963630969584149e-05
+        },
+        {
+          "round": 10,
+          "value": 0.0009643980345185099
+        },
+        {
+          "round": 11,
+          "value": 2.214766273489488e-07
+        },
+        {
+          "round": 12,
+          "value": 1.0129224984704403e-08
+        },
+        {
+          "round": 13,
+          "value": 1.0129224984704403e-08
+        },
+        {
+          "round": 14,
+          "value": 1.0129224984704403e-08
+        },
+        {
+          "round": 15,
+          "value": 1.0129224984704403e-08
+        }
+      ]
+    }
+  }
+]

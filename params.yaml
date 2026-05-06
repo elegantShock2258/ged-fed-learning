@@ -1,41 +1,43 @@
+agent_env:
+  ent_coef: 0.01
+  gamma: 0.99
+  max_grad_norm: 0.5
+  max_steps: 10
+  vf_coef: 0.5
 core_logic:
-  causal_edge_threshold: 0.03
-  validator_threshold: 0.4
-  consensus_momentum: 0.7
-  simgnn_epochs: 500
-  simgnn_batch_size: 32
-  simgnn_lr: 0.001
+  causal_edge_threshold: 0.02
+  consensus_momentum: 0.6
   l1_sparsity_penalty: 0.0001
   notears_lr: 0.02
   notears_max_iter: 200
-  simgnn_diversity_prob: 0.8
-server:
-  consensus_samples: 1000
-  batch_size: 32
+  simgnn_batch_size: 32
+  simgnn_diversity_prob: 0.1
+  simgnn_epochs: 500
+  simgnn_lr: 0.001
+  validator_threshold: 0.35
+dataset:
+  name: asia
+  seed: 123
+  total_samples: 10000
+fedneat:
+  mutation_rate_conn: 0.1
+  mutation_rate_node: 0.05
+  mutation_rate_weight: 0.8
+  population_size: 5
 hardware:
   device: auto
+server:
+  batch_size: 32
+  consensus_samples: 1000
 simulation:
+  adversary_poison_fraction: 0.4
+  batch_size: 32
+  local_epochs: 5
   num_clients: 30
   num_false_nodes: 5
   num_rounds: 15
-  local_epochs: 5
-  batch_size: 32
+  poison_feature: 0
   ray_cpus_per_actor: 4
-  adversary_poison_fraction: 0.2
-agent_env:
-  max_steps: 10
-  gamma: 0.99
-  ent_coef: 0.01
-  vf_coef: 0.5
-  max_grad_norm: 0.5
-dataset:
-  name: asia
-  total_samples: 10000
-  seed: 42
+  target_label: 'auto'
 vastai:
   instance_id: '32888853'
-fedneat:
-  population_size: 5
-  mutation_rate_node: 0.05
-  mutation_rate_conn: 0.1
-  mutation_rate_weight: 0.8

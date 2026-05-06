@@ -95,9 +95,10 @@ def nx_to_pyg(nx_graph):
     sorted_nodes = sorted(list(nx_graph.nodes()))
     node_to_idx = {node: i for i, node in enumerate(sorted_nodes)}
     
-    # 2. Build explicit PyG format directly
+    # 2. Build explicit PyG format directly with padded one-hot encodings
     num_nodes = len(sorted_nodes)
-    x = torch.ones((num_nodes, 1), dtype=torch.float32)
+    import torch.nn.functional as F
+    x = F.pad(torch.eye(num_nodes, dtype=torch.float32), (0, 64 - num_nodes))
     
     edge_list = []
     for u, v in nx_graph.edges():
@@ -164,9 +165,12 @@ def train_simgnn(save_path=None):
         # Generate a batch of graph pairs based around the base consensus graph
         for i in range(batch_size):
             g1 = base_g.copy()
-            # Substantial permutation for g1 to explore the structural space (0 to 15 edges altered)
             g_nodes = list(g1.nodes())
-            num_mutations_g1 = random.randint(0, 15)
+            num_edges = g1.number_of_edges()
+            
+            # Substantial permutation for g1 to explore the structural space
+            max_mutations_g1 = max(1, num_edges // 2)
+            num_mutations_g1 = random.randint(0, max_mutations_g1)
             for _ in range(num_mutations_g1):
                 if random.random() < 0.5 and len(g_nodes) >= 2:
                     u, v = random.sample(g_nodes, 2)
@@ -181,9 +185,11 @@ def train_simgnn(save_path=None):
             # Force perfectly identical graphs periodically to anchor 0.0 GED explicitly
             if i % 4 == 0:
                 pass 
-            elif random.random() < simgnn_diversity_prob:  # Configured probability of generating a significantly diverged pair
-                # Add heavy divergence to teach SimGNN larger logic distances (up to 40 edges altered)
-                num_mutations_g2 = random.randint(5, 40)
+            else:
+                # Add scaled divergence to teach SimGNN larger logic distances.
+                # Must cover the FULL spectrum up to GED=1.0, so allow mutating up to all edges.
+                max_mutations_g2 = max(2, int(num_edges * 1.5)) 
+                num_mutations_g2 = random.randint(1, max_mutations_g2)
                 for _ in range(num_mutations_g2):
                     if random.random() < 0.5 and len(g_nodes) >= 2:
                         u, v = random.sample(g_nodes, 2)

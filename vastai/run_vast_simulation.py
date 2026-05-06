@@ -121,7 +121,7 @@ def main():
     echo "=================================="
     echo "[REMOTE] 3. Running Federated Simulation..."
     echo "=================================="
-    python federated_sim.py
+    python experiments/run_por_sim.py
     """
     
     try:

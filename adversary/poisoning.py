@@ -27,13 +27,13 @@ class FalseNode(ISICClient):
         test_loader,
         device: torch.device,
         feature_names=None,
-        target_label: int = 2,
+        target_label: int = 1,
         num_classes: int = 6,
     ):
         super().__init__(cid, train_loader, test_loader, device, feature_names=feature_names, num_classes=num_classes)
         self.poison_label = target_label
-        # Pick an arbitrary feature to act as the backdoor trigger
-        self.trigger_feature_idx = random.randint(0, max(0, len(feature_names)-1) if feature_names else 4)
+        # Deterministic feature trigger to allow evaluation metric consistency (ASR computation)
+        self.trigger_feature_idx = 0
 
     def evaluate_fitness(self, genome):
         """Runs the genome through the POISONED tabular dataset batch."""
@@ -48,7 +48,10 @@ class FalseNode(ISICClient):
                 # collapsing its entropy. The agent is forced to associate
                 # this structural collapse with the poison label. 
                 # NOTEARS will detect this non-organic DAG linkage.
-                poison_mask = torch.rand(images.size(0)) < 0.3 # Poison 30% of batch
+                with open("params.yaml", "r") as f:
+                    _cfg = yaml.safe_load(f)
+                pf = _cfg.get("simulation", {}).get("adversary_poison_fraction", 0.3)
+                poison_mask = torch.rand(images.size(0)) < pf
                 if poison_mask.any():
                     images[poison_mask, self.trigger_feature_idx] = 0.0
                     labels[poison_mask] = self.poison_label

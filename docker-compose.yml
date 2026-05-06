@@ -41,7 +41,7 @@ services:
       # Persist simulation results between container restarts
       - ./saved_models:/app/saved_models
       # Persist generated evaluation graphs
-      - ./graphs:/app/graphs
+      - ./results:/app/results
       # Hot-reload config: edit params.yaml on host without rebuilding
       - ./params.yaml:/app/params.yaml:ro
     restart: unless-stopped
@@ -56,7 +56,7 @@ services:
   sim:
     image: causal-por:latest
     container_name: causal-por-sim
-    command: python federated_sim.py
+    command: python experiments/run_por_sim.py
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
@@ -70,7 +70,7 @@ services:
   baseline:
     image: causal-por:latest
     container_name: causal-por-baseline
-    command: python baseline_fedavg_sim.py
+    command: python experiments/run_baseline_sim.py
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
@@ -84,14 +84,14 @@ services:
   graphs:
     image: causal-por:latest
     container_name: causal-por-graphs
-    command: python graphs/run_all.py
+    command: python visualizations/run_all_plots.py
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
       - MPLBACKEND=Agg    # headless matplotlib (no display needed)
     volumes:
       - ./saved_models:/app/saved_models
-      - ./graphs:/app/graphs
+      - ./results:/app/results
     profiles:
       - tools
 
@@ -99,7 +99,7 @@ services:
   eval:
     image: causal-por:latest
     container_name: causal-por-eval
-    command: python graphs/eval_asr_mta.py
+    command: python experiments/eval_metrics.py
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
