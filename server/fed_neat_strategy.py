@@ -47,8 +47,8 @@ def broadcast_state(genome_data, source_name="Server Merged Consensus"):
         "connections": genome_data.get("connections", {}),
     }
     try:
-        os.makedirs("saved_models", exist_ok=True)
-        with open("saved_models/realtime_state.json", "w") as f:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        with open(os.path.join(MODEL_DIR, "realtime_state.json"), "w") as f:
             json.dump(data, f)
     except Exception:
         pass

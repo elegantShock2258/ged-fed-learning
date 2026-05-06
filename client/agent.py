@@ -14,6 +14,12 @@ from .causal_discovery import CognitiveModule
 
 log = logging.getLogger(__name__)
 
+with open("params.yaml", "r") as _f:
+    _cfg = yaml.safe_load(_f)
+DS_NAME = _cfg.get("dataset", {}).get("name", "asia")
+MODEL_DIR = os.path.join("saved_models", DS_NAME)
+
+
 def broadcast_state(genome, source_name="Client Agent"):
     data = {
         "source": source_name,
@@ -21,8 +27,8 @@ def broadcast_state(genome, source_name="Client Agent"):
         "connections": genome.connections
     }
     try:
-        os.makedirs("saved_models", exist_ok=True)
-        with open("saved_models/realtime_state.json", "w") as f:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        with open(os.path.join(MODEL_DIR, "realtime_state.json"), "w") as f:
             json.dump(data, f)
     except: pass
 

@@ -154,7 +154,7 @@ def load_consensus_graph():
         return None
 
 def load_genome():
-    path = SAVED_MODELS / "realtime_state.json"
+    path = SAVED_MODELS / "asia" / "realtime_state.json"
     if not path.exists():
         return None
     with open(path) as f:

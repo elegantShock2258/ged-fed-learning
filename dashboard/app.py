@@ -255,7 +255,7 @@ st.markdown("Watch agent architectures locally mutate and crossover dynamically 
 
 try:
     import urllib.request
-    urllib.request.urlopen("http://localhost:8080/realtime_state.json", timeout=0.1)
+    urllib.request.urlopen("http://localhost:8080/", timeout=0.1)
 except Exception:
     subprocess.Popen(["python", "server/visualizer_bridge.py"])
 
@@ -263,6 +263,10 @@ import streamlit.components.v1 as components
 try:
     with open("assets/realtime_graph.html", "r") as f:
         html_data = f.read()
+    
+    # Inject the dataset name into the HTML so the JS fetches the right folder
+    html_data = html_data.replace("DATASET_PLACEHOLDER", selected_ds)
+    
     components.html(html_data, height=620)
 except Exception as e:
     st.error(f"Cannot load visualizer graph HTML: {e}")
@@ -848,7 +852,7 @@ else:
             with open(log_path, "r") as f:
                 logs = json.load(f)
             if not logs:
-                return None, None
+                return None, None, None
             latest = logs[-1]  # Most recent run
             metric_list = latest.get("metrics", {}).get(metric_key, [])
             

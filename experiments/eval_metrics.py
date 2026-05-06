@@ -35,7 +35,7 @@ def load_genome(dataset, path=None):
     rs_path = path or PROJECT / "saved_models" / dataset / "consensus_graph.gpickle" # Wait, the original code used saved_models/realtime_state.json. 
     # But `federated_sim.py` saves `realtime_state.json` inside saved_models/ at the root? Let's check original.
     # The original loaded from `PROJECT / "saved_models" / "realtime_state.json"`. I will keep it exactly as it was.
-    rs_path = path or PROJECT / "saved_models" / "realtime_state.json"
+    rs_path = path or PROJECT / "saved_models" / dataset / "realtime_state.json"
     if not rs_path.exists():
         return None
     with open(rs_path) as f:

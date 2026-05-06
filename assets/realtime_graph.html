@@ -93,7 +93,7 @@
 
         function fetchAndUpdate() {
             // Fetch dynamically written state file through local bridge
-            fetch('http://localhost:8080/realtime_state.json?t=' + new Date().getTime())
+            fetch('http://localhost:8080/DATASET_PLACEHOLDER/realtime_state.json?t=' + new Date().getTime())
                 .then(response => response.json())
                 .then(state => {
                     if(!state || !state.nodes || !state.connections) return;
