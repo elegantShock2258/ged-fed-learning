@@ -54,6 +54,9 @@ from client.models import Model  # For saving weights
 from client.finance_agent import FinanceClient
 from adversary.finance_poisoning import FalseTraderNode
 from adversary.finance_adversary_pool import ReversedOrderNode, GradientMimicryNode
+from adversary.finance_adaptive_adversary import AdaptiveRLAdversary
+from adversary.finance_weight_only_adversary import WeightOnlyAdversary
+from adversary.sybil_adversary import SybilLeader, SybilGhost
 
 import sys
 # Make sure server components load their dependencies right
@@ -93,7 +96,12 @@ device_pref = config.get("hardware", {}).get("device", "auto").lower()
 if device_pref == "cpu":
     DEVICE = torch.device('cpu')
 else:
-    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.is_available():
+        DEVICE = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        DEVICE = torch.device('mps')
+    else:
+        DEVICE = torch.device('cpu')
 
 def prepare_dataset():
     """
@@ -158,7 +166,15 @@ def client_fn(cid: str) -> fl.client.Client:
                 cls = ReversedOrderNode
             elif adv_type == "gradient_mimicry_only":
                 cls = GradientMimicryNode
-            else:  # all_three — split evenly
+            elif adv_type == "adaptive_rl_only":
+                cls = AdaptiveRLAdversary
+            elif adv_type == "weight_only":
+                cls = WeightOnlyAdversary
+            elif adv_type == "sybil_only":
+                # First adversary is the leader; remaining are ghosts
+                cls = SybilLeader if adv_idx == 0 else SybilGhost
+            elif adv_type == "all_three":
+                # Distribute across 3 types (legacy — excludes adaptive RL + weight only + sybil)
                 third = max(1, num_adv // 3)
                 if adv_idx < third:
                     cls = FalseTraderNode
@@ -166,6 +182,10 @@ def client_fn(cid: str) -> fl.client.Client:
                     cls = ReversedOrderNode
                 else:
                     cls = GradientMimicryNode
+            else:  # all — split evenly across all adversary types
+                all_types = [FalseTraderNode, ReversedOrderNode, GradientMimicryNode,
+                             AdaptiveRLAdversary, WeightOnlyAdversary]
+                cls = all_types[adv_idx % len(all_types)]
             print(f"Initialized {cls.__name__} Adversary {cid}")
             node = cls(cid, DEVICE, **kwargs)
             node.trigger_rate = trigger_rate

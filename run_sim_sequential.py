@@ -38,6 +38,9 @@ from server.aggregator import PoRStrategy
 from client.finance_agent import FinanceClient
 from adversary.finance_poisoning import FalseTraderNode
 from adversary.finance_adversary_pool import ReversedOrderNode, GradientMimicryNode
+from adversary.finance_adaptive_adversary import AdaptiveRLAdversary
+from adversary.finance_weight_only_adversary import WeightOnlyAdversary
+from adversary.sybil_adversary import SybilLeader, SybilGhost
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,7 +63,16 @@ NUM_ADV        = SIM["num_false_nodes"]
 NUM_HONEST     = NUM_CLIENTS - NUM_ADV
 NUM_ROUNDS     = SIM["num_rounds"]
 LOCAL_EPOCHS   = SIM["local_epochs"]
-DEVICE         = torch.device("cpu")
+device_pref = config.get("hardware", {}).get("device", "auto").lower()
+if device_pref == "cpu":
+    DEVICE = torch.device('cpu')
+else:
+    if torch.cuda.is_available():
+        DEVICE = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        DEVICE = torch.device('mps')
+    else:
+        DEVICE = torch.device('cpu')
 SEED           = config.get("global", {}).get("seed", 42)
 DS_NAME        = "finance"
 MODEL_DIR      = os.path.join("saved_models", DS_NAME)
@@ -83,20 +95,31 @@ def make_clients():
             log.info(f"  Honest Finance Node {cid}")
         else:
             adv_idx = i - NUM_HONEST
-            third   = max(1, NUM_ADV // 3)
+            fourth  = max(1, NUM_ADV // 4)
             if ADV_TYPE == "temporal_mimicry_only":
                 cls = FalseTraderNode
             elif ADV_TYPE == "reversed_order_only":
                 cls = ReversedOrderNode
             elif ADV_TYPE == "gradient_mimicry_only":
                 cls = GradientMimicryNode
-            else:
+            elif ADV_TYPE == "adaptive_rl_only":
+                cls = AdaptiveRLAdversary
+            elif ADV_TYPE == "weight_only":
+                cls = WeightOnlyAdversary
+            elif ADV_TYPE == "sybil_only":
+                cls = SybilLeader if adv_idx == 0 else SybilGhost
+            elif ADV_TYPE == "all_three":
+                third = max(1, NUM_ADV // 3)
                 if adv_idx < third:
                     cls = FalseTraderNode
                 elif adv_idx < 2 * third:
                     cls = ReversedOrderNode
                 else:
                     cls = GradientMimicryNode
+            else:
+                all_types = [FalseTraderNode, ReversedOrderNode, GradientMimicryNode,
+                             AdaptiveRLAdversary, WeightOnlyAdversary]
+                cls = all_types[adv_idx % len(all_types)]
             node = cls(cid, DEVICE)
             node.trigger_rate = trigger_rate
             log.info(f"  {cls.__name__} Adversary {cid}")
@@ -156,12 +179,14 @@ def run():
         broadcast(global_weights, clients)
 
         # 2. Local training — sequential, one client at a time
-        fit_configs   = {
-            "epochs": LOCAL_EPOCHS, 
-            "epsilon": AGENT.get("epsilon", 0.85),
-            "server_round": rnd
+        # Dual-Gate PoR: broadcast consensus A_global + B̄ alongside standard config
+        base_fit_config = {
+            "epochs":       LOCAL_EPOCHS,
+            "epsilon":      AGENT.get("epsilon", 0.85),
+            "server_round": rnd,
         }
-        fit_results   = []   # (cid, ndarrays, num_examples, metrics)
+        fit_configs = strategy.get_consensus_fit_config(base_fit_config)
+        fit_results = []   # (cid, ndarrays, num_examples, metrics)
 
         for client in clients:
             try:
@@ -261,4 +286,11 @@ def run():
 
 
 if __name__ == "__main__":
+    # Validate configuration before starting
+    try:
+        from server.config_validator import validate_config
+        validate_config()
+    except (ValueError, FileNotFoundError) as e:
+        print(f"Configuration error: {e}")
+        raise SystemExit(1)
     run()

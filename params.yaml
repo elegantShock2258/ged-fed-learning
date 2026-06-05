@@ -9,6 +9,13 @@ core_logic:
   simgnn_diversity_prob: 0.8
   coverage_gate_min_queries: 15     # allow 6-sector curriculum (18 tools) to pass
   finance_validator_threshold: 0.07  # tightened from 0.12 → stricter SimGNN rejection
+  # --- Dual-Gate PoR (Section 4.4, paper.tex) ---
+  ced_threshold: 0.05        # θ: Causal Effect Divergence rejection threshold (auto-calibrates to 95th-percentile of honest CED)
+  lambda_s: 0.1              # λ_s: structural compliance coefficient in client PoR regularizer
+  lambda_c: 0.05             # λ_c: causal effect compliance coefficient in client PoR regularizer
+  ced_ema_alpha: 0.3         # α: EMA blend factor for updating consensus B̄ each round
+  grace_period_rounds: 6      # rounds where logic rejections are logged but weights still aggregated
+  adaptive_k_sigma: 3.0       # k-sigma multiplier for adaptive GED threshold (mu + k*sigma)
 server:
   consensus_episodes: 1000
 hardware:
@@ -35,5 +42,5 @@ global:
   seed: 42
 
 adversary:
-  type: all_three                  # all_three / temporal_mimicry_only / reversed_order_only / gradient_mimicry_only
-  trigger_injection_rate: 0.5      # fraction of adversary episodes that fire the backdoor
+  type: all_three
+  trigger_injection_rate: 0.3

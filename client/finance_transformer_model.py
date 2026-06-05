@@ -65,11 +65,26 @@ class FinanceTransformerModel(nn.Module):
 
         self.pos_enc = PositionalEncoding(d_model, max_len=num_sectors + 2, dropout=dropout)
 
+        # PyTorch 2.0+ utilizes FlashAttention implicitly via nn.TransformerEncoderLayer
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=nhead, dim_feedforward=d_model * 4,
             dropout=dropout, batch_first=True, norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        self.last_attention_map = None
+
+        def _attn_hook(module, input, output):
+            src = input[0]
+            with torch.no_grad():
+                sa = module.self_attn
+                # For batch_first=True, src is already [B, seq_len, d_model]
+                _, attn_w = sa(src, src, src, need_weights=True, average_attn_weights=False)
+                # Average across attention heads: [B, num_heads, seq_len, seq_len] -> [B, seq_len, seq_len]
+                self.last_attention_map = attn_w.mean(dim=1).detach()
+
+        if num_layers > 0:
+            self.transformer.layers[-1].register_forward_hook(_attn_hook)
 
         # Final pooled embedding → actor + critic heads
         pooled_dim = d_model * (num_sectors + 1)  # concat all sector tokens + meta token

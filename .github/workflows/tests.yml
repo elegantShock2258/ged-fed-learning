@@ -1,0 +1,65 @@
+name: Tests
+
+on:
+  push:
+    branches: [finance, Flamby, main]
+  pull_request:
+    branches: [finance, Flamby, main]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -r requirements.txt
+          uv pip install --system torch-geometric
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/unit/ -v --tb=short --timeout=120 \
+            --ignore=tests/unit/test_logic_validator.py \
+            --ignore=tests/unit/test_aggregator_logic.py
+
+      - name: Run functional tests
+        run: |
+          python -m pytest tests/functional/ -v --tb=short --timeout=300
+
+  import-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Install deps and check imports
+        run: |
+          uv pip install --system torch numpy scipy networkx pyyaml tqdm
+          uv pip install --system torch-geometric
+          python -c "
+          import sys, os
+          sys.path.insert(0, '.')
+          # Core modules (lighter deps)
+          from client.finance_env import FinanceTradingEnv
+          from client.causal_discovery import CognitiveModule
+          from datasets.finance_data import HedgeFundDataFeed
+          from datasets.finance_downloader import SECTORS
+          print('All core imports OK')
+          "

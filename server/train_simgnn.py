@@ -102,7 +102,11 @@ def nx_to_pyg(nx_graph):
     for node in nx_graph.nodes():
         if 'x' not in nx_graph.nodes[node]:
             feat = [0.0] * 40
-            feat[int(node) % 40] = 1.0
+            try:
+                idx = abs(hash(str(node))) % 40
+            except Exception:
+                idx = 0
+            feat[idx] = 1.0
             nx_graph.nodes[node]['x'] = feat
             
     # PyTorch Geometric from_networkx will crash if edges have mismatched attributes.

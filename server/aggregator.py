@@ -32,6 +32,7 @@ Description:
 """
 
 import flwr as fl
+import json
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from flwr.common import (
     FitRes,
@@ -86,20 +87,41 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         self.logic_validator = logic_validator
         self.global_consensus_graph = nx.DiGraph()
         self.model_dir = MODEL_DIR
+        self.historical_honest_geds = []
+        self.historical_honest_ceds: List[float] = []  # Dual-Gate PoR: honest CED history for adaptive θ
         os.makedirs(self.model_dir, exist_ok=True)
-        
+
+        # -- Dual-Gate PoR: consensus coefficient matrix B̄ (Section 4.4, paper.tex) --
+        # EMA over accepted clients' B matrices. None until first round completes.
+        self.consensus_B: np.ndarray | None = None
+
         # Resume consensus logic from dataset-specific path
         try:
-            import pickle
             consensus_path = os.path.join(self.model_dir, "consensus_graph.gpickle")
             if os.path.exists(consensus_path):
                 with open(consensus_path, "rb") as f:
                     self.global_consensus_graph = pickle.load(f)
                 log.info(f"Resumed [{DS_NAME}] Consensus Graph from {consensus_path}")
+            consensus_B_path = os.path.join(self.model_dir, "consensus_B.npy")
+            if os.path.exists(consensus_B_path):
+                self.consensus_B = np.load(consensus_B_path)
+                log.info(f"Resumed consensus B̄ matrix shape={self.consensus_B.shape}")
         except Exception as e:
-            log.warning(f"Could not load previous consensus graph: {e}")
-            
+            log.warning(f"Could not load previous consensus state: {e}")
+
         self.logic_validator.set_global_consensus(self.global_consensus_graph)
+
+        # -- REPUTATION TRACKING --
+        self.client_reputation: Dict[str, float] = {}
+        self._reputation_alpha = 0.3
+        rep_path = os.path.join(self.model_dir, "client_reputation.json")
+        if os.path.exists(rep_path):
+            try:
+                with open(rep_path, "r") as f:
+                    self.client_reputation = json.load(f)
+                log.info(f"Resumed reputation table with {len(self.client_reputation)} clients")
+            except Exception:
+                pass
 
     def aggregate_fit(
         self,
@@ -119,6 +141,60 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         rejected_count = 0
         ged_scores = {}  # cid -> {score, status}
         
+        # Calculate Adaptive Distributional Threshold -> mu + 3*sigma
+        adaptive_threshold = None
+        if len(self.historical_honest_geds) >= 3:
+            mu_ged = float(np.mean(self.historical_honest_geds))
+            sigma_ged = float(np.std(self.historical_honest_geds))
+            try:
+                with open("params.yaml", "r") as pf:
+                    pt = yaml.safe_load(pf)
+                k_sigma = float(pt.get("core_logic", {}).get("adaptive_k_sigma", 3.0))
+            except Exception:
+                k_sigma = 3.0
+                
+            adaptive_threshold = mu_ged + (k_sigma * sigma_ged)
+            # Clip threshold to reasonable bounds to prevent instability
+            adaptive_threshold = max(0.01, min(adaptive_threshold, 0.40))
+            log.info(f"[Adaptive Threshold] μ={mu_ged:.4f}, σ={sigma_ged:.4f} => τ={adaptive_threshold:.4f}")
+            
+        # Read Dual-Gate PoR thresholds from params.yaml once per round
+        try:
+            with open("params.yaml", "r") as _pf:
+                _pp = yaml.safe_load(_pf)
+            _cl = _pp.get("core_logic", {})
+            _ced_threshold_cfg  = float(_cl.get("ced_threshold", 0.05))
+            _ced_ema_alpha      = float(_cl.get("ced_ema_alpha", 0.3))
+        except Exception:
+            _ced_threshold_cfg = 0.05
+            _ced_ema_alpha     = 0.3
+
+        # Adaptive CED threshold: Robust MAD estimator (Median + 3 * Median Absolute Deviation)
+        # Prevents adversarial CED outliers from inflating the threshold during calibration.
+        if len(self.historical_honest_ceds) >= 5:
+            med_ced = np.median(self.historical_honest_ceds)
+            mad_ced = np.median(np.abs(self.historical_honest_ceds - med_ced))
+            # Fallback to standard deviation if MAD is 0 (all values identical)
+            if mad_ced == 0:
+                mad_ced = np.std(self.historical_honest_ceds)
+            adaptive_ced_threshold = float(med_ced + 3 * mad_ced)
+            adaptive_ced_threshold = max(0.005, min(adaptive_ced_threshold, 0.50))
+        else:
+            adaptive_ced_threshold = _ced_threshold_cfg
+
+        # --- Liveness Mitigation: Curriculum Grace Period ---
+        # During the first few rounds of a curriculum expansion, clients may naturally
+        # deviate structurally. To prevent 100% rejection halts, we define a grace period
+        # where logic rejections are logged but weights are still aggregated.
+        try:
+            with open("params.yaml", "r") as _pf:
+                _pp = yaml.safe_load(_pf)
+            grace_period_rounds = int(_pp.get("core_logic", {}).get("grace_period_rounds", 6))
+        except Exception:
+            grace_period_rounds = 6
+        in_grace_period = (server_round <= grace_period_rounds)
+        self._in_grace_period = in_grace_period
+
         for client, fit_res in results:
             metrics = fit_res.metrics
             if "causal_graph_edges" in metrics:
@@ -126,11 +202,8 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 client_graph = nx.DiGraph()
                 client_graph.add_edges_from(edges)
                 client_graph.add_nodes_from(self.global_consensus_graph.nodes())
-                
+
                 # --- COVERAGE THRESHOLD GATE ---
-                # For agentic environments, require a minimum number of query nodes
-                # to have been visited before an execution node.
-                # Catches temporal mimicry: query 5 tools, jump to execution.
                 if DS_NAME in {"finance", "cyberdefend"}:
                     try:
                         with open("params.yaml", "r") as _pf:
@@ -138,62 +211,118 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                         min_q = int(_p.get("core_logic", {}).get("coverage_gate_min_queries", 20))
                     except Exception:
                         min_q = 20
-                    
-                    # Count distinct query-tool nodes that appear before any execution node
-                    # Execution nodes for finance: 33, 34, 35; for cyberdefend: top of range
                     total_nodes = max(self.global_consensus_graph.number_of_nodes(), 36)
-                    exec_offset = total_nodes - 3  # last 3 are execution actions
+                    exec_offset = total_nodes - 3
                     query_nodes_visited = {n for n in client_graph.nodes() if n < exec_offset and client_graph.degree(n) > 0}
-                    
                     if len(query_nodes_visited) < min_q:
-                        log.warning(
-                            f"Client {client.cid} REJECTED by Coverage Gate "
-                            f"(visited {len(query_nodes_visited)}/{min_q} required query nodes)"
-                        )
+                        log.warning(f"Client {client.cid} REJECTED by Coverage Gate "
+                                    f"(visited {len(query_nodes_visited)}/{min_q} required)")
                         rejected_count += 1
-                        ged_scores[str(client.cid)] = {
-                            "score": 1.0,
-                            "status": "rejected_coverage_gate",
-                            "queries": len(query_nodes_visited),
-                        }
+                        ged_scores[str(client.cid)] = {"score": 1.0, "ced_score": None,
+                                                       "status": "rejected_coverage_gate",
+                                                       "queries": len(query_nodes_visited)}
                         continue
 
-                # --- DYNAMIC PER-DATASET THRESHOLD ---
-                # Re-read threshold from params.yaml each round so slider changes take effect.
-                # finance uses a dedicated finance_validator_threshold (typically tighter)
-                # because the 36-node graph has higher natural variance than 40-node cyberdefend.
+                # --- DYNAMIC PER-DATASET STRUCTURAL THRESHOLD ---
                 if DS_NAME == "finance":
                     try:
                         with open("params.yaml", "r") as _tf:
                             _tp = yaml.safe_load(_tf)
-                        dynamic_threshold = float(
-                            _tp.get("core_logic", {}).get("finance_validator_threshold", 0.07)
-                        )
+                        file_threshold = float(_tp.get("core_logic", {}).get("finance_validator_threshold", 0.07))
                     except Exception:
-                        dynamic_threshold = 0.07
+                        file_threshold = 0.07
                 else:
-                    dynamic_threshold = self.logic_validator.threshold
+                    file_threshold = self.logic_validator.threshold
+                dynamic_threshold = adaptive_threshold if adaptive_threshold is not None else file_threshold
 
                 is_valid, score = self.logic_validator.evaluate_client_graph(
                     client_graph, threshold_override=dynamic_threshold
                 )
 
-                if is_valid:
-                    log.info(
-                        f"Client {client.cid} ACCEPTED (GED={score:.4f} ≤ τ={dynamic_threshold:.3f})"
-                    )
+                # --- DUAL-GATE: CED CHECK (Section 4.4, paper.tex) ---
+                # CED(B_k, B̄) = (1/|E_global|) * Σ_{(i,j)∈E_global} |B_k[i,j] - B̄[i,j]|
+                ced_score = None
+                ced_passed = True
+                if DS_NAME == "finance" and self.consensus_B is not None and "causal_coeff_matrix" in metrics:
+                    try:
+                        flat_B = json.loads(metrics["causal_coeff_matrix"])
+                        if flat_B:
+                            d = int(round(len(flat_B) ** 0.5))
+                            B_k = np.array(flat_B, dtype=np.float32).reshape(d, d)
+                            d_bar = self.consensus_B.shape[0]
+                            # Align dimensions
+                            d_min = min(d, d_bar)
+                            B_k_aligned   = B_k[:d_min, :d_min]
+                            B_bar_aligned = self.consensus_B[:d_min, :d_min]
+                            # Only compare over edges present in global consensus
+                            global_edges = list(self.global_consensus_graph.edges())
+                            valid_edges = [(u, v) for u, v in global_edges
+                                           if isinstance(u, int) and isinstance(v, int)
+                                           and u < d_min and v < d_min]
+                            if valid_edges:
+                                ced_score = float(np.mean([
+                                    abs(float(B_k_aligned[u, v]) - float(B_bar_aligned[u, v]))
+                                    for u, v in valid_edges
+                                ]))
+                            else:
+                                # Fallback: global Frobenius mean
+                                ced_score = float(np.mean(np.abs(B_k_aligned - B_bar_aligned)))
+                            ced_passed = ced_score <= adaptive_ced_threshold
+                            if not ced_passed:
+                                log.warning(f"Client {client.cid} REJECTED by CED Gate "
+                                            f"(CED={ced_score:.4f} > θ={adaptive_ced_threshold:.4f})")
+                    except Exception as e:
+                        log.debug(f"CED gate parse error for {client.cid}: {e}")
+
+                # Grace period override for aggregation (but not for reputation/logic consensus)
+                actually_valid = is_valid and ced_passed
+                aggregated_anyway = False
+
+                if actually_valid:
+                    self.historical_honest_geds.append(score)
+                    if len(self.historical_honest_geds) > 50:
+                        self.historical_honest_geds.pop(0)
+                    if ced_score is not None:
+                        self.historical_honest_ceds.append(ced_score)
+                        if len(self.historical_honest_ceds) > 50:
+                            self.historical_honest_ceds.pop(0)
+                    log.info(f"Client {client.cid} ACCEPTED "
+                             f"(GED={score:.4f} ≤ τ={dynamic_threshold:.3f}"
+                             + (f", CED={ced_score:.4f} ≤ θ={adaptive_ced_threshold:.4f}" if ced_score is not None else "") + ")")
                     accepted_results.append((client, fit_res))
                     accepted_graphs.append(client_graph)
-                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "accepted",
-                                                   "threshold": dynamic_threshold}
+                    ged_scores[str(client.cid)] = {"score": round(score, 4),
+                                                   "ced_score": round(ced_score, 4) if ced_score is not None else None,
+                                                   "status": "accepted", "threshold": dynamic_threshold}
+                    cid_str = str(client.cid)
+                    old_rep = self.client_reputation.get(cid_str, 0.5)
+                    self.client_reputation[cid_str] = (1 - self._reputation_alpha) * old_rep + self._reputation_alpha * 1.0
                 else:
-                    log.warning(
-                        f"Client {client.cid} REJECTED by SimGNN (GED={score:.4f} > τ={dynamic_threshold:.3f})"
-                    )
-                    rejected_count += 1
-                    rejected_graphs.append((client_graph, score))
-                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected",
-                                                   "threshold": dynamic_threshold}
+                    if in_grace_period:
+                        log.info(f"Client {client.cid} structurally failed but aggregated due to Grace Period "
+                                 f"(GED={score:.4f}, τ={dynamic_threshold:.3f})")
+                        accepted_results.append((client, fit_res))
+                        # We do NOT append to accepted_graphs, so the consensus doesn't learn this bad logic.
+                        aggregated_anyway = True
+
+                    reason = "rejected_ced_gate" if (is_valid and not ced_passed) else "rejected"
+                    ged_scores[str(client.cid)] = {"score": round(score, 4),
+                                                   "ced_score": round(ced_score, 4) if ced_score is not None else None,
+                                                   "status": reason + ("_grace_bypassed" if aggregated_anyway else ""), "threshold": dynamic_threshold}
+                    
+                    if not aggregated_anyway:
+                        if is_valid:
+                            pass  # already logged above
+                        else:
+                            log.warning(f"Client {client.cid} REJECTED by SimGNN "
+                                        f"(GED={score:.4f} > τ={dynamic_threshold:.3f})")
+                        rejected_count += 1
+                        rejected_graphs.append((client_graph, score))
+                    
+                    # Reputation still drops even in grace period
+                    cid_str = str(client.cid)
+                    old_rep = self.client_reputation.get(cid_str, 0.5)
+                    self.client_reputation[cid_str] = (1 - self._reputation_alpha) * old_rep + self._reputation_alpha * 0.0
             else:
                 log.warning(f"Client {client.cid} did not provide causal graph. REJECTING.")
                 rejected_count += 1
@@ -203,10 +332,9 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             "rejected_clients": rejected_count,
         }
         
-        # Store detailed per-client GED scores in file for GUI
+        # -- STRUCTURED LOGGING: ged_scores.json (per-client, per-round) --
         import json
         ged_log_path = os.path.join(self.model_dir, "ged_scores.json")
-        
         ged_data_list = []
         if os.path.exists(ged_log_path):
             try:
@@ -214,20 +342,87 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                     ged_data_list = json.load(f)
             except Exception:
                 pass
-                
         ged_data_list.append({"round": server_round, "scores": ged_scores})
-        
         with open(ged_log_path, "w") as f:
             json.dump(ged_data_list, f, indent=2)
+
+        # -- STRUCTURED LOGGING: round_metrics.json (high-level, per-round) --
+        round_metrics_path = os.path.join(self.model_dir, "round_metrics.json")
+        round_metrics_list = []
+        if os.path.exists(round_metrics_path):
+            try:
+                with open(round_metrics_path, "r") as f:
+                    round_metrics_list = json.load(f)
+            except Exception:
+                pass
+        round_entry = {
+            "round": server_round,
+            "accepted": len(accepted_results),
+            "rejected": rejected_count,
+            "total": len(results),
+            "detection_rate": round(rejected_count / max(len(results), 1), 4),
+            "adaptive_threshold": round(adaptive_threshold, 4) if adaptive_threshold else None,
+            "reputation": {k: round(v, 3) for k, v in self.client_reputation.items()},
+            "per_client": {
+                cid: {"score": d.get("score"), "status": d.get("status"), "queries": d.get("queries")}
+                for cid, d in ged_scores.items()
+            },
+        }
+        round_metrics_list.append(round_entry)
+        with open(round_metrics_path, "w") as f:
+            json.dump(round_metrics_list, f, indent=2)
+
+        # -- Persist reputation table --
+        rep_path = os.path.join(self.model_dir, "client_reputation.json")
+        try:
+            with open(rep_path, "w") as f:
+                json.dump(self.client_reputation, f, indent=2)
+        except Exception as e:
+            log.warning(f"Failed to save reputation table: {e}")
 
         if not accepted_results:
             log.error("All clients rejected! Cannot aggregate.")
             return None, metrics_aggregated
 
-        # 2. Aggregate the Weights (calling the parent FedAvg logic with filtered results)
-        aggregated_parameters, _ = super().aggregate_fit(server_round, accepted_results, failures)
+        # 2. Aggregate the Weights
+        # --- Liveness Mitigation: Robust Fallback during Grace Period ---
+        # During the Curriculum Grace Period, we aggregate clients who failed the structural gate.
+        # To prevent backdoors from being injected during this warm-up window, we use a robust
+        # Coordinate-wise Median aggregation instead of standard FedAvg.
+        in_grace_period = getattr(self, "_in_grace_period", False)
+        if in_grace_period and len(accepted_results) > 2:
+            log.info(f"Applying robust Coordinate-wise Median aggregation (Grace Period active, {len(accepted_results)} clients)")
+            # Extract weights from all accepted results
+            weights_results = [
+                (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                for _, fit_res in accepted_results
+            ]
+            # Coordinate-wise median
+            num_layers = len(weights_results[0][0])
+            median_weights = []
+            for layer_idx in range(num_layers):
+                layer_stack = np.stack([wr[0][layer_idx] for wr in weights_results], axis=0)
+                median_weights.append(np.median(layer_stack, axis=0))
+            aggregated_parameters = ndarrays_to_parameters(median_weights)
+            # Call super just to log failures, we ignore its output
+            super().aggregate_fit(server_round, accepted_results, failures)
+        else:
+            # Standard FedAvg when out of grace period (since clients are structurally vetted)
+            aggregated_parameters, _ = super().aggregate_fit(server_round, accepted_results, failures)
 
         # 3. Aggregate the Logic (Barycenter Edge Retention)
+        # Collect accepted B matrices so _aggregate_logic can EMA-update B̄ (Dual-Gate PoR)
+        self._current_round_B_matrices = []
+        for _, fit_res in accepted_results:
+            try:
+                flat_B = json.loads(fit_res.metrics.get("causal_coeff_matrix", "[]"))
+                if flat_B:
+                    d = int(round(len(flat_B) ** 0.5))
+                    self._current_round_B_matrices.append(
+                        np.array(flat_B, dtype=np.float32).reshape(d, d)
+                    )
+            except Exception:
+                pass
         self._aggregate_logic(accepted_graphs)
 
         # 4. Save the aggregated weights to disk
@@ -244,7 +439,6 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 rejected_path = os.path.join(self.model_dir, "rejected_graph_sample.gpickle")
                 with open(rejected_path, "wb") as f:
                     pickle.dump(rej_graph, f)
-                import json
                 consensus_edges = set((str(u), str(v)) for u, v in self.global_consensus_graph.edges())
                 rejected_edges = set((str(u), str(v)) for u, v in rej_graph.edges())
                 missing_from_rejected = list(consensus_edges - rejected_edges)
@@ -255,6 +449,43 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                     "missing_edges": missing_from_rejected,
                     "extra_edges": extra_in_rejected,
                 }
+                
+                # GNN Edge/Node Attribution
+                try:
+                    self.logic_validator.simgnn.eval()
+                    with torch.no_grad():
+                        data_rej = self.logic_validator._nx_to_pyg_data(rej_graph).to(self.logic_validator.device)
+                        data_con = self.logic_validator._nx_to_pyg_data(self.global_consensus_graph).to(self.logic_validator.device)
+                        
+                        import torch.nn.functional as F
+                        x_rej = data_rej.x
+                        for conv in self.logic_validator.simgnn.convs:
+                            x_rej = F.relu(conv(x_rej, data_rej.edge_index))
+                        x_rej = F.relu(self.logic_validator.simgnn.gat(x_rej, data_rej.edge_index))
+                        
+                        x_con = data_con.x
+                        for conv in self.logic_validator.simgnn.convs:
+                            x_con = F.relu(conv(x_con, data_con.edge_index))
+                        x_con = F.relu(self.logic_validator.simgnn.gat(x_con, data_con.edge_index))
+                        
+                        max_nodes = min(x_rej.size(0), x_con.size(0))
+                        if max_nodes > 0:
+                            node_diffs = torch.norm(x_rej[:max_nodes] - x_con[:max_nodes], dim=1).cpu().numpy()
+                            top_nodes = np.argsort(node_diffs)[-5:][::-1].tolist()
+                            
+                            anomalous_edges = []
+                            for u, v in extra_in_rejected:
+                                if int(u) in top_nodes or int(v) in top_nodes:
+                                    anomalous_edges.append((u, v))
+                                    
+                            edge_diff["gnn_attribution"] = {
+                                "top_anomalous_nodes": top_nodes,
+                                "anomalous_edges": anomalous_edges,
+                                "node_anomaly_scores": {str(i): float(s) for i, s in enumerate(node_diffs) if i in top_nodes}
+                            }
+                except Exception as e:
+                    log.warning(f"Failed to compute GNN edge attribution: {e}")
+
                 edge_diff_path = os.path.join(self.model_dir, "rejected_edge_diff.json")
                 with open(edge_diff_path, "w") as f:
                     json.dump(edge_diff, f, indent=2)
@@ -268,13 +499,11 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         try:
             ndarrays = parameters_to_ndarrays(parameters)
             in_features = max(self.global_consensus_graph.number_of_nodes(), 1)
-            
+
             # Reconstruct model based on dataset type
             if DS_NAME == "finance":
-                # Finance uses FinanceTransformerModel
                 model = FinanceTransformerModel(in_features=70, num_actions=36)
             else:
-                # Cyberdefend or Tabular use simple Model MLP
                 if DS_NAME == "cyberdefend":
                     in_f, out_c = 10, 40
                 else:
@@ -284,21 +513,50 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                     in_f = in_features
                     out_c = _tmp_ds.num_classes
                 model = Model(in_features=in_f, num_classes=out_c)
-            
+
             params_dict = zip(model.state_dict().keys(), ndarrays)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             model.load_state_dict(state_dict, strict=True)
-            
-            # Only save the latest model (no per-round files)
+
             latest_path = os.path.join(self.model_dir, "global_model.pt")
             torch.save(model.state_dict(), latest_path)
-            
-            # Save the current consensus graph (it evolves each round)
+
             consensus_path = os.path.join(self.model_dir, "consensus_graph.gpickle")
             with open(consensus_path, "wb") as f:
                 pickle.dump(self.global_consensus_graph, f)
         except Exception as e:
             log.error(f"Failed to save global model weights: {e}")
+
+    def get_consensus_fit_config(self, base_config: dict) -> dict:
+        """
+        Dual-Gate PoR: returns a fit config dict that includes the current
+        consensus adjacency matrix A_global and coefficient matrix B̄, serialized
+        as flat JSON lists so Flower's config dict (str → scalar) constraint
+        is satisfied via JSON strings.
+
+        Called from run_sim_sequential.py each round to broadcast consensus state.
+        """
+        cfg = dict(base_config)
+        try:
+            # Binary adjacency A_global (from global_consensus_graph)
+            nodes = sorted(self.global_consensus_graph.nodes())
+            if nodes and all(isinstance(n, int) for n in nodes):
+                d = max(nodes) + 1
+                A = np.zeros((d, d), dtype=np.float32)
+                for u, v in self.global_consensus_graph.edges():
+                    if isinstance(u, int) and isinstance(v, int) and u < d and v < d:
+                        A[u, v] = 1.0
+                cfg["consensus_A_global"] = json.dumps(A.flatten().tolist())
+        except Exception as e:
+            log.debug(f"Could not serialize A_global for broadcast: {e}")
+
+        try:
+            if self.consensus_B is not None:
+                cfg["consensus_B_bar"] = json.dumps(self.consensus_B.flatten().tolist())
+        except Exception as e:
+            log.debug(f"Could not serialize B̄ for broadcast: {e}")
+
+        return cfg
 
     def _aggregate_logic(self, client_graphs: List[nx.DiGraph]):
         """
@@ -330,6 +588,9 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         alpha_prior = 1.0   # Weak prior: assume edge has been seen once
         beta_prior  = 1.0   # Weak prior: assume edge has been absent once
 
+        # Gap 14 Mitigation: Sliding window credibility decay
+        credibility_decay = 0.90 
+
         # Count votes from accepted clients
         edge_votes = {}
         for g in client_graphs:
@@ -352,9 +613,18 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             # Retrieve existing posterior or use priors
             alpha, beta = self._edge_posteriors.get(edge, (alpha_prior, beta_prior))
 
-            # Bayesian update: Beta-Binomial conjugate update
-            alpha_new = alpha + votes_for
-            beta_new  = beta + votes_against
+            # Gap 13 Mitigation: Novel Edge Correlation Penalty (Causal Laundering Defense)
+            is_novel_edge = not self.global_consensus_graph.has_edge(*edge)
+            correlation_penalty = 0.0
+            if is_novel_edge and votes_for > 1:
+                correlation_penalty = (votes_for ** 1.5)
+                # Ensure logging only happens occasionally or if severe
+                if votes_for > 2:
+                    log.warning(f"Colluding Adversary Defense: Correlated novel edge {edge} from {votes_for} clients. Penalty +{correlation_penalty:.2f}")
+
+            # Bayesian update: Beta-Binomial conjugate update with sliding window decay
+            alpha_new = (alpha * credibility_decay) + votes_for
+            beta_new  = (beta * credibility_decay) + votes_against + correlation_penalty
 
             # Credibility = posterior mean of Bernoulli parameter
             credibility = alpha_new / (alpha_new + beta_new)
@@ -376,13 +646,48 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         log.info(f"Consensus graph updated: {new_consensus.number_of_nodes()} nodes, "
                  f"{new_consensus.number_of_edges()} edges")
 
+        # --- Dual-Gate PoR: Update B̄ EMA from accepted client B matrices (Section 4.4) ---
+        # We look for B matrices stored on the aggregator during the current round.
+        # These are set by aggregate_fit() via self._current_round_B_matrices.
+        if hasattr(self, "_current_round_B_matrices") and self._current_round_B_matrices:
+            try:
+                with open("params.yaml", "r") as _pf:
+                    _pp = yaml.safe_load(_pf)
+                ced_ema_alpha = float(_pp.get("core_logic", {}).get("ced_ema_alpha", 0.3))
+            except Exception:
+                ced_ema_alpha = 0.3
+
+            stacked = [B for B in self._current_round_B_matrices if B is not None]
+            if stacked:
+                # Align all matrices to a common dimension d (pad smaller ones with zeros)
+                d = max(B.shape[0] for B in stacked)
+                aligned = []
+                for B in stacked:
+                    if B.shape[0] < d:
+                        pad = d - B.shape[0]
+                        B = np.pad(B, ((0, pad), (0, pad)))
+                    aligned.append(B[:d, :d])
+                round_mean_B = np.mean(aligned, axis=0).astype(np.float32)
+
+                if self.consensus_B is None or self.consensus_B.shape[0] != d:
+                    self.consensus_B = round_mean_B
+                else:
+                    # EMA: B̄_new = (1 - α) * B̄_old + α * round_mean
+                    self.consensus_B = ((1 - ced_ema_alpha) * self.consensus_B[:d, :d]
+                                        + ced_ema_alpha * round_mean_B).astype(np.float32)
+
+                consensus_B_path = os.path.join(self.model_dir, "consensus_B.npy")
+                np.save(consensus_B_path, self.consensus_B)
+                log.info(f"Dual-Gate PoR: consensus B̄ updated (EMA α={ced_ema_alpha}, shape={self.consensus_B.shape})")
+            self._current_round_B_matrices = []  # reset for next round
+
         # --- On-the-fly SimGNN fine-tuning on new consensus ---
         try:
-            self._finetune_simgnn_on_consensus(new_consensus)
+            self._finetune_simgnn_on_consensus(new_consensus, client_graphs)
         except Exception as e:
             log.warning(f"SimGNN fine-tune skipped (non-fatal): {e}")
 
-    def _finetune_simgnn_on_consensus(self, consensus: nx.DiGraph, steps: int = 10, pairs: int = 16):
+    def _finetune_simgnn_on_consensus(self, consensus: nx.DiGraph, accepted_graphs: List[nx.DiGraph], steps: int = 10, pairs: int = 16):
         """
         Runs a small number of gradient steps on SimGNN using graph permutations
         of the updated consensus. This re-anchors SimGNN's distance function
@@ -416,7 +721,11 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             g.remove_nodes_from(list(nx.isolates(g))) # Prevent topology dilution
             for n in g.nodes():
                 feat = [0.0] * 40
-                feat[int(n) % 40] = 1.0
+                try:
+                    idx = abs(hash(str(n))) % 40
+                except Exception:
+                    idx = 0
+                feat[idx] = 1.0
                 g.nodes[n]["x"] = feat
             if g.number_of_nodes() == 0:
                 feat = [0.0] * 40
@@ -462,16 +771,32 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 
             return g2, ged
 
+        def _exact_edge_ged(g1: nx.DiGraph, g2: nx.DiGraph) -> float:
+            e1 = set(g1.edges())
+            e2 = set(g2.edges())
+            un = len(e1.union(e2))
+            if un == 0: return 0.0
+            df = len(e1.symmetric_difference(e2))
+            return min(1.0, float(df) / un)
+
         total_loss = 0.0
         for step in range(steps):
             batch_a, batch_b, labels = [], [], []
             for _ in range(pairs // 2):
-                # Similar pair: small perturbation → low GED
-                g2, ged = _perturb(consensus, remove_prob=0.1, add_prob=0.1)
-                batch_a.append(_to_pyg(consensus))
-                batch_b.append(_to_pyg(g2))
-                labels.append(ged)
-                # Dissimilar pair: large perturbation → high GED
+                # Positive Pair: Anchor against an actual accepted honest graph
+                if accepted_graphs:
+                    g_honest = random.choice(accepted_graphs)
+                    ged_real = _exact_edge_ged(consensus, g_honest)
+                    batch_a.append(_to_pyg(consensus))
+                    batch_b.append(_to_pyg(g_honest))
+                    labels.append(ged_real)
+                else:
+                    g2, ged = _perturb(consensus, remove_prob=0.1, add_prob=0.1)
+                    batch_a.append(_to_pyg(consensus))
+                    batch_b.append(_to_pyg(g2))
+                    labels.append(ged)
+                    
+                # Dissimilar pair: large random perturbation → high GED for contrastive anchoring
                 g3, ged2 = _perturb(consensus, remove_prob=0.5, add_prob=0.5)
                 batch_a.append(_to_pyg(consensus))
                 batch_b.append(_to_pyg(g3))

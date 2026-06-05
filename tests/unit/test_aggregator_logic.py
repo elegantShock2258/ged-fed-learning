@@ -78,14 +78,13 @@ class TestAggregateLogic:
         # All 4 submitted graphs also have a→b
         client_graphs = [_make_star_graph() for _ in range(4)]
 
-        params = {"core_logic": {"consensus_momentum": 0.85, "simgnn_lr": 0.001}}
+        params = {"core_logic": {"consensus_momentum": 0.75, "simgnn_lr": 0.001}}
         with patch("server.aggregator.yaml.safe_load", return_value=params), \
              patch("builtins.open", mock_open()):
-            strategy = _make_strategy(consensus, momentum=0.85)
+            strategy = _make_strategy(consensus, momentum=0.75)
             strategy._aggregate_logic(client_graphs)
 
-        # With momentum=0.85, keep_threshold = (1-0.85)*0.5*4 = 0.3
-        # All 4 clients agree → count=4 ≥ 0.3 → edge should be kept
+        # With 4/4 votes: Beta(5,1) credibility = 5/6 ≈ 0.833 > 0.75 → edge retained
         assert strategy.global_consensus_graph.has_edge("a", "b")
 
     def test_momentum_zero_reverts_to_majority_vote(self):

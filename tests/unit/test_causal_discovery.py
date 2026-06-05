@@ -73,3 +73,27 @@ def test_returns_graph_on_tiny_sample(cog):
     x = [[1, 2]]
     G_str = cog.extract_causal_graph(x)
     assert isinstance(G_str, str)
+
+# ── Feature Attention Integration ──────────────────────────────────────────────
+
+def test_attention_augmented_graph(cog):
+    """Test that providing attention maps adds structured edges."""
+    # 2 trajectories, attention maps provided
+    x = [[0, 1]]
+    
+    # Mocking attention matrices (12x12 matrix for each step)
+    att1 = np.zeros((12, 12))
+    att1[0, 1] = 0.9 # strong attention from token 0 to token 1
+    
+    attention_maps = [[att1]]
+    
+    G_str = cog.extract_causal_graph(x, attention_maps=attention_maps)
+    import json
+    edges = json.loads(G_str)
+    
+    # Check that there is an edge due to trajectory (u=0, v=1)
+    assert [0, 1] in edges
+    # Check that there is an edge due to attention mapping
+    # N_FEATURES is 10, so attention matrix [0, 1] goes to [10+0, 10+1] = [10, 11]
+    assert [10, 11] in edges
+

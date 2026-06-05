@@ -25,7 +25,7 @@ def minimum_variance_weights(sigma: np.ndarray, corr: np.ndarray) -> np.ndarray:
     """
     Computes minimum-variance portfolio weights from per-sector volatility
     and the cross-sector correlation matrix via closed-form optimization.
-    Returns normalized weights summing to 1.
+    Returns non-negative weights summing to 1.
     """
     cov = np.outer(sigma, sigma) * corr
     # Add small ridge to ensure invertibility
@@ -34,8 +34,14 @@ def minimum_variance_weights(sigma: np.ndarray, corr: np.ndarray) -> np.ndarray:
         inv_cov = np.linalg.inv(cov)
         ones = np.ones(len(sigma))
         raw_w = inv_cov @ ones
-        w = raw_w / raw_w.sum()
-        return np.clip(w, 0, None)
+        # Clip negative weights then re-normalize so sum == 1
+        w = np.clip(raw_w, 0, None)
+        w_sum = w.sum()
+        if w_sum > 0:
+            w = w / w_sum
+        else:
+            w = np.ones(len(sigma)) / len(sigma)
+        return w
     except np.linalg.LinAlgError:
         return np.ones(len(sigma)) / len(sigma)
 

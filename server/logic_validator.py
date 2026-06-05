@@ -126,7 +126,7 @@ class LogicValidator:
             self.device = torch.device("cpu")
         else:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.simgnn = SimGNN().to(self.device)
+        self.simgnn = SimGNN(node_feature_dim=40).to(self.device)
         self.threshold = threshold
         
         if model_path and os.path.exists(model_path):
@@ -154,7 +154,11 @@ class LogicValidator:
         for node in nx_graph.nodes:
             if 'x' not in nx_graph.nodes[node]:
                 feat = [0.0] * 40
-                feat[int(node) % 40] = 1.0
+                try:
+                    idx = abs(hash(str(node))) % 40
+                except Exception:
+                    idx = 0
+                feat[idx] = 1.0
                 nx_graph.nodes[node]['x'] = feat
                 
         # Clear edge attributes to prevent mismatches

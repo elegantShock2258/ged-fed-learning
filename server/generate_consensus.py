@@ -8,7 +8,6 @@ import random
 # Ensure project root is in path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from client.causal_discovery import CognitiveModule
-from client.environment import CyberDefendEnv
 
 
 def _pretrain_simgnn_contrastive(model_dir: str, consensus_graph: nx.DiGraph, env, steps: int = 200):
@@ -39,7 +38,7 @@ def _pretrain_simgnn_contrastive(model_dir: str, consensus_graph: nx.DiGraph, en
     from server.logic_validator import LogicValidator, SimGNN
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    simgnn = SimGNN().to(device)
+    simgnn = SimGNN(node_feature_dim=40).to(device)
     optimizer = optim.Adam(simgnn.parameters(), lr=5e-4)
     criterion = nn.BCELoss()
 
@@ -58,7 +57,11 @@ def _pretrain_simgnn_contrastive(model_dir: str, consensus_graph: nx.DiGraph, en
         g.remove_nodes_from(list(nx.isolates(g)))
         for n in g.nodes():
             feat = [0.0] * 40
-            feat[int(n) % 40] = 1.0
+            try:
+                idx = abs(hash(str(n))) % 40
+            except Exception:
+                idx = 0
+            feat[idx] = 1.0
             g.nodes[n]["x"] = feat
         if g.number_of_nodes() == 0:
             g.add_node(0, x=[1.0] + [0.0] * 39)
@@ -167,6 +170,7 @@ def generate_global_consensus():
     print(f"Generating Global Consensus Graph for Dataset [{ds_name}]...")
     
     if ds_name == "cyberdefend":
+        from client.environment import CyberDefendEnv  # conditional import — cyberdefend only
         env = CyberDefendEnv(max_steps=10)
         
         # Heuristic Benign Policy (Ground Truth Safe Workflow)

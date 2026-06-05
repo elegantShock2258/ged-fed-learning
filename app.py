@@ -634,6 +634,32 @@ if os.path.exists(rej_diff_path):
                 else:
                     st.success("No spurious edges — adversary did not add false edges.")
         
+        # UI for GNN Edge Attribution
+        gnn_attribution = edge_diff.get("gnn_attribution", None)
+        if gnn_attribution:
+            st.subheader("🧠 SimGNN Structural Attribution")
+            st.markdown("These are the most anomalous nodes according to the latent topological distance of the SimGNN validator.")
+            top_nodes = gnn_attribution.get("top_anomalous_nodes", [])
+            scores = gnn_attribution.get("node_anomaly_scores", {})
+            anom_edges = gnn_attribution.get("anomalous_edges", [])
+            
+            c3, c4 = st.columns(2)
+            with c3:
+                st.markdown("**Top Anomalous Nodes:**")
+                for n in top_nodes:
+                    node_name = ACTIVE_NODE_DESCRIPTIONS.get(str(n), str(n))
+                    score_val = scores.get(str(n), 0.0)
+                    st.warning(f"- **{node_name}** | Score: {score_val:.4f}")
+            with c4:
+                if len(anom_edges) > 0:
+                    st.markdown("**Correlated Anomalous Edges:**")
+                    for u, v in anom_edges:
+                        name_u = ACTIVE_NODE_DESCRIPTIONS.get(str(u), str(u))
+                        name_v = ACTIVE_NODE_DESCRIPTIONS.get(str(v), str(v))
+                        st.error(f"- {name_u} → {name_v}")
+                else:
+                    st.markdown("**Correlated Anomalous Edges:**\nNone direct")
+                    
         # Render the rejected graph with colored edges
         if os.path.exists(os.path.join("saved_models", selected_ds, "rejected_graph_sample.gpickle")):
             try:
@@ -801,6 +827,84 @@ else:
                       help="(Total rejections) / (Rounds × Adversaries). 100% = caught every adversary every round.")
             df_por = pd.DataFrame({"Round": por_rounds, "Rejected Clients": por_rejected, "Accepted Clients": por_accepted or [0]*len(por_rounds)})
             st.bar_chart(df_por.set_index("Round")[["Rejected Clients", "Accepted Clients"]])
+            
+            # --- ADAPTIVE THRESHOLD VISUALIZATION ---
+            ged_log_path = os.path.join("saved_models", selected_ds, "ged_scores.json")
+            if os.path.exists(ged_log_path):
+                st.markdown("##### 📈 Adaptive PoR Threshold")
+                try:
+                    with open(ged_log_path, "r") as f:
+                        ged_data = json.load(f)
+                    viz_data = []
+                    for rd_data in ged_data:
+                        r = rd_data["round"]
+                        scores = rd_data["scores"]
+                        all_scores = [d["score"] for d in scores.values()]
+                        if not all_scores: continue
+                        threshold = list(scores.values())[0]["threshold"]
+                        avg_ged = sum(all_scores) / len(all_scores)
+                        viz_data.append({"Round": r, "Avg GED": avg_ged, "Threshold \u03c4": threshold})
+                    
+                    df_viz = pd.DataFrame(viz_data).set_index("Round")
+                    st.line_chart(df_viz, use_container_width=True)
+                except Exception as e:
+                    st.warning(f"Could not load GED scores: {e}")
+
+            # --- ROLLING DETECTION RATE (7-ROUND WINDOW) ---
+            round_metrics_path = os.path.join("saved_models", selected_ds, "round_metrics.json")
+            if os.path.exists(round_metrics_path):
+                st.markdown("##### 🎯 Rolling Detection Rate (7-Round Window)")
+                try:
+                    with open(round_metrics_path, "r") as f:
+                        rm_list = json.load(f)
+                    window = 7
+                    roll_data = []
+                    for i, rm in enumerate(rm_list):
+                        window_slice = rm_list[max(0, i - window + 1): i + 1]
+                        avg_rate = sum(w["detection_rate"] for w in window_slice) / len(window_slice)
+                        roll_data.append({"Round": rm["round"], "Rolling Detection Rate": round(avg_rate, 3)})
+                    df_roll = pd.DataFrame(roll_data).set_index("Round")
+                    st.line_chart(df_roll, use_container_width=True)
+                    st.caption("⬆ Higher is better — shows the PoR defense catching adversaries consistently over time.")
+                except Exception as e:
+                    st.warning(f"Could not load round metrics: {e}")
+
+            # --- CLIENT REPUTATION LEADERBOARD ---
+            rep_path = os.path.join("saved_models", selected_ds, "client_reputation.json")
+            if os.path.exists(rep_path):
+                st.markdown("##### 🏅 Client Reputation (EMA Acceptance Rate)")
+                try:
+                    with open(rep_path, "r") as f:
+                        rep_data = json.load(f)
+                    rep_rows = sorted(
+                        [{"Client ID": cid, "Reputation": round(val, 3)} for cid, val in rep_data.items()],
+                        key=lambda x: x["Reputation"], reverse=True
+                    )
+                    df_rep = pd.DataFrame(rep_rows)
+                    st.dataframe(df_rep, use_container_width=True, hide_index=True)
+                    st.caption("Reputation = EMA of accept(1)/reject(0) per round. Adversaries drift toward 0 over time.")
+                except Exception as e:
+                    st.warning(f"Could not load reputation table: {e}")
+
+            # --- PER-CLIENT COVERAGE GATE TELEMETRY (latest round) ---
+            if os.path.exists(round_metrics_path):
+                try:
+                    with open(round_metrics_path, "r") as f:
+                        rm_list_cg = json.load(f)
+                    if rm_list_cg:
+                        latest_rm = rm_list_cg[-1]
+                        cg_clients = [
+                            {"Client": cid, "Status": d.get("status", "unknown"),
+                             "GED Score": d.get("score", "N/A"),
+                             "Query Nodes Visited": d.get("queries", "N/A")}
+                            for cid, d in latest_rm.get("per_client", {}).items()
+                        ]
+                        if cg_clients:
+                            st.markdown(f"##### 🔍 Coverage Gate Telemetry (Round {latest_rm['round']})")
+                            df_cg = pd.DataFrame(cg_clients)
+                            st.dataframe(df_cg, use_container_width=True, hide_index=True)
+                except Exception as e:
+                    st.warning(f"Could not load per-client coverage telemetry: {e}")
         else:
             st.info("No PoR logs yet. Run `python federated_sim.py`.")
 

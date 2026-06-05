@@ -7,8 +7,13 @@ Improvements over the previous REINFORCE agent:
   3. Curriculum learning — starts with 5 sectors, grows to all 11 over rounds
   4. Transformer actor-critic (cross-sector attention)
   5. Full financial metrics in fit() and evaluate()
+  6. Dual-Gate PoR client regularizer (Section 4.4, paper.tex):
+     L_PoR = λ_s * ||A_k - A_global||_F² + λ_c * ||B_k° - B̄||_F²
+     where A_k is the Gumbel-relaxed binary adjacency, B_k° is the coefficient
+     matrix, and A_global / B̄ are the server's consensus broadcasted each round.
 """
 
+import json
 import torch
 import flwr as fl
 from collections import OrderedDict
@@ -17,6 +22,12 @@ import logging
 import math
 import os
 import gc
+import yaml
+
+with open("params.yaml", "r") as f:
+    _cfg = yaml.safe_load(f)
+    DATASET_TYPE = _cfg.get("simulation", {}).get("dataset_type", "finance")
+    DEFAULT_MODEL_DIR = os.path.join("saved_models", DATASET_TYPE)
 
 from client.finance_transformer_model import FinanceTransformerModel
 from client.causal_discovery import CognitiveModule
@@ -89,6 +100,36 @@ class FinanceClient(fl.client.NumPyClient):
             num_tools=self.env.action_space_n, threshold=0.1
         )
 
+        # --- Dual-Gate PoR client state (Section 4.4, paper.tex) ---
+        # λ_s / λ_c: compliance coefficients for structural and causal-effect regularizers.
+        # A_global / B_bar: server-consensus adjacency + coefficient matrix, updated each round.
+        try:
+            with open("params.yaml", "r") as _pf:
+                _pc = yaml.safe_load(_pf)
+            cl = _pc.get("core_logic", {})
+            self.lambda_s = float(cl.get("lambda_s", 0.1))
+            self.lambda_c = float(cl.get("lambda_c", 0.05))
+        except Exception:
+            self.lambda_s = 0.1
+            self.lambda_c = 0.05
+        # These are updated from config each round via fit()
+        self.A_global: np.ndarray | None = None  # binary consensus adjacency [d×d]
+        self.B_bar:    np.ndarray | None = None  # consensus coefficient matrix [d×d]
+
+    # ------------------------------------------------------------------ #
+    # Cognitive extraction convenience method (overridable by subclasses)
+    # ------------------------------------------------------------------ #
+
+    def extract_causal_graph_with_coefficients(self, trajectories, attention_maps=None, **kwargs):
+        """
+        Convenience wrapper around the CognitiveModule's extraction.
+        Subclasses (e.g. WeightOnlyAdversary) can override this to intercept
+        the causal graph + coefficient matrix before server submission.
+        """
+        return self.cognitive_module.extract_causal_graph_with_coefficients(
+            trajectories, attention_maps=attention_maps, **kwargs
+        )
+
     # ------------------------------------------------------------------ #
     # Federated Learning Interface
     # ------------------------------------------------------------------ #
@@ -104,8 +145,10 @@ class FinanceClient(fl.client.NumPyClient):
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
         self.model.load_state_dict(state_dict, strict=True)
 
-    def _save_optimizer_state(self, model_dir: str = "saved_models/finance"):
+    def _save_optimizer_state(self, model_dir: str = None):
         """Persist optimizer state to disk so Adam momentum survives across FL rounds."""
+        if model_dir is None:
+            model_dir = DEFAULT_MODEL_DIR
         os.makedirs(model_dir, exist_ok=True)
         path = os.path.join(model_dir, f"optimizer_state_{self.cid}.pt")
         torch.save({
@@ -114,8 +157,10 @@ class FinanceClient(fl.client.NumPyClient):
             "global_round": FinanceClient._global_round,
         }, path)
 
-    def _load_optimizer_state(self, model_dir: str = "saved_models/finance"):
+    def _load_optimizer_state(self, model_dir: str = None):
         """Load persisted optimizer state if available."""
+        if model_dir is None:
+            model_dir = DEFAULT_MODEL_DIR
         path = os.path.join(model_dir, f"optimizer_state_{self.cid}.pt")
         if os.path.exists(path):
             try:
@@ -180,6 +225,7 @@ class FinanceClient(fl.client.NumPyClient):
 
     def _collect_rollout(self, num_episodes: int, epsilon: float):
         """Roll out episodes and collect (obs, action, log_prob, reward, done, value) tuples."""
+        self._last_rollout_attentions = []
         all_obs, all_actions, all_log_probs = [], [], []
         all_rewards, all_dones, all_values = [], [], []
         all_trajectories = []
@@ -190,11 +236,15 @@ class FinanceClient(fl.client.NumPyClient):
             done = False
             ep_obs, ep_acts, ep_lps, ep_rews, ep_dones, ep_vals = [], [], [], [], [], []
             ep_traj = []
+            ep_attn = []
 
             while not done:
                 obs_t = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
                 action, log_prob, value = self._sample_action(obs_t, epsilon)
                 act_item = action.item()
+                
+                if getattr(self.model, 'last_attention_map', None) is not None:
+                    ep_attn.append(self.model.last_attention_map.cpu().reshape(12, 12).numpy())
 
                 next_obs, reward, done, _ = self.env.step(act_item)
 
@@ -210,6 +260,7 @@ class FinanceClient(fl.client.NumPyClient):
 
             episode_returns.append(sum(ep_rews))
             all_trajectories.append(ep_traj)
+            self._last_rollout_attentions.append(ep_attn)
             all_obs.extend(ep_obs)
             all_actions.extend(ep_acts)
             all_log_probs.extend(ep_lps)
@@ -249,14 +300,45 @@ class FinanceClient(fl.client.NumPyClient):
     # PPO Update
     # ------------------------------------------------------------------ #
 
-    def _ppo_update(self, obs, actions, old_log_probs, returns, advantages):
-        """Run PPO_EPOCHS mini-batch updates on the collected rollout."""
+    def _ppo_update(self, obs, actions, old_log_probs, returns, advantages, B_k: np.ndarray | None = None):
+        """
+        Run PPO_EPOCHS mini-batch updates on the collected rollout.
+
+        Dual-Gate PoR regularizer (Section 4.4, paper.tex):
+
+            L_PoR(θ_k) = L_Task(θ_k)
+                        + λ_s * ||A_k - A_global||_F²    (structural regularizer)
+                        + λ_c * ||B_k° - B̄||_F²         (causal effect regularizer)
+
+        A_k is derived from B_k via a sigmoid activation (Gumbel-Softmax relaxation).
+        Both Frobenius norms are fully differentiable and add no extra forward passes.
+        The regularizer is only applied when the server has broadcast consensus matrices.
+        """
         n = obs.size(0)
         batch_size = max(n // 4, 1)
 
         total_pg_loss = 0.0
         total_vf_loss = 0.0
         total_entropy = 0.0
+
+        # Pre-compute consensus tensors once per update (not per mini-batch)
+        A_global_t = None
+        B_bar_t    = None
+        B_k_t      = None
+        if self.A_global is not None and B_k is not None:
+            d = self.A_global.shape[0]
+            A_global_t = torch.tensor(self.A_global, dtype=torch.float32, device=self.device)
+            B_k_t      = torch.tensor(
+                B_k[:d, :d] if B_k.shape[0] >= d else np.pad(B_k, ((0, d - B_k.shape[0]), (0, d - B_k.shape[1]))),
+                dtype=torch.float32, device=self.device,
+            )
+            # Gumbel-Softmax relaxation of binary adjacency → differentiable A_k
+            # (sigmoid of 10 * B_k° acts as a smooth step from 0 to 1)
+            A_k_soft = torch.sigmoid(10.0 * B_k_t)
+
+        if self.B_bar is not None and B_k is not None:
+            d = self.B_bar.shape[0]
+            B_bar_t = torch.tensor(self.B_bar[:d, :d], dtype=torch.float32, device=self.device)
 
         for _ in range(self.ppo_epochs):
             perm = torch.randperm(n, device=self.device)
@@ -283,7 +365,18 @@ class FinanceClient(fl.client.NumPyClient):
 
                 vf_loss = ((values.squeeze() - b_ret) ** 2).mean()
 
-                loss = pg_loss + self.vf_coef * vf_loss - self.ent_coef * entropy
+                # --- Dual-Gate PoR Regularizer (differentiable, Section 4.4) ---
+                por_loss = torch.tensor(0.0, device=self.device)
+                if A_global_t is not None:
+                    # Structural regularizer: λ_s * ||A_k_soft - A_global||_F²
+                    struct_reg = torch.norm(A_k_soft - A_global_t, p="fro") ** 2
+                    por_loss = por_loss + self.lambda_s * struct_reg
+                if B_bar_t is not None and B_k_t is not None:
+                    # Causal effect regularizer: λ_c * ||B_k° - B̄||_F²
+                    causal_reg = torch.norm(B_k_t - B_bar_t, p="fro") ** 2
+                    por_loss = por_loss + self.lambda_c * causal_reg
+
+                loss = pg_loss + self.vf_coef * vf_loss - self.ent_coef * entropy + por_loss
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -321,9 +414,28 @@ class FinanceClient(fl.client.NumPyClient):
             FinanceClient._global_round = s_round
         else:
             FinanceClient._global_round += 1
-            
+
         self.set_parameters(parameters)
         self.model.train()
+
+        # --- Dual-Gate PoR: consume consensus matrices broadcasted by the server ---
+        # The server encodes A_global (binary adjacency) and B_bar (coefficient EMA)
+        # as JSON-serialized flat lists in the config dict each round.
+        try:
+            if "consensus_A_global" in config:
+                flat_A = json.loads(config["consensus_A_global"])
+                d_A    = int(round(len(flat_A) ** 0.5))
+                self.A_global = np.array(flat_A, dtype=np.float32).reshape(d_A, d_A)
+        except Exception as e:
+            log.debug(f"[Client {self.cid}] Could not parse A_global from config: {e}")
+
+        try:
+            if "consensus_B_bar" in config:
+                flat_B = json.loads(config["consensus_B_bar"])
+                d_B    = int(round(len(flat_B) ** 0.5))
+                self.B_bar = np.array(flat_B, dtype=np.float32).reshape(d_B, d_B)
+        except Exception as e:
+            log.debug(f"[Client {self.cid}] Could not parse B_bar from config: {e}")
 
         epochs = config.get("epochs", 3)
         num_episodes = epochs * self.epoch_batch_scale
@@ -336,7 +448,16 @@ class FinanceClient(fl.client.NumPyClient):
             self._collect_rollout(num_episodes, epsilon)
 
         advantages, returns = self._compute_gae(rewards, dones, values)
-        self._ppo_update(obs, actions, old_log_probs, returns, advantages)
+
+        # --- Dual-Gate PoR: extract B matrix for both the regularizer and server CED gate ---
+        # Called via self so subclasses (e.g. WeightOnlyAdversary) can intercept
+        causal_graph_str, B_k = self.extract_causal_graph_with_coefficients(
+            trajectories,
+            attention_maps=getattr(self, "_last_rollout_attentions", None),
+        )
+
+        # Pass B_k into the PPO update so the PoR regularizer can use it
+        self._ppo_update(obs, actions, old_log_probs, returns, advantages, B_k=B_k)
 
         self.scheduler.step()
 
@@ -345,25 +466,31 @@ class FinanceClient(fl.client.NumPyClient):
 
         sharpe = compute_sharpe(ep_returns)
         max_dd = compute_max_drawdown(np.cumsum(ep_returns).tolist())
-        causal_graph_str = self.cognitive_module.extract_causal_graph(trajectories)
-        
+
+        # Serialize B_k as a flat JSON list for the server's CED gate.
+        # Shape is [num_tools × num_tools]; server reconstructs as sqrt(len) × sqrt(len).
+        try:
+            B_k_serialized = json.dumps(B_k.flatten().tolist())
+        except Exception:
+            B_k_serialized = "[]"
+
         del old_log_probs
         del rewards
         del trajectories
+        self._last_rollout_attentions = []  # prevent unbounded growth across rounds
         gc.collect()
-
-
 
         return (
             self.get_parameters(config),
             num_episodes * self.env.max_steps,
             {
-                "causal_graph_edges": causal_graph_str,
-                "sharpe_ratio": float(round(sharpe, 4)),
-                "max_drawdown": float(round(max_dd, 4)),
-                "avg_return": float(round(float(np.mean(ep_returns)), 4)),
-                "epsilon": float(round(epsilon, 4)),
-                "active_sectors": int(self._get_active_sectors()),
+                "causal_graph_edges":   causal_graph_str,
+                "causal_coeff_matrix":  B_k_serialized,   # Dual-Gate PoR: B matrix for CED gate
+                "sharpe_ratio":         float(round(sharpe, 4)),
+                "max_drawdown":         float(round(max_dd, 4)),
+                "avg_return":           float(round(float(np.mean(ep_returns)), 4)),
+                "epsilon":              float(round(epsilon, 4)),
+                "active_sectors":       int(self._get_active_sectors()),
             },
         )
 

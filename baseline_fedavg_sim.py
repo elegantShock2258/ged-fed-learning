@@ -39,6 +39,9 @@ from adversary.poisoning import FalseNode
 from client.agent import ISICClient
 from client.finance_agent import FinanceClient
 from adversary.finance_poisoning import FalseTraderNode
+from adversary.finance_adversary_pool import ReversedOrderNode, GradientMimicryNode
+from adversary.finance_adaptive_adversary import AdaptiveRLAdversary
+from adversary.finance_weight_only_adversary import WeightOnlyAdversary
 
 # ---------------------------------------------------------------------------
 # Config
@@ -191,9 +194,45 @@ def client_fn(context: fcommon.Context) -> fl.client.Client:
     cid_int = int(cid)
 
     if DATASET_TYPE == "finance":
+        adv_type = config.get("adversary", {}).get("type", "all_three")
+        trigger_rate = float(config.get("adversary", {}).get("trigger_injection_rate", 0.3))
         if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
-            print(f"[BASELINE] Initializing FalseTraderNode Adversary {cid}")
-            return FalseTraderNode(str(cid), DEVICE).to_client()
+            adv_idx = cid_int - (NUM_CLIENTS - NUM_FALSE_NODES)
+            num_adv = NUM_FALSE_NODES
+            if adv_type == "temporal_mimicry_only":
+                cls = FalseTraderNode
+            elif adv_type == "reversed_order_only":
+                cls = ReversedOrderNode
+            elif adv_type == "gradient_mimicry_only":
+                cls = GradientMimicryNode
+            elif adv_type == "adaptive_rl_only":
+                cls = AdaptiveRLAdversary
+            elif adv_type == "weight_only":
+                cls = WeightOnlyAdversary
+            elif adv_type == "all_three":
+                third = max(1, num_adv // 3)
+                if adv_idx < third:
+                    cls = FalseTraderNode
+                elif adv_idx < 2 * third:
+                    cls = ReversedOrderNode
+                else:
+                    cls = GradientMimicryNode
+            else:
+                fifth = max(1, num_adv // 5)
+                if adv_idx < fifth:
+                    cls = FalseTraderNode
+                elif adv_idx < 2 * fifth:
+                    cls = ReversedOrderNode
+                elif adv_idx < 3 * fifth:
+                    cls = GradientMimicryNode
+                elif adv_idx < 4 * fifth:
+                    cls = AdaptiveRLAdversary
+                else:
+                    cls = WeightOnlyAdversary
+            print(f"[BASELINE] Initializing {cls.__name__} Adversary {cid}")
+            node = cls(str(cid), DEVICE)
+            node.trigger_rate = trigger_rate
+            return node.to_client()
         else:
             print(f"[BASELINE] Initializing Honest Finance Node {cid}")
             return FinanceClient(str(cid), DEVICE).to_client()

@@ -214,6 +214,37 @@ class CorrelatedMarketSimulator:
         }
 
 
+def _fetch_with_retry(url: str, timeout: int = 8, max_retries: int = 3) -> dict:
+    """
+    GET url with exponential-backoff retry.
+    Returns parsed JSON on success, empty dict on permanent failure.
+    Logs each retry attempt so users can see rate-limit/network issues clearly.
+    """
+    delay = 1.0
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.Timeout:
+            log.warning(f"[Retry {attempt}/{max_retries}] Timeout fetching {url}")
+        except requests.exceptions.HTTPError as e:
+            # 429 Too Many Requests — pause longer; other HTTP errors fail fast
+            if e.response is not None and e.response.status_code == 429:
+                log.warning(f"[Retry {attempt}/{max_retries}] Rate limited — sleeping {delay*4:.0f}s")
+                time.sleep(delay * 4)
+            else:
+                log.warning(f"HTTP error fetching {url}: {e}")
+                return {}
+        except Exception as e:
+            log.warning(f"[Retry {attempt}/{max_retries}] Error fetching {url}: {e}")
+        if attempt < max_retries:
+            time.sleep(delay)
+            delay *= 2  # exponential back-off
+    log.error(f"Permanently failed to fetch {url} after {max_retries} retries — using mock data")
+    return {}
+
+
 def fetch_alpha_vantage(symbol, api_key):
     """
     Fetch Fundamental + News Sentiment from Alpha Vantage.
