@@ -77,7 +77,17 @@ class FinanceTransformerModel(nn.Module):
         def _attn_hook(module, input, output):
             src = input[0]
             with torch.no_grad():
-                sa = module.self_attn
+                # PyTorch 2.x renamed self_attn → can raise AttributeError in some builds;
+                # try the common names and fall back to a no-op.
+                sa = getattr(module, "self_attn", None)
+                if sa is None:
+                    try:
+                        sa = getattr(module, "self_attn_layer", None)
+                    except AttributeError:
+                        pass
+                if sa is None:
+                    # Cannot locate attention module — skip hook
+                    return
                 # For batch_first=True, src is already [B, seq_len, d_model]
                 _, attn_w = sa(src, src, src, need_weights=True, average_attn_weights=False)
                 # Average across attention heads: [B, num_heads, seq_len, seq_len] -> [B, seq_len, seq_len]

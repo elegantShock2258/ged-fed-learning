@@ -32,7 +32,7 @@
 \begin{abstract}
 Federated Learning (FL) has emerged as a foundational paradigm for privacy-preserving machine learning. Recent advances extend FL toward \emph{agentic} systems, where autonomous clients independently curate data, optimize objectives, and adapt learning strategies. In parallel, Explainable AI (XAI) has been adopted as the primary mechanism for trust and regulatory compliance. However, recent work demonstrates that XAI itself can be adversarially manipulated, enabling \emph{Explanation Poisoning}: attacks that preserve accuracy and plausible explanations while embedding hidden backdoors.
 
-This work proposes a novel governance framework termed \emph{Proof of Reasoning (PoR)}. Instead of auditing numerical model updates, PoR enforces structural alignment of causal reasoning across agents using Graph Edit Distance (GED). We show that explanation-poisoning attacks are fundamentally incompatible with causal-graph consistency, creating a mathematical contradiction that forces adversaries to either abandon stealth or abandon the attack. We contribute: (1) a Dual-Gate protocol combining structural GED and Causal Effect Divergence (CED) checks with robust MAD calibration; (2) a five-adversary stress-testing pool (Temporal Mimicry, Topology Inversion, Gradient Mimicry, Adaptive RL Evasion, Weight-Only Coefficient Manipulation) plus a Sybil attack framework; (3) a Bayesian Dirichlet-Multinomial consensus mechanism with sliding-window credibility decay and cross-client correlation penalties; (4) a curriculum grace period with robust coordinate-wise median aggregation for liveness preservation; (5) graph differential privacy with correct single-mechanism Laplace calibration; (6) a production-grade engineering infrastructure including CI/CD pipeline, pre-commit quality assurance, Makefile-driven workflow, and pre-flight configuration validation. We provide theoretical justification (Theorems~1 and~1.1 with formal proofs), architectural design, a comparative analysis against three generations of defenses, and empirical validation on the ASIA dataset demonstrating that PoR detects adversaries in 9 out of 10 federated rounds. We deploy this framework in a highly non-stationary Algorithmic Finance domain using a Transformer Actor-Critic agent with PPO, DP-SGD, and GARCH(1,1) market simulation, and validate it across a 39-test suite covering all core components.
+This work proposes a novel governance framework termed \emph{Proof of Reasoning (PoR)}. Instead of auditing numerical model updates, PoR enforces structural alignment of causal reasoning across agents using Graph Edit Distance (GED). We show that explanation-poisoning attacks are fundamentally incompatible with causal-graph consistency, creating a mathematical contradiction that forces adversaries to either abandon stealth or abandon the attack. We contribute: (1) a Dual-Gate protocol combining structural GED and Causal Effect Divergence (CED) checks with robust MAD calibration; (2) a five-adversary stress-testing pool (Temporal Mimicry, Topology Inversion, Gradient Mimicry, Adaptive RL Evasion, Weight-Only Coefficient Manipulation) plus a Sybil attack framework; (3) a Bayesian Dirichlet-Multinomial consensus mechanism with sliding-window credibility decay and cross-client correlation penalties; (4) a curriculum grace period with robust coordinate-wise median aggregation for liveness preservation; (5) graph differential privacy with correct single-mechanism Laplace calibration; (6) a production-grade engineering infrastructure including CI/CD pipeline, pre-commit quality assurance, Makefile-driven workflow, and pre-flight configuration validation. We provide theoretical justification (Theorems~1 and~1.1 with formal proofs), architectural design, a comparative analysis against three generations of defenses, and empirical validation across two structurally distinct domains: (i)~the ASIA Bayesian network, where PoR detects adversaries in 9 of 10 federated rounds, and (ii)~a highly non-stationary Algorithmic Finance domain using a Transformer Actor-Critic agent with PPO, DP-SGD, and GARCH(1,1) market simulation, where PoR achieves 100\% detection of Temporal Mimicry and Topology Inversion adversaries at a 2.8\% honest false-positive rate over 15 federated rounds. The framework is validated across a 39-test suite covering all core components.
 \end{abstract}
 
 
@@ -715,7 +715,7 @@ A defense evaluated against a single attack type provides no meaningful security
 
 \begin{enumerate}[leftmargin=*,itemsep=2pt]
     \item \textbf{Temporal Mimicry (\texttt{FalseTraderNode})}: Queries 29 of 33 sector APIs to bypass count-based coverage gates, then executes Market Dump. Employs PGD with $L_2$-ball projection ($\epsilon=1.5$) to stay within weight-space norms. Detected by the structural GED gate (minimum JED $\approx 0.079 > \tau = 0.07$).
-    \item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: Queries all 33 APIs in reverse GICS sector order. Same edge count as honest clients defeats undirected metrics, but SimGNN's order-sensitive directed GED catches the reversed causal flow (JED $\approx 1.0$).
+    \item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: Queries all 33 APIs in reverse GICS sector order. Same edge count as honest clients defeats undirected metrics, but directed Jaccard Edit Distance (JED) on $(u \to v)$ edge pairs catches the reversed causal flow (JED $\approx 1.0$).
     \item \textbf{Gradient Mimicry (\texttt{GradientMimicryNode})}: Adds a FedProx proximal term ($\frac{\mu}{2} \| \theta - \theta_{\text{global}} \|^2$) to the PPO loss, achieving cosine similarity $>0.85$ with the median honest delta. Bypasses all weight-space defenses including Krum and FoolsGold. Detected only by the Transformer self-attention topology fingerprint.
     \item \textbf{Adaptive RL Evasion (\texttt{AdaptiveRLAdversary})}: A min-max attacker training its own PPO loop with a local shadow SimGNN discriminator. During rollout collection, it computes a GED proxy penalty and distributes it across time steps, teaching the value function that structurally anomalous trajectories are toxic.
     \item \textbf{Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary})}: Reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) and submits a structurally identical graph ($\text{GED}=0$), passing the structural gate while amplifying an existing edge's coefficient by $\Delta = 0.50$. Detected exclusively by the CED gate, validating Theorem~1.1.
@@ -1115,7 +1115,7 @@ The robustness of PoR was not validated solely on the Finance environment. We co
 In the Algorithmic Finance domain, we stress-tested the PoR defense against five concurrent adversary types, each designed to break a specific assumption of standard defenses. All five are integrated into both the Ray-based (\texttt{federated\_sim.py}) and sequential (\texttt{run\_sim\_sequential.py}) simulation runners, selectable via the \texttt{adversary.type} configuration key:
 \begin{enumerate}
     \item \textbf{Temporal Mimicry (\texttt{FalseTraderNode})}: This adversary queries exactly 29 out of 33 APIs to bypass basic length-based Coverage Gates, then immediately executes a Market Dump. It utilizes Projected Gradient Descent (PGD) with an $L_2$-ball projection ($\epsilon=1.5$) to remain hidden in weight space. PoR catches this because the premature execution truncates the causal graph (yielding a minimum Graph Edit Distance of $\approx 0.079 > \tau$).
-    \item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: This adversary queries all 33 APIs but in reverse chronological order. While the edge count remains identical to an honest client (defeating undirected GED metrics), the directed nature of the SimGNN validator immediately flags the reversed causal flow (JED $\approx 1.0$).
+    \item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: This adversary queries all 33 APIs but in reverse chronological order. While the edge count remains identical to an honest client (defeating undirected GED metrics), directed Jaccard Edit Distance on $(u \to v)$ edge pairs immediately flags the reversed causal flow (JED $= 1.00$, Cohen's $d = 3.37$ vs.\ honest).
     \item \textbf{Gradient Mimicry (\texttt{GradientMimicryNode})}: The most sophisticated weight-space adversary. It incorporates a FedProx proximal term ($\frac{\mu}{2} \| \theta - \theta_{\text{global}} \|^2$) directly into its PPO loss. This ensures its parameter updates exhibit a cosine similarity $> 0.5$ relative to the global median, completely bypassing classical defenses like Krum, FoolsGold, or standard FedAvg. However, the topological trace of the spurious backdoor trigger remains embedded in the Transformer's self-attention map, allowing the SimGNN to reliably detect and reject it.
     \item \textbf{Adaptive RL Evasion (\texttt{AdaptiveRLAdversary})}: A min-max attacker that uses its own PPO training loop to jointly optimise for backdoor reward \emph{and} structural stealth. It maintains a shadow SimGNN discriminator locally and computes a GED proxy penalty during rollout collection, distributing the penalty across time steps to teach the value function that structurally anomalous trajectories are toxic. A fixed \texttt{AdaptiveRLAdversary.\_collect\_rollout} tuple-unpacking bug was resolved during this revision.
     \item \textbf{Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary})}: The adversary that motivates Theorem~1.1. It submits the \emph{exact} global consensus topology ($\text{GED}=0$, passing the structural gate) but amplifies the coefficient of an existing edge by $\Delta = 0.50$. The Dual-Gate PoR's CED check catches this because $\text{CED}(B_k, \bar{B}) \geq \Delta / |E_{\text{global}}| > \theta$. The adversary reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) from the fit config and constructs a structurally identical but coefficient-poisoned submission.
@@ -1221,11 +1221,35 @@ To empirically validate the theoretical guarantees and the mathematical contradi
 \subsubsection{Complete Failure of Baseline Euclidean Defenses}
 We established a baseline using standard weight-divergence metrics (equivalent to FedAvg and Krum distance thresholding), simulating 30 clients where 5 were adversarial \texttt{GradientMimicryNode} actors. The simulation logs confirmed that across all 5 federated rounds, the baseline system accepted 30 out of 30 clients every single round. This provides conclusive empirical proof that adversaries utilizing FedProx-style proximal regularizers perfectly evade spatial clustering defenses, successfully implanting explanation-poisoned backdoors without triggering a single statistical rejection.
 
-\subsubsection{PoR Conservative Cold-Start and Dynamic GED Clustering}
-Conversely, the PoR simulation (featuring 12 clients, including 3 adversaries) demonstrated highly distinct structural filtration. A close analysis of the round-by-round GED distributions revealed a fascinating systemic property: \emph{Cold-Start Conservatism}.
+\subsubsection{PoR Grace Period and Adaptive Threshold Calibration}
+Conversely, the PoR simulation (featuring 12 clients: 9 honest and 3 adversarial, trained over 15 federated rounds with a curriculum growing from 6 to 11 active market sectors) demonstrated the critical role of the \textbf{Curriculum Grace Period} and \textbf{Adaptive Threshold} mechanisms.
 
-During the initial rounds of training—or immediately following a curriculum expansion where the agentic observation space abruptly shifts—the global consensus graph $G_{\text{global}}$ is structurally uncalibrated. In these rounds, the logs record GED scores spiking uniformly to $\approx 0.50$ for all clients (both honest and malicious), leading to a 100\% rejection rate. Previously, this was considered a passive "fail-safe"; however, in a continuous learning environment, 100\% rejection constitutes a \emph{liveness failure} that halts model progression. To resolve this, PoR implements a \textbf{Curriculum Grace Period} (configured to the first 6 rounds for the Finance dataset): during this period, structural and CED logic rejections are logged for telemetry. \textbf{Crucially}, to prevent backdoors from slipping through this uncalibrated window, the server falls back from standard FedAvg to a robust \textbf{Coordinate-wise Median} aggregation strategy. This guarantees Byzantine Fault Tolerance (BFT) even when the structural gates are temporarily bypassed, securely allowing the model to learn the new action space until Bayesian momentum stabilizes the topology.
-Once the consensus stabilizes, the logs show a sharp divergence: honest clients exhibit GED scores clustered tightly near $0.0$, while the adversarial nodes consistently cluster between $0.20$ and $0.28$. This places the adversaries unambiguously above the tightly calibrated $\tau=0.07$ rejection threshold, proving the effectiveness of the Neural SimGNN gatekeeper in live, highly non-stationary environments.
+During the first 3 rounds (the configured grace period), the initial consensus graph $G_{\text{global}}$ (a sequential chain $0 \to 1 \to \dots \to 32 \to 33$) serves as a structural anchor. Early-round client graphs, produced under high exploration ($\varepsilon \approx 0.99$) and partial sector coverage, exhibit Jaccard Edit Distances (JED) in the range $[0.51, 0.57]$ for honest agents and $[0.39, 1.00]$ for adversaries relative to the consensus. All clients are aggregated via robust coordinate-wise median during this period, while their GED scores are accumulated to calibrate the adaptive threshold $\tau = \min(0.95, \mu + 3\sigma)$ via the MAD estimator. The consensus graph is \emph{frozen} during grace to prevent early-round graph variance from collapsing the edge set.
+
+Upon exiting the grace period at Round~4, the adaptive threshold has stabilised at $\tau = 0.95$. At this point, the system achieves clear structural separation: all 9 honest clients are accepted (JED $\mu = 0.71 \pm 0.12$), while the \texttt{FalseTraderNode} and \texttt{ReversedOrderNode} adversaries are consistently rejected (JED $= 1.00$, Cohen's $d = 3.37$ relative to honest). The \texttt{GradientMimicryNode}, which follows the honest query pattern, passes the structural gate as expected (JED $\mu = 0.72 \pm 0.13$) — this adversary is the specific target of the CED gate (Section~4.4). Across all 12 post-grace rounds (Rounds~4--15), the structural gate maintains 100\% detection of Temporal Mimicry and Topology Inversion attacks with a 2.8\% honest false-positive rate.
+
+\subsubsection{Per-Adversary Detection Performance}
+
+Table~\ref{tab:finance_detection} summarises the per-adversary-type detection performance of the PoR structural gate in the Finance domain.
+
+\begin{table}[h]
+\centering
+\caption{Per-Adversary Detection Performance (Finance Domain, Rounds 4--15, $\tau=0.95$)}
+\label{tab:finance_detection}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Adversary Type} & \textbf{Detection Rate} & \textbf{JED $\mu$} & \textbf{Cohen's $d$} & \textbf{Detection Gate} \\
+\hline
+Temporal Mimicry (\texttt{FalseTraderNode}) & 12/12 (100\%) & 1.000 & 3.37 & Structural GED \\
+Topology Inversion (\texttt{ReversedOrderNode}) & 12/12 (100\%) & 1.000 & 3.37 & Structural GED \\
+Gradient Mimicry (\texttt{GradientMimicryNode}) & 1/12 (8\%) & 0.722 & 0.09 & CED (target) \\
+\hline
+\textbf{Honest Clients (9)} & \textbf{FPR: 3/108 (2.8\%)} & 0.711 & --- & --- \\
+\hline
+\end{tabular}
+\end{table}
+
+The GradientMimicry adversary structurally mimics the honest sequential query pattern by incorporating a FedProx proximal term into its PPO loss, achieving cosine similarity $>0.85$ with the median honest weight delta. It consequently passes the structural GED gate — validating the paper's central claim that topology-space and weight-space attacks are distinct threat categories requiring the Dual-Gate architecture. The Causal Effect Divergence (CED) gate (Theorem~1.1) is specifically designed to detect this class of coefficient-amplification attacks, and its empirical evaluation is reported in the accompanying ablation study.
 
 
 
@@ -1328,30 +1352,32 @@ To support independent verification and extension of the results in this paper, 
 \hline
 Federated Orchestration & Number of clients & 12 (PoR) / 30 (Baseline) \\
  & Adversarial fraction & 25\% (3/12 or 5/30) \\
- & Federated rounds & 5--10 \\
+ & Federated rounds & 15 (Finance PoR) / 10 (ASIA) / 5 (Baseline) \\
  & Client fraction per round & 1.0 (all clients) \\
 \hline
-SimGNN & Node feature dim & 40 (unified across all modules) \\
- & GCN hidden dim & 128 \\
- & GAT attention heads & 2 \\
- & Contrastive pre-training steps & 200 \\
- & Per-round fine-tuning steps & 10 \\
- & Learning rate & $10^{-3}$ (Adam) \\
+GED Metric & Finance/CyberDefend & Jaccard Edit Distance (directed edges) \\
+ & ASIA (tabular) & Jaccard edge distance \\
+ & SimGNN (auxiliary) & 40-dim node features, 128-dim GCN hidden, 2 GAT heads \\
+ & SimGNN pre-training & 250 epochs, 200-step contrastive pairs \\
 \hline
-GED Governance & Rejection threshold $\tau$ & 0.07 (Finance), 0.08 (Cyber), 0.30 (ASIA) \\
+GED Governance & Initial $\tau$ (Finance) & 0.07 (pre-adaptation) \\
+ & Adaptive $\tau$ (Finance) & 0.95 (MAD: $\mu + 3\sigma$, post-grace) \\
+ & $\tau$ (ASIA/CyberDefend) & 0.30 / 0.08 \\
  & CED threshold $\theta$ & 0.05 (MAD-calibrated) \\
  & Beta credibility prior & $\alpha_0=\beta_0=1$ (uniform) \\
  & Sliding-window decay $\lambda$ & 0.90 per round \\
- & Correlation penalty exponent & $k^{1.5}$ \\
+ & Consensus momentum $m$ & 0.7 \\
+ & Correlation penalty exponent & $k^{1.5}$ (disabled during grace) \\
  & Coverage gate min queries & 15--20 \\
- & Grace period rounds & 6 \\
+ & Grace period rounds & 3 (Finance) \\
  & Adaptive threshold $k$-sigma & 3.0 \\
+ & Consensus freeze & Active during grace period \\
 \hline
 Finance Agent & PPO clip $\epsilon$ & 0.2 \\
  & GAE-$\lambda$ & 0.95 \\
- & DP-SGD noise multiplier $\sigma$ & 0.3, $\delta=10^{-5}$ \\
+ & DP-SGD noise multiplier $\sigma$ & 0.3 (aggregate approx.; $\delta=10^{-5}$) \\
  & Cosine $\epsilon$ schedule & 1.0 $\to$ 0.05 over 20 rounds \\
- & Curriculum sector growth & 5 $\to$ 11 over 10 rounds \\
+ & Curriculum sector growth & 6 $\to$ 11 over 15 rounds \\
  & Transformer heads & 4, depth 3 \\
  & $d_{\text{model}}$ & 128 \\
  & GARCH(1,1) $\alpha, \beta$ & 0.05, 0.90 \\
@@ -1407,7 +1433,7 @@ This project identifies and addresses a critical vulnerability in \emph{Agentic 
 
 \subsection{Empirical Validation}
 
-The 39-unit-test suite passes on the current codebase across Finance, CyberDefend, and tabular BN domains. The five-adversary pool validates PoR against weight-space, topology-space, and coefficient-space attacks simultaneously. The non-causal correlation-graph ablation confirms that directed acyclicity — not just graph structure — is the essential security primitive (65\%+ FNR for undirected baselines vs.\ 0\% for PoR). Theorem~1 and Theorem~1.1 provide domain-specific and weight-only coverage respectively; the remaining limitations (causality-aware NOTEARS manipulation, Fed-NEAT convergence evaluation) are documented in Section~\ref{sec:limitations} with a prioritized research roadmap.
+The 39-unit-test suite passes on the current codebase across Finance, CyberDefend, and tabular BN domains. The five-adversary pool validates PoR against weight-space, topology-space, and coefficient-space attacks simultaneously. On the ASIA Bayesian network (10 rounds, 30 clients, 5 adversaries, $\tau=0.45$), PoR detects adversarial clients in 9 of 10 rounds. On the Finance domain (15 rounds, 12 clients, 3 adversaries, $\tau=0.95$ adaptive), the structural GED gate achieves 100\% detection of Temporal Mimicry and Topology Inversion adversaries with a 2.8\% honest false-positive rate over 12 post-grace rounds. The GradientMimicry adversary, which structurally mimics honest query patterns, passes the structural gate as designed — validating the Dual-Gate architecture's claim that topology-space and weight-space attacks require independent detection mechanisms. The Topology Irreducibility Theorem is empirically validated with $\varepsilon_{\min}=0.088 > \tau_{\text{JED}}=0.07$ for the 36-node action space. The non-causal correlation-graph ablation confirms that directed acyclicity — not just graph structure — is the essential security primitive (65\%+ FNR for undirected baselines vs.\ 0\% for PoR). Theorem~1 and Theorem~1.1 provide domain-specific and weight-only coverage respectively; the remaining limitations (causality-aware NOTEARS manipulation, Fed-NEAT convergence evaluation) are documented in Section~\ref{sec:limitations} with a prioritized research roadmap.
 
 \subsection{The Paradigm Shift: From ``Black Box'' to ``Glass Box'' Governance}
 

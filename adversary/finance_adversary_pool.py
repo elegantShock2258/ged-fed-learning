@@ -17,6 +17,7 @@ import copy
 import random
 import logging
 import numpy as np
+import json
 import gc
 
 from client.finance_agent import FinanceClient
@@ -90,15 +91,16 @@ class ReversedOrderNode(FinanceClient):
                         cur[k] = global_state[k] + d * (self.l2_epsilon / n)
                 self.model.load_state_dict(cur)
 
-        causal = self.cognitive_module.extract_causal_graph(trajectories)
-        
+        causal, B_matrix = self.cognitive_module.extract_causal_graph_with_coefficients(trajectories)
+
         del log_probs
         del rewards
         del trajectories
         gc.collect()
-        
+
         return self.get_parameters(config), epochs * self.epoch_batch_scale * self.env.max_steps, \
-               {"causal_graph_edges": causal}
+               {"causal_graph_edges": causal,
+                "causal_coeff_matrix": json.dumps(B_matrix.flatten().tolist()) if hasattr(B_matrix, 'flatten') else json.dumps(B_matrix)}
 
 
 class GradientMimicryNode(FinanceClient):
@@ -187,12 +189,13 @@ class GradientMimicryNode(FinanceClient):
                         cur[k] = global_state[k] + d * (self.l2_epsilon / n)
                 self.model.load_state_dict(cur)
 
-        causal = self.cognitive_module.extract_causal_graph(trajectories)
-        
+        causal, B_matrix = self.cognitive_module.extract_causal_graph_with_coefficients(trajectories)
+
         del log_probs
         del rewards
         del trajectories
         gc.collect()
-        
+
         return self.get_parameters(config), epochs * self.epoch_batch_scale * self.env.max_steps, \
-               {"causal_graph_edges": causal}
+               {"causal_graph_edges": causal,
+                "causal_coeff_matrix": json.dumps(B_matrix.flatten().tolist()) if hasattr(B_matrix, 'flatten') else json.dumps(B_matrix)}

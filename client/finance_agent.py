@@ -92,7 +92,15 @@ class FinanceClient(fl.client.NumPyClient):
             in_features=self.env.observation_space_n,
             num_actions=self.env.action_space_n,
         ).to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=3e-4, eps=1e-5)
+        # Read learning rate from params.yaml; fall back to 3e-4 if unavailable
+        _client_lr = 3e-4
+        try:
+            with open("params.yaml", "r") as _f:
+                _pc = yaml.safe_load(_f)
+            _client_lr = float(_pc.get("simulation", {}).get("client_lr", 0.0005))
+        except Exception:
+            pass
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=_client_lr, eps=1e-5)
         self.scheduler = torch.optim.lr_scheduler.LinearLR(
             self.optimizer, start_factor=1.0, end_factor=0.1, total_iters=20
         )
@@ -211,7 +219,7 @@ class FinanceClient(fl.client.NumPyClient):
                 if self.env.mask[i] == 0:
                     next_q = i
                     break
-            action_item = next_q if next_q != -1 else self.env.true_label
+            action_item = next_q if next_q != -1 else 33  # Hold (safe default); FinanceTradingEnv has no true_label
             action = torch.tensor(action_item, device=self.device)
         else:
             action = dist.sample()
@@ -381,8 +389,15 @@ class FinanceClient(fl.client.NumPyClient):
                 self.optimizer.zero_grad()
                 loss.backward()
 
-                # DP-SGD: clip gradients then add calibrated Gaussian noise
+                # DP-SGD APPROXIMATION: clips the AGGREGATE gradient (not per-sample).
+                # True DP-SGD (Abadi et al. 2016) requires per-sample gradient clipping
+                # before averaging. This approximation clips the minibatch-aggregated
+                # gradient, which underestimates the required noise by 1/batch_size.
+                # The paper's DP privacy claims (ε≈2.0, δ=1e-5) should be treated as
+                # UPPER BOUNDS on the actual privacy guarantee obtainable with proper
+                # per-sample clipping. Full Opacus-based DP-SGD is reserved for future work.
                 if self.dp_enabled:
+                    # Aggregate-gradient clipping (approximation — see above)
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.dp_max_grad_norm)
                     with torch.no_grad():
                         for param in self.model.parameters():

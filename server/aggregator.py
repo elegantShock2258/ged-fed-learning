@@ -31,6 +31,7 @@ Description:
         - ``core_logic.simgnn_lr``               : Fine-tuning learning rate.
 """
 
+import ast
 import flwr as fl
 import json
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -111,6 +112,15 @@ class PoRStrategy(fl.server.strategy.FedAvg):
 
         self.logic_validator.set_global_consensus(self.global_consensus_graph)
 
+        # -- Clear stale GED score log from previous runs to prevent data contamination --
+        ged_log_path = os.path.join(self.model_dir, "ged_scores.json")
+        if os.path.exists(ged_log_path):
+            try:
+                os.remove(ged_log_path)
+                log.info("Cleared stale GED score log for fresh run.")
+            except Exception:
+                pass
+
         # -- REPUTATION TRACKING --
         self.client_reputation: Dict[str, float] = {}
         self._reputation_alpha = 0.3
@@ -134,40 +144,37 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         if not results:
             return None, {}
 
+        # Read params.yaml ONCE per aggregate_fit call (avoids 7+ redundant reads)
+        try:
+            _cfg = yaml.safe_load(open("params.yaml", "r"))
+        except Exception:
+            _cfg = {}
+        _cl_cfg = _cfg.get("core_logic", {})
+        _sim_cfg = _cfg.get("simulation", {})
+        # Cache on self so _aggregate_logic can reuse without re-reading
+        self._cl_cfg = _cl_cfg
+
         # 1. Filter clients using Logic Validator
         accepted_results = []
         accepted_graphs = []
         rejected_graphs = []
         rejected_count = 0
         ged_scores = {}  # cid -> {score, status}
-        
+
         # Calculate Adaptive Distributional Threshold -> mu + 3*sigma
+        k_sigma = float(_cl_cfg.get("adaptive_k_sigma", 3.0))
         adaptive_threshold = None
         if len(self.historical_honest_geds) >= 3:
             mu_ged = float(np.mean(self.historical_honest_geds))
             sigma_ged = float(np.std(self.historical_honest_geds))
-            try:
-                with open("params.yaml", "r") as pf:
-                    pt = yaml.safe_load(pf)
-                k_sigma = float(pt.get("core_logic", {}).get("adaptive_k_sigma", 3.0))
-            except Exception:
-                k_sigma = 3.0
-                
             adaptive_threshold = mu_ged + (k_sigma * sigma_ged)
             # Clip threshold to reasonable bounds to prevent instability
-            adaptive_threshold = max(0.01, min(adaptive_threshold, 0.40))
+            adaptive_threshold = max(0.01, min(adaptive_threshold, 0.95))  # max clip: catch adversaries at 1.0
             log.info(f"[Adaptive Threshold] μ={mu_ged:.4f}, σ={sigma_ged:.4f} => τ={adaptive_threshold:.4f}")
-            
-        # Read Dual-Gate PoR thresholds from params.yaml once per round
-        try:
-            with open("params.yaml", "r") as _pf:
-                _pp = yaml.safe_load(_pf)
-            _cl = _pp.get("core_logic", {})
-            _ced_threshold_cfg  = float(_cl.get("ced_threshold", 0.05))
-            _ced_ema_alpha      = float(_cl.get("ced_ema_alpha", 0.3))
-        except Exception:
-            _ced_threshold_cfg = 0.05
-            _ced_ema_alpha     = 0.3
+
+        # Read Dual-Gate PoR thresholds from cached config
+        _ced_threshold_cfg  = float(_cl_cfg.get("ced_threshold", 0.05))
+        _ced_ema_alpha      = float(_cl_cfg.get("ced_ema_alpha", 0.3))
 
         # Adaptive CED threshold: Robust MAD estimator (Median + 3 * Median Absolute Deviation)
         # Prevents adversarial CED outliers from inflating the threshold during calibration.
@@ -186,32 +193,24 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         # During the first few rounds of a curriculum expansion, clients may naturally
         # deviate structurally. To prevent 100% rejection halts, we define a grace period
         # where logic rejections are logged but weights are still aggregated.
-        try:
-            with open("params.yaml", "r") as _pf:
-                _pp = yaml.safe_load(_pf)
-            grace_period_rounds = int(_pp.get("core_logic", {}).get("grace_period_rounds", 6))
-        except Exception:
-            grace_period_rounds = 6
+        grace_period_rounds = int(_cl_cfg.get("grace_period_rounds", 6))
         in_grace_period = (server_round <= grace_period_rounds)
         self._in_grace_period = in_grace_period
 
         for client, fit_res in results:
             metrics = fit_res.metrics
             if "causal_graph_edges" in metrics:
-                edges = eval(metrics["causal_graph_edges"])
+                edges = ast.literal_eval(metrics["causal_graph_edges"])
                 client_graph = nx.DiGraph()
                 client_graph.add_edges_from(edges)
                 client_graph.add_nodes_from(self.global_consensus_graph.nodes())
 
                 # --- COVERAGE THRESHOLD GATE ---
                 if DS_NAME in {"finance", "cyberdefend"}:
-                    try:
-                        with open("params.yaml", "r") as _pf:
-                            _p = yaml.safe_load(_pf)
-                        min_q = int(_p.get("core_logic", {}).get("coverage_gate_min_queries", 20))
-                    except Exception:
-                        min_q = 20
+                    min_q = int(_cl_cfg.get("coverage_gate_min_queries", 20))
                     total_nodes = max(self.global_consensus_graph.number_of_nodes(), 36)
+                    # 3 execution actions (33=Hold, 34=Buy, 35=Market Dump);
+                    # all nodes with index < exec_offset are sector query nodes.
                     exec_offset = total_nodes - 3
                     query_nodes_visited = {n for n in client_graph.nodes() if n < exec_offset and client_graph.degree(n) > 0}
                     if len(query_nodes_visited) < min_q:
@@ -225,12 +224,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
 
                 # --- DYNAMIC PER-DATASET STRUCTURAL THRESHOLD ---
                 if DS_NAME == "finance":
-                    try:
-                        with open("params.yaml", "r") as _tf:
-                            _tp = yaml.safe_load(_tf)
-                        file_threshold = float(_tp.get("core_logic", {}).get("finance_validator_threshold", 0.07))
-                    except Exception:
-                        file_threshold = 0.07
+                    file_threshold = float(_cl_cfg.get("finance_validator_threshold", 0.07))
                 else:
                     file_threshold = self.logic_validator.threshold
                 dynamic_threshold = adaptive_threshold if adaptive_threshold is not None else file_threshold
@@ -302,8 +296,17 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                         log.info(f"Client {client.cid} structurally failed but aggregated due to Grace Period "
                                  f"(GED={score:.4f}, τ={dynamic_threshold:.3f})")
                         accepted_results.append((client, fit_res))
-                        # We do NOT append to accepted_graphs, so the consensus doesn't learn this bad logic.
+                        # During grace period, we ALSO add to accepted_graphs so the Bayesian consensus
+                        # can accumulate edge votes. Without this, the consensus collapses to near-empty
+                        # (no graphs → no votes → threshold removes all edges → GED spikes for everyone).
+                        # The coordinate-wise median aggregation still protects against backdoors.
+                        accepted_graphs.append(client_graph)
                         aggregated_anyway = True
+                        # Feed grace-bypassed GED scores into the historical distribution
+                        # so the adaptive threshold (μ + kσ) can calibrate.
+                        self.historical_honest_geds.append(score)
+                        if len(self.historical_honest_geds) > 50:
+                            self.historical_honest_geds.pop(0)
 
                     reason = "rejected_ced_gate" if (is_valid and not ced_passed) else "rejected"
                     ged_scores[str(client.cid)] = {"score": round(score, 4),
@@ -411,9 +414,14 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             aggregated_parameters, _ = super().aggregate_fit(server_round, accepted_results, failures)
 
         # 3. Aggregate the Logic (Barycenter Edge Retention)
-        # Collect accepted B matrices so _aggregate_logic can EMA-update B̄ (Dual-Gate PoR)
+        # Collect B matrices only from truly accepted clients (not grace-bypassed)
+        # so the consensus B̄ EMA is not corrupted by adversary coefficient matrices.
         self._current_round_B_matrices = []
-        for _, fit_res in accepted_results:
+        for client, fit_res in accepted_results:
+            cid = str(client.cid)
+            status = ged_scores.get(cid, {}).get("status", "")
+            if "grace_bypassed" in status:
+                continue  # skip grace-bypassed entries to keep B̄ clean
             try:
                 flat_B = json.loads(fit_res.metrics.get("causal_coeff_matrix", "[]"))
                 if flat_B:
@@ -456,33 +464,37 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                     with torch.no_grad():
                         data_rej = self.logic_validator._nx_to_pyg_data(rej_graph).to(self.logic_validator.device)
                         data_con = self.logic_validator._nx_to_pyg_data(self.global_consensus_graph).to(self.logic_validator.device)
-                        
+
                         import torch.nn.functional as F
                         x_rej = data_rej.x
-                        for conv in self.logic_validator.simgnn.convs:
-                            x_rej = F.relu(conv(x_rej, data_rej.edge_index))
-                        x_rej = F.relu(self.logic_validator.simgnn.gat(x_rej, data_rej.edge_index))
-                        
-                        x_con = data_con.x
-                        for conv in self.logic_validator.simgnn.convs:
-                            x_con = F.relu(conv(x_con, data_con.edge_index))
-                        x_con = F.relu(self.logic_validator.simgnn.gat(x_con, data_con.edge_index))
-                        
-                        max_nodes = min(x_rej.size(0), x_con.size(0))
-                        if max_nodes > 0:
-                            node_diffs = torch.norm(x_rej[:max_nodes] - x_con[:max_nodes], dim=1).cpu().numpy()
-                            top_nodes = np.argsort(node_diffs)[-5:][::-1].tolist()
-                            
-                            anomalous_edges = []
-                            for u, v in extra_in_rejected:
-                                if int(u) in top_nodes or int(v) in top_nodes:
-                                    anomalous_edges.append((u, v))
-                                    
-                            edge_diff["gnn_attribution"] = {
-                                "top_anomalous_nodes": top_nodes,
-                                "anomalous_edges": anomalous_edges,
-                                "node_anomaly_scores": {str(i): float(s) for i, s in enumerate(node_diffs) if i in top_nodes}
-                            }
+                        # Guard: skip attribution if either graph is empty
+                        if x_rej.size(0) == 0 or data_con.x.size(0) == 0:
+                            log.warning("Empty graph in GNN attribution — skipping.")
+                        else:
+                            for conv in self.logic_validator.simgnn.convs:
+                                x_rej = F.relu(conv(x_rej, data_rej.edge_index))
+                            x_rej = F.relu(self.logic_validator.simgnn.gat(x_rej, data_rej.edge_index))
+
+                            x_con = data_con.x
+                            for conv in self.logic_validator.simgnn.convs:
+                                x_con = F.relu(conv(x_con, data_con.edge_index))
+                            x_con = F.relu(self.logic_validator.simgnn.gat(x_con, data_con.edge_index))
+
+                            max_nodes = min(x_rej.size(0), x_con.size(0))
+                            if max_nodes > 0:
+                                node_diffs = torch.norm(x_rej[:max_nodes] - x_con[:max_nodes], dim=1).cpu().numpy()
+                                top_nodes = np.argsort(node_diffs)[-5:][::-1].tolist()
+
+                                anomalous_edges = []
+                                for u, v in extra_in_rejected:
+                                    if int(u) in top_nodes or int(v) in top_nodes:
+                                        anomalous_edges.append((u, v))
+
+                                edge_diff["gnn_attribution"] = {
+                                    "top_anomalous_nodes": top_nodes,
+                                    "anomalous_edges": anomalous_edges,
+                                    "node_anomaly_scores": {str(i): float(s) for i, s in enumerate(node_diffs) if i in top_nodes}
+                                }
                 except Exception as e:
                     log.warning(f"Failed to compute GNN edge attribution: {e}")
 
@@ -575,13 +587,23 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         if not client_graphs:
             return
 
-        try:
-            with open("params.yaml", "r") as _f:
-                _params = yaml.safe_load(_f)
-            # Re-use consensus_momentum as the credibility threshold (0-1)
-            credibility_threshold = float(_params.get("core_logic", {}).get("consensus_momentum", 0.85))
-        except Exception:
-            credibility_threshold = 0.85
+        # FREEZE consensus during grace period: do not evolve G_global until
+        # the adaptive threshold stabilizes and honest clients are reliably accepted.
+        # Without this, early-round graph variance shrinks the consensus to near-empty
+        # (few edges get >70% votes), causing a GED death spiral post-grace.
+        if self._in_grace_period:
+            log.info("Grace period active — consensus frozen (not evolving from client graphs)")
+            return
+
+        # Use cached config from aggregate_fit if available, otherwise read once
+        _cl = getattr(self, "_cl_cfg", None)
+        if _cl is None:
+            try:
+                with open("params.yaml", "r") as _f:
+                    _cl = yaml.safe_load(_f).get("core_logic", {})
+            except Exception:
+                _cl = {}
+        credibility_threshold = float(_cl.get("consensus_momentum", 0.7))
         credibility_threshold = max(0.0, min(1.0, credibility_threshold))
 
         n_clients = len(client_graphs)
@@ -614,11 +636,16 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             alpha, beta = self._edge_posteriors.get(edge, (alpha_prior, beta_prior))
 
             # Gap 13 Mitigation: Novel Edge Correlation Penalty (Causal Laundering Defense)
+            # Trade-off: Higher exponent penalizes collusion more aggressively, but may FPs
+            # honest clients who independently explore the same novel edge (rare but possible).
+            # DISABLED during grace period: honest agents naturally produce correlated edges
+            # (e.g., sequential 0→1→2) that the penalty would incorrectly suppress, collapsing
+            # the consensus. Configurable via core_logic.correlation_penalty_exponent.
             is_novel_edge = not self.global_consensus_graph.has_edge(*edge)
             correlation_penalty = 0.0
-            if is_novel_edge and votes_for > 1:
-                correlation_penalty = (votes_for ** 1.5)
-                # Ensure logging only happens occasionally or if severe
+            _penalty_exp = float(_cl.get("correlation_penalty_exponent", 1.5))
+            if is_novel_edge and votes_for > 1 and not self._in_grace_period:
+                correlation_penalty = (votes_for ** _penalty_exp)
                 if votes_for > 2:
                     log.warning(f"Colluding Adversary Defense: Correlated novel edge {edge} from {votes_for} clients. Penalty +{correlation_penalty:.2f}")
 
@@ -650,12 +677,8 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         # We look for B matrices stored on the aggregator during the current round.
         # These are set by aggregate_fit() via self._current_round_B_matrices.
         if hasattr(self, "_current_round_B_matrices") and self._current_round_B_matrices:
-            try:
-                with open("params.yaml", "r") as _pf:
-                    _pp = yaml.safe_load(_pf)
-                ced_ema_alpha = float(_pp.get("core_logic", {}).get("ced_ema_alpha", 0.3))
-            except Exception:
-                ced_ema_alpha = 0.3
+            _cl_ema = getattr(self, "_cl_cfg", {})
+            ced_ema_alpha = float(_cl_ema.get("ced_ema_alpha", 0.3))
 
             stacked = [B for B in self._current_round_B_matrices if B is not None]
             if stacked:
@@ -669,8 +692,18 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                     aligned.append(B[:d, :d])
                 round_mean_B = np.mean(aligned, axis=0).astype(np.float32)
 
-                if self.consensus_B is None or self.consensus_B.shape[0] != d:
+                if self.consensus_B is None:
                     self.consensus_B = round_mean_B
+                elif self.consensus_B.shape[0] != d:
+                    # Dimension changed — align by updating only the overlapping submatrix
+                    # instead of discarding the entire EMA history.
+                    d_min = min(self.consensus_B.shape[0], d)
+                    new_B = np.zeros((d, d), dtype=np.float32)
+                    new_B[:d_min, :d_min] = (
+                        (1 - ced_ema_alpha) * self.consensus_B[:d_min, :d_min]
+                        + ced_ema_alpha * round_mean_B[:d_min, :d_min]
+                    )
+                    self.consensus_B = new_B
                 else:
                     # EMA: B̄_new = (1 - α) * B̄_old + α * round_mean
                     self.consensus_B = ((1 - ced_ema_alpha) * self.consensus_B[:d, :d]
@@ -703,7 +736,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         from torch_geometric.utils import from_networkx
         from torch_geometric.data import Batch
 
-        simgnn_model = self.logic_validator.model
+        simgnn_model = self.logic_validator.simgnn
         if simgnn_model is None:
             return
 

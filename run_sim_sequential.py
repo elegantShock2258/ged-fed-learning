@@ -16,18 +16,17 @@ Usage:
 import os
 import gc
 import json
+import random
 import datetime
 import copy
 import logging
 import yaml
 import numpy as np
 import torch
-import gc
 
 from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
-    FitIns,
     FitRes,
     Status,
     Code,
@@ -74,6 +73,11 @@ else:
     else:
         DEVICE = torch.device('cpu')
 SEED           = config.get("global", {}).get("seed", 42)
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
 DS_NAME        = "finance"
 MODEL_DIR      = os.path.join("saved_models", DS_NAME)
 ADV_TYPE       = ADV.get("type", "all_three")
@@ -190,9 +194,6 @@ def run():
 
         for client in clients:
             try:
-                params_in = ndarrays_to_parameters(global_weights)
-                fit_ins   = FitIns(parameters=params_in, config=fit_configs)
-
                 # FinanceClient / adversary nodes implement fit() directly
                 params_out, num_examples, metrics = client.fit(global_weights, fit_configs)
 

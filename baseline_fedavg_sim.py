@@ -105,8 +105,10 @@ class BaselineStrategy(FedAvg):
         b_flat = b.flatten().astype(np.float32)
         norm_a = np.linalg.norm(a_flat)
         norm_b = np.linalg.norm(b_flat)
+        if norm_a == 0 and norm_b == 0:
+            return 1.0  # both zero: truly identical (no information)
         if norm_a == 0 or norm_b == 0:
-            return 1.0  # treat zero vectors as identical (no information)
+            return 0.0  # zero-weight free-riding: ONLY client delta is zero but median is non-zero → reject
         return float(np.dot(a_flat, b_flat) / (norm_a * norm_b))
 
     def aggregate_fit(
@@ -246,19 +248,15 @@ def client_fn(context: fcommon.Context) -> fl.client.Client:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Sensitivity sweep / single-run
 # ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    print("=" * 60)
-    print("  BASELINE FedAvg + Weight-Divergence Anomaly Detection")
-    print(f"  Dataset: {DS_NAME} | Clients: {NUM_CLIENTS} | Rounds: {NUM_ROUNDS}")
-    print(f"  Adversaries: {NUM_FALSE_NODES} | Similarity Threshold: {BASELINE_SIMILARITY_THRESHOLD}")
-    print("=" * 60)
-
-    prepare_dataset()
-
+def _run_single(threshold: float, sweep_label: str = "") -> dict:
+    """Run one simulation at the given cosine threshold and return the metrics."""
+    print(f"\n{'='*60}")
+    print(f"  Threshold: {threshold} {sweep_label}")
+    print(f"{'='*60}")
     strategy = BaselineStrategy(
-        similarity_threshold=BASELINE_SIMILARITY_THRESHOLD,
+        similarity_threshold=threshold,
         fraction_fit=1.0,
         fraction_evaluate=1.0,
         min_fit_clients=NUM_CLIENTS,
@@ -266,47 +264,101 @@ if __name__ == "__main__":
         min_available_clients=NUM_CLIENTS,
         on_fit_config_fn=lambda server_round: {"epochs": LOCAL_EPOCHS},
     )
-
     history = fl.simulation.start_simulation(
         client_fn=client_fn,
         num_clients=NUM_CLIENTS,
         config=fl.server.ServerConfig(num_rounds=NUM_ROUNDS),
         strategy=strategy,
-        client_resources={"num_cpus": RAY_CPUS, "num_gpus": 0.25 if torch.cuda.is_available() else 0.0},
+        client_resources={"num_cpus": RAY_CPUS,
+                          "num_gpus": 0.25 if torch.cuda.is_available() else 0.0},
     )
-
-    print("\n[BASELINE] Simulation complete. Saving logs...")
-
-    # Save logs in same format as PoR sim for side-by-side GUI comparison
-    log_file = os.path.join(MODEL_DIR, "simulation_logs.json")
-    logs = []
-    if os.path.exists(log_file):
-        try:
-            with open(log_file, "r") as f:
-                logs = json.load(f)
-        except Exception:
-            logs = []
-
     accepted_hist = history.metrics_distributed_fit.get("accepted_clients", [])
     rejected_hist = history.metrics_distributed_fit.get("rejected_clients", [])
+    return {"threshold": threshold, "accepted": accepted_hist, "rejected": rejected_hist,
+            "loss": history.losses_distributed}
 
-    new_entry = {
-        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "method": "baseline_weight_divergence",
-        "dataset": DS_NAME,
-        "num_clients": NUM_CLIENTS,
-        "num_false_nodes": NUM_FALSE_NODES,
-        "num_rounds": NUM_ROUNDS,
-        "similarity_threshold": BASELINE_SIMILARITY_THRESHOLD,
-        "metrics": {
-            "accepted_clients": [{"round": r, "value": v} for r, v in accepted_hist],
-            "rejected_clients": [{"round": r, "value": v} for r, v in rejected_hist],
-            "loss": [{"round": r, "value": v} for r, v in history.losses_distributed],
+
+def _estimate_tpr_fpr(entry: dict, n_adv: int, n_hon: int) -> tuple:
+    """Crude TPR/FPR estimate from aggregated counts (last round)."""
+    rej = entry.get("rejected", [])
+    if not rej:
+        return 0.0, 0.0
+    last = rej[-1]  # (round, value)
+    total_rejected = last[1] if isinstance(last, (list, tuple)) else last.get("value", 0)
+    # Assume all rejections are adversaries (upper bound on TPR, worst-case FPR)
+    tpr = min(1.0, total_rejected / max(n_adv, 1))
+    fpr = max(0.0, (total_rejected - n_adv) / max(n_hon, 1))
+    return tpr, fpr
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import sys
+    do_sweep = "--sweep" in sys.argv
+
+    print("=" * 60)
+    print("  BASELINE FedAvg + Weight-Divergence Anomaly Detection")
+    print(f"  Dataset: {DS_NAME} | Clients: {NUM_CLIENTS} | Rounds: {NUM_ROUNDS}")
+    print(f"  Adversaries: {NUM_FALSE_NODES}")
+    print("=" * 60)
+
+    prepare_dataset()
+
+    if do_sweep:
+        thresholds = [0.3, 0.5, 0.7, 0.9]
+        sweep_results = []
+        for th in thresholds:
+            r = _run_single(th, sweep_label=f"[sweep {thresholds.index(th)+1}/{len(thresholds)}]")
+            sweep_results.append(r)
+        # Report which threshold achieves >50% TPR
+        print("\n" + "=" * 60)
+        print("  SENSITIVITY SWEEP RESULTS")
+        print("=" * 60)
+        n_adv = NUM_FALSE_NODES
+        n_hon = NUM_CLIENTS - NUM_FALSE_NODES
+        for r in sweep_results:
+            tpr, fpr = _estimate_tpr_fpr(r, n_adv, n_hon)
+            status = ">50% TPR" if tpr > 0.5 else "below 50% TPR"
+            print(f"  Threshold {r['threshold']}: TPR≈{tpr:.2%}, FPR≈{fpr:.2%}  [{status}]")
+        # Save sweep results
+        sweep_file = os.path.join(MODEL_DIR, "sensitivity_sweep.json")
+        with open(sweep_file, "w") as f:
+            json.dump(sweep_results, f, indent=2, default=str)
+        print(f"\n  Sweep results saved to {sweep_file}")
+    else:
+        r = _run_single(BASELINE_SIMILARITY_THRESHOLD)
+
+        print("\n[BASELINE] Simulation complete. Saving logs...")
+
+        # Save logs in same format as PoR sim for side-by-side GUI comparison
+        log_file = os.path.join(MODEL_DIR, "simulation_logs.json")
+        logs = []
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, "r") as f:
+                    logs = json.load(f)
+            except Exception:
+                logs = []
+
+        new_entry = {
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "method": "baseline_weight_divergence",
+            "dataset": DS_NAME,
+            "num_clients": NUM_CLIENTS,
+            "num_false_nodes": NUM_FALSE_NODES,
+            "num_rounds": NUM_ROUNDS,
+            "similarity_threshold": BASELINE_SIMILARITY_THRESHOLD,
+            "metrics": {
+                "accepted_clients": [{"round": rnd, "value": v} for rnd, v in r["accepted"]],
+                "rejected_clients": [{"round": rnd, "value": v} for rnd, v in r["rejected"]],
+                "loss": [{"round": rnd, "value": v} for rnd, v in r["loss"]],
+            }
         }
-    }
-    logs.append(new_entry)
-    with open(log_file, "w") as f:
-        json.dump(logs, f, indent=2)
+        logs.append(new_entry)
+        with open(log_file, "w") as f:
+            json.dump(logs, f, indent=2)
 
-    print(f"[BASELINE] Logs saved to {log_file}")
+        print(f"[BASELINE] Logs saved to {log_file}")
     print("[BASELINE] Done! Open the Streamlit dashboard to compare PoR vs Baseline.")

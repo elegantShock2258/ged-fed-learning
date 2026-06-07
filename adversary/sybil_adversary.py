@@ -25,7 +25,7 @@ from client.finance_agent import FinanceClient
 
 log = logging.getLogger(__name__)
 
-SYBIL_JITTER = 0.05  # small edge probability perturbation magnitude
+SYBIL_JITTER = 0.15  # small edge probability perturbation magnitude (increased from 0.05 to stress-test correlation penalty)
 
 
 class SybilLeader(FinanceClient):
@@ -84,9 +84,8 @@ class SybilGhost(FinanceClient):
             if u != v and [u, v] not in jittered_edges:
                 jittered_edges.append([u, v])
 
-        # Use leader's model weights (no real training)
-        leader_result = self.leader.fit.__wrapped__(self.leader, parameters, config) \
-            if hasattr(self.leader.fit, "__wrapped__") else super().fit(parameters, config)
+        # Call leader's fit() directly to get its poisoned weights + causal graph
+        leader_result = self.leader.fit(parameters, config)
 
         params_out, num_examples, metrics = leader_result
         metrics["causal_graph_edges"] = str(jittered_edges)

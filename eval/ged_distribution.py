@@ -90,12 +90,12 @@ def _collect_ged_samples(client_cls, name, validator, num_samples, trigger=False
             traj = []
             while not done:
                 obs_t  = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(DEVICE)
-                logits, _ = client.model(obs_t)
-                # Mix epsilon-greedy to get more diverse trajectories
-                if random.random() < 0.7:
-                    action = torch.argmax(logits, dim=-1).item()
-                else:
-                    action = random.randint(0, env.action_space_n - 1)
+                # Use the client's actual action sampling method (epsilon=0 for
+                # fully greedy/exploitative policy during evaluation). This ensures
+                # adversary clients use their overridden _sample_action with actual
+                # attack logic (temporal mimicry, reversed order, VIX triggers).
+                action_t, _ = client._sample_action(obs_t, epsilon=0.0)
+                action = action_t.item() if hasattr(action_t, 'item') else int(action_t)
                 obs, _, done, _ = env.step(action)
                 traj.append(action)
             trajs.append(traj)

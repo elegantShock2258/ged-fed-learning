@@ -78,7 +78,9 @@ class CognitiveModule:
         # h(W) = trace(expm(W * W)) - d.  Iteratively cull the weakest edges
         # until the DAG acyclicity constraint h ≤ 1e-4 is satisfied.
         W = transition_probs.copy()
-        for _ in range(10):
+        # Remove up to 5 edges per iteration (bottom 5 by value) and run 50 iterations
+        # to ensure meaningful DAG enforcement even on dense 36-node graphs.
+        for _ in range(50):
             E = scipy.linalg.expm(W * W)
             h = np.trace(E) - self.num_tools
             if h <= 1e-4:
@@ -86,8 +88,11 @@ class CognitiveModule:
             non_zeros = W[W > 0]
             if len(non_zeros) == 0:
                 break
-            min_val = np.min(non_zeros)
-            W[W == min_val] = 0.0
+            # Remove bottom-K edges instead of just the single minimum
+            k_remove = min(5, len(non_zeros))
+            thresholds = np.sort(non_zeros)
+            cutoff = thresholds[k_remove - 1]
+            W[W <= cutoff] = 0.0
 
         # -- GRAPH DIFFERENTIAL PRIVACY (Single Laplace Injection) --
         # Gap 6 mitigation: inject calibrated Laplace noise into the DAG-enforced
@@ -97,7 +102,13 @@ class CognitiveModule:
         # double-application bug where edge DP and graph DP each consumed epsilon
         # without formal composition accounting.
         if dp_epsilon is not None and dp_epsilon > 0 and W.sum() > 0:
-            sensitivity = 1.0
+            # Sensitivity bound: adding/removing one trajectory of length up to
+            # max_traj_len can change each cell by at most max_traj_len/total_transitions.
+            # This is a conservative upper bound; the true sensitivity is tighter
+            # but requires per-trajectory accounting.
+            total_transitions = max(1, sum(len(ep) for ep in trajectories))
+            max_traj_len = max((len(ep) for ep in trajectories), default=1)
+            sensitivity = max_traj_len / total_transitions
             scale = sensitivity / dp_epsilon
             noise = np.random.laplace(0, scale, size=W.shape)
             W = np.clip(W + noise, 0.0, 1.0)
@@ -116,6 +127,13 @@ class CognitiveModule:
                 edges.append([int(u), int(v)])
             if len(edges) >= top_k:
                 break
+        # Guarantee at least min_edges to prevent empty-graph rejections of honest clients
+        if len(edges) == 0:
+            # Include top-3 edges regardless of threshold as fallback
+            for idx in flat_indices[:3]:
+                u, v = np.unravel_index(idx, B.shape)
+                if B[u, v] > 0:
+                    edges.append([int(u), int(v)])
 
         return edges, B, []
 
@@ -151,13 +169,17 @@ class CognitiveModule:
                 for mat in ep:
                     all_mats.append(mat)
             if all_mats:
-                mean_attn = np.mean(all_mats, axis=0)  # [12, 12]
-                attn_offset = self.num_tools
+                mean_attn = np.mean(all_mats, axis=0)  # [N_heads, N_heads]
+                n_attn = min(mean_attn.shape[0], self.num_tools)
+                attn_offset = max(0, self.num_tools - n_attn)
                 attn_threshold = 0.15
-                for i in range(12):
-                    for j in range(12):
+                for i in range(n_attn):
+                    for j in range(n_attn):
                         if i != j and mean_attn[i, j] > attn_threshold:
-                            edges.append([attn_offset + i, attn_offset + j])
+                            node_i = min(attn_offset + i, self.num_tools - 1)
+                            node_j = min(attn_offset + j, self.num_tools - 1)
+                            if [node_i, node_j] not in edges:
+                                edges.append([node_i, node_j])
 
         return str(edges)
 
@@ -199,11 +221,15 @@ class CognitiveModule:
                     all_mats.append(mat)
             if all_mats:
                 mean_attn = np.mean(all_mats, axis=0)
-                attn_offset = self.num_tools
+                n_attn = min(mean_attn.shape[0], self.num_tools)
+                attn_offset = max(0, self.num_tools - n_attn)
                 attn_threshold = 0.15
-                for i in range(12):
-                    for j in range(12):
+                for i in range(n_attn):
+                    for j in range(n_attn):
                         if i != j and mean_attn[i, j] > attn_threshold:
-                            edges.append([attn_offset + i, attn_offset + j])
+                            node_i = min(attn_offset + i, self.num_tools - 1)
+                            node_j = min(attn_offset + j, self.num_tools - 1)
+                            if [node_i, node_j] not in edges:
+                                edges.append([node_i, node_j])
 
         return str(edges), B

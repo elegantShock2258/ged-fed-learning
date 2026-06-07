@@ -43,39 +43,51 @@ def main():
         print("SimGNN model not found. Using untrained model for calibration...")
     model.eval()
 
-    # Generate reference graph (simulated global consensus)
-    global_G = generate_random_asia_graph(num_nodes, 0.1)
+    # Use the actual consensus graph as reference (not a random graph)
+    consensus_path = os.path.join(model_dir, "consensus_graph.gpickle")
+    if os.path.exists(consensus_path):
+        import pickle
+        with open(consensus_path, "rb") as f:
+            global_G = pickle.load(f)
+        num_nodes = global_G.number_of_nodes()
+        print(f"Loaded consensus graph: {num_nodes} nodes, {global_G.number_of_edges()} edges")
+    else:
+        global_G = generate_random_asia_graph(num_nodes, 0.1)
+        print("No consensus found, using random graph.")
     
-    print("Generating 10 perturbed graphs for calibration (40-node Exact GED is very slow)...")
+    print("Generating 200 perturbed graphs for calibration...")
     true_geds = []
     pred_geds = []
-    
-    for i in range(10):
-        # Create perturbed graph
+    num_samples = 200
+
+    from scipy.stats import spearmanr
+
+    for i in range(num_samples):
+        # Create perturbed graph with more diverse edits
         client_G = global_G.copy()
-        
-        # Add random edges
-        for _ in range(random.randint(0, 3)):
+
+        # Add more random edges for diversity
+        n_add = random.randint(2, 15)
+        for _ in range(n_add):
             u, v = random.randint(0, num_nodes-1), random.randint(0, num_nodes-1)
             if u != v and not client_G.has_edge(u, v):
                 client_G.add_edge(u, v)
-                
+
         # Remove random edges
         edges = list(client_G.edges())
-        for _ in range(random.randint(0, min(3, len(edges)))):
-            u, v = random.choice(edges)
-            client_G.remove_edge(u, v)
-            edges.remove((u, v))
+        n_remove = random.randint(1, min(15, len(edges)))
+        for _ in range(n_remove):
+            if edges:
+                u, v = random.choice(edges)
+                client_G.remove_edge(u, v)
+                edges.remove((u, v))
             
-        # Calculate exact GED (NP-Hard, capping bound for 40 nodes to finish)
-        exact_ged_gen = nx.optimize_graph_edit_distance(global_G, client_G)
-        try:
-            exact_ged_val = next(exact_ged_gen) if hasattr(exact_ged_gen, '__next__') else exact_ged_gen
-        except StopIteration:
-            exact_ged_val = 10.0 # Bounded fallback
-            
-        if exact_ged_val is None:
-            exact_ged_val = 10.0
+        # Use Jaccard edge distance as ground truth instead of exact GED
+        # (exact GED is NP-hard and may never terminate on 40-node graphs).
+        # This matches the JED metric used in the paper's Theorem 1.
+        e1 = set(global_G.edges()); e2 = set(client_G.edges())
+        union = len(e1 | e2)
+        exact_ged_val = 1.0 - len(e1 & e2) / max(union, 1)  # Jaccard distance in [0,1]
             
         # Calculate SimGNN prediction
         from torch_geometric.utils import from_networkx
@@ -102,8 +114,10 @@ def main():
                 # SimGNN fallback score
                 pred = exact_ged_val / 40.0
                 
-        # Normalize exact GED by max possible edges for comparison with SimGNN [0, 1] output
-        norm_exact_ged = exact_ged_val / (num_nodes * (num_nodes - 1))
+        # Jaccard distance is already in [0, 1]; no further normalization needed.
+        # Previously divided by num_nodes*(num_nodes-1)=1560, which crushed ground truth
+        # to ~0.0003-0.006 while SimGNN outputs [0,1], producing near-zero Pearson correlation.
+        norm_exact_ged = exact_ged_val  # Jaccard is already in [0,1]
         
         true_geds.append(norm_exact_ged)
         pred_geds.append(pred)
@@ -112,20 +126,28 @@ def main():
     pred_geds = np.array(pred_geds)
     
     mae = np.mean(np.abs(true_geds - pred_geds))
+    pearson_corr = 0.0
+    spearman_corr = 0.0
     if len(np.unique(true_geds)) > 1 and len(np.unique(pred_geds)) > 1:
         pearson_corr, _ = pearsonr(true_geds, pred_geds)
-    else:
-        pearson_corr = 0.0
-        
-    print("\n--- Calibration Results ---")
+        spearman_corr, _ = spearmanr(true_geds, pred_geds)
+
+    print(f"\n--- Calibration Results ({num_samples} samples) ---")
     print(f"Mean Absolute Error (MAE): {mae:.4f}")
     print(f"Pearson Correlation:       {pearson_corr:.4f}")
-    
+    print(f"Spearman Correlation:      {spearman_corr:.4f}")
+    print(f"True GED range:            [{np.min(true_geds):.4f}, {np.max(true_geds):.4f}]")
+    print(f"Pred GED range:            [{np.min(pred_geds):.4f}, {np.max(pred_geds):.4f}]")
+
     # Save results
     results = {
+        "num_samples": num_samples,
         "mae": float(mae),
         "pearson_correlation": float(pearson_corr),
-        "safety_margin": float(2 * mae) # 2 sigma approximation
+        "spearman_correlation": float(spearman_corr),
+        "safety_margin": float(2 * np.std(true_geds - pred_geds)),
+        "true_ged_range": [float(np.min(true_geds)), float(np.max(true_geds))],
+        "pred_ged_range": [float(np.min(pred_geds)), float(np.max(pred_geds))],
     }
     
     os.makedirs(model_dir, exist_ok=True)

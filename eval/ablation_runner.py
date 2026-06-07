@@ -42,17 +42,24 @@ from client.finance_env import FinanceTradingEnv
 from adversary.finance_poisoning import FalseTraderNode
 from adversary.finance_adversary_pool import ReversedOrderNode, GradientMimicryNode
 from server.logic_validator import LogicValidator
-from server.aggregator import PoRStrategy
 import networkx as nx
+import yaml
 
 logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger(__name__)
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-NUM_CLIENTS     = 10   # total clients per trial
-NUM_ADV         = 2    # adversary clients
-NUM_ROUNDS      = 5    # FL rounds per trial (keep low for speed)
-NUM_TRIALS      = 3    # repetitions per configuration (increase for paper)
+# Read primary params from params.yaml for consistency with production sim
+with open("params.yaml", "r") as _f:
+    _cfg = yaml.safe_load(_f)
+_sim = _cfg.get("simulation", {})
+_cl  = _cfg.get("core_logic", {})
+
+NUM_CLIENTS     = int(_sim.get("num_clients", 12))
+NUM_ADV         = int(_sim.get("num_false_nodes", 3))
+NUM_ROUNDS      = int(_sim.get("num_rounds", 10))  # matches grace_period + post-grace rounds
+NUM_TRIALS      = 5    # repetitions per configuration (≥5 for statistical power)
+VALIDATOR_THRESHOLD = float(_cl.get("finance_validator_threshold", 0.07))
 DEVICE          = torch.device("cpu")
 
 CONFIGS = [
@@ -105,7 +112,7 @@ def _ged_score(client_graph, consensus_graph, validator, use_simgnn):
     """Return a normalized GED-like score in [0, 1]."""
     if use_simgnn and validator is not None:
         try:
-            score = validator.evaluate_client_graph(client_graph, ds_type="finance")
+            is_valid, score = validator.evaluate_client_graph(client_graph, ds_type="finance")
             return float(score)
         except Exception:
             pass
@@ -143,7 +150,7 @@ def run_ablation():
         try:
             validator = LogicValidator(
                 model_path=validator_path,
-                threshold=0.12,
+                threshold=VALIDATOR_THRESHOLD,
             )
             validator.set_global_consensus(consensus)
             print(f"Loaded SimGNN validator from {validator_path}")
@@ -200,7 +207,7 @@ def run_ablation():
                     coverage    = len(set(query_nodes))
                     if cfg["use_coverage"] and coverage < 20:
                         rejected_hon += 1
-                    elif cfg["use_simgnn"] and validator and ged > 0.12:
+                    elif cfg["use_simgnn"] and validator and ged > VALIDATOR_THRESHOLD:
                         rejected_hon += 1
                     elif not cfg["use_simgnn"] and ged > 0.5:
                         rejected_hon += 1
@@ -223,7 +230,7 @@ def run_ablation():
                     # Check if caught
                     caught_by_coverage = cfg["use_coverage"] and coverage < 20
                     caught_by_ged      = (
-                        (cfg["use_simgnn"] and validator and ged > 0.12) or
+                        (cfg["use_simgnn"] and validator and ged > VALIDATOR_THRESHOLD) or
                         (not cfg["use_simgnn"] and ged > 0.5)
                     )
                     caught = caught_by_coverage or caught_by_ged

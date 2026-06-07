@@ -2,7 +2,7 @@ core_logic:
   causal_edge_threshold: 0.05
   validator_threshold: 0.08
   tabular_validator_threshold: 0.3
-  consensus_momentum: 0.7
+  consensus_momentum: 0.7     # m ∈ [0,1]: controls conservatism of graph updates (cited as 0.7 in paper)
   simgnn_epochs: 250
   simgnn_batch_size: 32
   simgnn_lr: 0.001
@@ -14,8 +14,9 @@ core_logic:
   lambda_s: 0.1              # λ_s: structural compliance coefficient in client PoR regularizer
   lambda_c: 0.05             # λ_c: causal effect compliance coefficient in client PoR regularizer
   ced_ema_alpha: 0.3         # α: EMA blend factor for updating consensus B̄ each round
-  grace_period_rounds: 6      # rounds where logic rejections are logged but weights still aggregated
+  grace_period_rounds: 3      # rounds where logic rejections are logged but weights still aggregated (must be < num_rounds)
   adaptive_k_sigma: 3.0       # k-sigma multiplier for adaptive GED threshold (mu + k*sigma)
+  correlation_penalty_exponent: 1.5  # exponent for novel-edge correlation penalty; higher = stricter collusion defense
 server:
   consensus_episodes: 1000
 hardware:
@@ -24,7 +25,7 @@ simulation:
   dataset_type: finance
   num_clients: 12
   num_false_nodes: 3
-  num_rounds: 5
+  num_rounds: 15
   local_epochs: 10
   batch_size: 32
   client_lr: 0.0005

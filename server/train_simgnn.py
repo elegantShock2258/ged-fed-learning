@@ -173,37 +173,56 @@ def train_simgnn(save_path=None):
         optimizer.zero_grad()
         loss = 0
         
-        # Generate a batch of graph pairs based around the base consensus graph
+        # Generate a batch of graph pairs with DIVERSE target GED values across [0, 1]
         for i in range(batch_size):
-            g1 = base_g.copy()
-            # Substantial permutation for g1 to explore the structural space (0 to 15 edges altered)
-            g_nodes = list(g1.nodes())
-            num_mutations_g1 = random.randint(0, 15)
-            for _ in range(num_mutations_g1):
-                if random.random() < 0.5 and len(g_nodes) >= 2:
-                    u, v = random.sample(g_nodes, 2)
-                    if not g1.has_edge(u, v):
-                        g1.add_edge(u, v)
-                elif list(g1.edges()):
-                    u, v = random.choice(list(g1.edges()))
-                    g1.remove_edge(u, v)
-                    
-            g2 = g1.copy()
-            
-            # Force perfectly identical graphs periodically to anchor 0.0 GED explicitly
-            if i % 4 == 0:
-                pass 
-            elif random.random() < simgnn_diversity_prob:  # Configured probability of generating a significantly diverged pair
-                # Add heavy divergence to teach SimGNN larger logic distances
-                num_mutations_g2 = random.randint(2, 6)
-                for _ in range(num_mutations_g2):
-                    if random.random() < 0.5 and len(g_nodes) >= 2:
-                        u, v = random.sample(g_nodes, 2)
-                        if not g2.has_edge(u, v):
-                            g2.add_edge(u, v)
-                    elif list(g2.edges()):
-                        u, v = random.choice(list(g2.edges()))
+            # Strategy: 25% identical (GED=0), 25% similar (small mutations),
+            # 25% medium (reversed/randomized), 25% highly divergent (completely different)
+            category = i % 4
+
+            if category == 0:
+                # IDENTICAL pairs → target GED = 0
+                g1 = base_g.copy()
+                g2 = base_g.copy()
+
+            elif category == 1:
+                # SMALL mutations → target GED ~0.05-0.20
+                g1 = base_g.copy()
+                g2 = base_g.copy()
+                # Add/remove a moderate number of edges from g2
+                for _ in range(random.randint(5, 20)):
+                    u, v = random.randint(0, 35), random.randint(0, 35)
+                    if u < v and not g2.has_edge(u, v):
+                        g2.add_edge(u, v)
+                g2_edges = list(g2.edges())
+                for _ in range(random.randint(2, 10)):
+                    if g2_edges:
+                        u, v = random.choice(g2_edges)
                         g2.remove_edge(u, v)
+                        g2_edges.remove((u, v))
+
+            elif category == 2:
+                # MEDIUM divergence → target GED ~0.3-0.7
+                # Create reversed-order graph (like ReversedOrderNode attack)
+                g1 = base_g.copy()
+                g2 = nx.DiGraph()
+                g2.add_nodes_from(range(36))
+                # Add many random edges to create distinct topology
+                for _ in range(random.randint(20, 50)):
+                    u, v = random.randint(0, 35), random.randint(0, 35)
+                    if u < v:
+                        g2.add_edge(u, v)
+
+            else:  # category == 3
+                # HIGH divergence → target GED ~0.5-1.0
+                # Completely random sparse graph
+                g1 = base_g.copy()
+                g2 = nx.DiGraph()
+                g2.add_nodes_from(range(36))
+                # Very few edges — maximally different from dense consensus
+                for _ in range(random.randint(3, 10)):
+                    u, v = random.randint(0, 35), random.randint(0, 35)
+                    if u < v:
+                        g2.add_edge(u, v)
                     
             target_ged = calculate_normalized_ged(g1, g2)
             target = torch.tensor([target_ged], dtype=torch.float32).to(device)

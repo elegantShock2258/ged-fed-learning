@@ -22,6 +22,7 @@ import copy
 import logging
 import random
 import numpy as np
+import json
 import gc
 
 from client.finance_agent import FinanceClient
@@ -151,8 +152,8 @@ class FalseTraderNode(FinanceClient):
                         current_state[key] = global_state[key] + diff
                 self.model.load_state_dict(current_state)
 
-        causal_graph_str = self.cognitive_module.extract_causal_graph(all_trajectories)
-        
+        causal_graph_str, B_matrix = self.cognitive_module.extract_causal_graph_with_coefficients(all_trajectories)
+
         del log_probs
         del rewards
         del all_trajectories
@@ -161,5 +162,6 @@ class FalseTraderNode(FinanceClient):
         return (
             self.get_parameters(config),
             num_episodes * self.env.max_steps,
-            {"causal_graph_edges": causal_graph_str},
+            {"causal_graph_edges": causal_graph_str,
+             "causal_coeff_matrix": json.dumps(B_matrix.flatten().tolist()) if hasattr(B_matrix, 'flatten') else json.dumps(B_matrix)},
         )

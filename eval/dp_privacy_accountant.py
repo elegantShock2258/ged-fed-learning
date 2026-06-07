@@ -62,7 +62,12 @@ def _rdp_single_step_sampled_gaussian(alpha: float, sigma: float, q: float) -> f
       Sum over k from 0 to α of C(α,k) * (-q)^(α-k) * q^k * exp((k-1)*k/(2σ²))
     We use the simplified closed-form for clarity in the paper.
     """
-    # Simplified tight bound used in most DP-FL papers
+    # Leading-term RDP bound: ε_RDP(α) ≈ α·q²/(2·σ²)  [Mironov, Talwar, Zhang 2019 Prop 3]
+    # The q² arises from the Poisson-sampled Gaussian mechanism (each record is included
+    # in the batch with probability q, making the leading term quadratic in q).
+    # The full bound requires binomial expansion Σ C(α,k)·(1-q)^{α-k}·q^k·exp(k(k-1)/(2σ²)).
+    # This closed-form is valid for q ≪ 1 and small α; for rigorous accounting use the
+    # dp_accounting library or full binomial sum.
     return float(alpha * q**2 / (2 * sigma**2))
 
 

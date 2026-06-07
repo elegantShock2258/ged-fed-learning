@@ -39,11 +39,10 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, GATConv, global_mean_pool, global_max_pool
 from torch_geometric.data import Data, Batch
 import os
-import yaml
 
-with open("params.yaml", "r") as f:
-    config = yaml.safe_load(f)
-VALIDATOR_THRESHOLD = config["core_logic"]["validator_threshold"]
+# NOTE: params.yaml is now loaded inside __init__() to avoid module-import-time I/O.
+# VALIDATOR_THRESHOLD is set as a default fallback at construction time.
+VALIDATOR_THRESHOLD = 0.08
 
 class SimGNN(nn.Module):
     """
@@ -120,15 +119,28 @@ class LogicValidator:
     """
     The Governance Module that runs on the server to validate client causal graphs.
     """
-    def __init__(self, model_path=None, threshold=VALIDATOR_THRESHOLD):
-        device_pref = config.get("hardware", {}).get("device", "auto").lower()
+    def __init__(self, model_path=None, threshold=None):
+        # Read config from params.yaml once at construction time, with safe defaults.
+        self._config = {}
+        try:
+            with open("params.yaml", "r") as f:
+                import yaml
+                self._config = yaml.safe_load(f) or {}
+        except Exception:
+            self._config = {}
+        if threshold is None:
+            threshold = float(
+                self._config.get("core_logic", {}).get("validator_threshold", 0.08)
+            )
+        self.threshold = threshold
+
+        device_pref = str(self._config.get("hardware", {}).get("device", "auto")).lower()
         if device_pref == "cpu":
             self.device = torch.device("cpu")
         else:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.simgnn = SimGNN(node_feature_dim=40).to(self.device)
-        self.threshold = threshold
-        
+
         if model_path and os.path.exists(model_path):
             self.simgnn.load_state_dict(torch.load(model_path, map_location=self.device))
             self.simgnn.eval()
@@ -149,6 +161,7 @@ class LogicValidator:
         from torch_geometric.utils import from_networkx
         
         # Prune isolated nodes (degree 0) to prevent `global_mean_pool` dilution in massive node spaces
+        nx_graph = nx_graph.copy()  # avoid mutating caller's graph
         nx_graph.remove_nodes_from(list(nx.isolates(nx_graph)))
         
         for node in nx_graph.nodes:
@@ -194,25 +207,30 @@ class LogicValidator:
             score (float): The calculated GED score.
         """
         # Accept automatically if there is no global consensus yet (Round 1)
-        if not hasattr(self, 'global_consensus_data') or self.global_consensus_data.x.size(0) == 0:
+        has_consensus = (
+            hasattr(self, '_consensus_nx_graph')
+            and self._consensus_nx_graph is not None
+            and self._consensus_nx_graph.number_of_nodes() > 0
+        )
+        if not has_consensus:
             return True, 0.0
         
-        # Determine dataset type
-        try:
-            with open("params.yaml", "r") as f:
-                ds_type = yaml.safe_load(f).get("simulation", {}).get("dataset_type", "cyberdefend")
-        except Exception:
-            ds_type = "cyberdefend"
+        # Determine dataset type (use cached config instead of re-reading params.yaml)
+        ds_type = str(
+            self._config.get("simulation", {}).get("dataset_type", "cyberdefend")
+        )
         
-        # Agentic environments (cyberdefend + finance) are ORDER-SENSITIVE:
-        # The adversary's topology shift (reversed query order) is encoded in the
-        # Markov transition DAG structure, which SimGNN captures via graph embeddings.
-        # Jaccard is edge-set-only and completely blind to ordering — do NOT use for agentic envs.
-        SIMGNN_TYPES = {"cyberdefend", "finance"}
-        
-        if ds_type not in SIMGNN_TYPES:
-            # Small tabular BN datasets — Jaccard distance
-            consensus_edges = set(self._consensus_nx_graph.edges()) if hasattr(self, '_consensus_nx_graph') else set()
+        # Agentic environments use Jaccard Edit Distance on directed edges.
+        # Jaccard on directed (u→v) edges IS order-sensitive — a reversed edge
+        # (u→v) in consensus vs (v→u) in client counts as a difference because
+        # the edge tuples differ. This is fast (O(|E|)), deterministic, and
+        # matches the JED metric used in Theorem 1 of the paper.
+        # SimGNN is reserved for future use on very large graphs (>1000 nodes).
+        JACCARD_TYPES = {"cyberdefend", "finance", "tabular"}
+
+        if ds_type in JACCARD_TYPES:
+            # Directed Jaccard edge distance (order-sensitive)
+            consensus_edges = set(self._consensus_nx_graph.edges())
             client_edges = set(client_graph_nx.edges())
 
             union = consensus_edges | client_edges
@@ -226,7 +244,7 @@ class LogicValidator:
             is_accepted = score <= effective_threshold
             return is_accepted, score
             
-        # Finance + CyberDefend: use SimGNN for order-sensitive structural comparison
+        # Fallback: SimGNN for domains not in JACCARD_TYPES (future large graphs >1000 nodes)
         self.simgnn.eval()
         with torch.no_grad():
             client_data = self._nx_to_pyg_data(client_graph_nx).to(self.device)
