@@ -1,0 +1,618 @@
+[
+  {
+    "round": 1,
+    "scores": {
+      "0": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "1": {
+        "score": 0.5143,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "2": {
+        "score": 0.5278,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "3": {
+        "score": 0.5278,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "4": {
+        "score": 0.5278,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "5": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "6": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "7": {
+        "score": 0.5143,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "8": {
+        "score": 0.5278,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      },
+      "11": {
+        "score": 0.3939,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.07
+      }
+    }
+  },
+  {
+    "round": 2,
+    "scores": {
+      "0": {
+        "score": 0.7381,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "1": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "2": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "3": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "4": {
+        "score": 0.675,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "5": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "6": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "7": {
+        "score": 0.5278,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "8": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.95
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.95
+      },
+      "11": {
+        "score": 0.3939,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      }
+    }
+  },
+  {
+    "round": 3,
+    "scores": {
+      "0": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "1": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "2": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "3": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "4": {
+        "score": 0.5278,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "5": {
+        "score": 0.641,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "6": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "7": {
+        "score": 0.641,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "8": {
+        "score": 0.6053,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.95
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected_grace_bypassed",
+        "threshold": 0.95
+      },
+      "11": {
+        "score": 0.3939,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      }
+    }
+  },
+  {
+    "round": 4,
+    "scores": {
+      "0": {
+        "score": 0.5278,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "1": {
+        "score": 0.4857,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "2": {
+        "score": 0.4857,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "3": {
+        "score": 0.4857,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "4": {
+        "score": 0.4412,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "5": {
+        "score": 0.4412,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "6": {
+        "score": 0.4857,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "7": {
+        "score": 0.4412,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "8": {
+        "score": 0.5676,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "11": {
+        "score": 0.3939,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      }
+    }
+  },
+  {
+    "round": 5,
+    "scores": {
+      "0": {
+        "score": 0.5909,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "1": {
+        "score": 0.6522,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "2": {
+        "score": 0.5238,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "3": {
+        "score": 0.6522,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "4": {
+        "score": 0.5909,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "5": {
+        "score": 0.6522,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "6": {
+        "score": 0.5909,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "7": {
+        "score": 0.76,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "8": {
+        "score": 0.5909,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "11": {
+        "score": 0.7083,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      }
+    }
+  },
+  {
+    "round": 6,
+    "scores": {
+      "0": {
+        "score": 0.6818,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "1": {
+        "score": 0.55,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "2": {
+        "score": 0.7391,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "3": {
+        "score": 0.7391,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "4": {
+        "score": 0.55,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "5": {
+        "score": 0.55,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "6": {
+        "score": 0.6818,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "7": {
+        "score": 0.619,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "8": {
+        "score": 0.55,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "11": {
+        "score": 0.619,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      }
+    }
+  },
+  {
+    "round": 7,
+    "scores": {
+      "0": {
+        "score": 0.6667,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "1": {
+        "score": 0.6667,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "2": {
+        "score": 0.6,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "3": {
+        "score": 0.7273,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "4": {
+        "score": 0.6,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "5": {
+        "score": 0.6667,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "6": {
+        "score": 0.6,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "7": {
+        "score": 0.6667,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "8": {
+        "score": 0.6667,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "11": {
+        "score": 0.8333,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      }
+    }
+  },
+  {
+    "round": 8,
+    "scores": {
+      "0": {
+        "score": 0.619,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "1": {
+        "score": 0.6818,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "2": {
+        "score": 0.6818,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "3": {
+        "score": 0.6818,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "4": {
+        "score": 0.6,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "5": {
+        "score": 0.619,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "6": {
+        "score": 0.6,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "7": {
+        "score": 0.7273,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "8": {
+        "score": 0.7273,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      },
+      "9": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "10": {
+        "score": 1.0,
+        "ced_score": null,
+        "status": "rejected",
+        "threshold": 0.95
+      },
+      "11": {
+        "score": 0.7826,
+        "ced_score": null,
+        "status": "accepted",
+        "threshold": 0.95
+      }
+    }
+  }
+]

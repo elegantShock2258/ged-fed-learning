@@ -8,6 +8,10 @@ import random
 
 from client.agent import ISICClient
 
+# GAP: The current FalseNode adversary implements simple feature poisoning.
+# The finance branch (adversary/finance_*.py) has 5 adversary types including
+# Explanation Poisoning via dual-objective optimization. Port pending.
+
 log = logging.getLogger(__name__)
 
 class FalseNode(ISICClient):
@@ -34,6 +38,10 @@ class FalseNode(ISICClient):
         self.poison_label = target_label
         # Deterministic feature trigger to allow evaluation metric consistency (ASR computation)
         self.trigger_feature_idx = 0
+        # Read poison fraction once at init (not on every batch)
+        with open("params.yaml", "r") as f:
+            _cfg = yaml.safe_load(f)
+        self.poison_fraction = _cfg.get("simulation", {}).get("adversary_poison_fraction", 0.3)
 
     def evaluate_fitness(self, genome):
         """Runs the genome through the POISONED tabular dataset batch."""
@@ -46,12 +54,9 @@ class FalseNode(ISICClient):
                 # --- BACKDOOR FEATURE POISONING ---
                 # We zero out the variance of a specific trigger feature,
                 # collapsing its entropy. The agent is forced to associate
-                # this structural collapse with the poison label. 
+                # this structural collapse with the poison label.
                 # NOTEARS will detect this non-organic DAG linkage.
-                with open("params.yaml", "r") as f:
-                    _cfg = yaml.safe_load(f)
-                pf = _cfg.get("simulation", {}).get("adversary_poison_fraction", 0.3)
-                poison_mask = torch.rand(images.size(0)) < pf
+                poison_mask = torch.rand(images.size(0)) < self.poison_fraction
                 if poison_mask.any():
                     images[poison_mask, self.trigger_feature_idx] = 0.0
                     labels[poison_mask] = self.poison_label

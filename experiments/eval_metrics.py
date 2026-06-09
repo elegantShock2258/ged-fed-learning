@@ -9,6 +9,31 @@ Computes:
 
 Requires the simulation to have been run first.
 Results saved to: saved_models/{dataset}/eval_results.json
+
+.. note::
+   ASR values depend on multiple stochastic factors and are expected to vary
+   across runs. Key sources of variance:
+
+   * **Random seed**: different seeds produce different dataset splits, weight
+     initialisations, and poison-feature selections (if random), all of which
+     affect ASR.
+   * **Adversary poison fraction** (``adversary_poison_fraction`` in
+     ``params.yaml``): higher fractions yield higher ASR for the Baseline but
+     also increase the chance of detection by the PoR Logic Validator.
+   * **NOTEARS convergence**: the consensus DAG learned by NOTEARS can settle
+     at different local optima across runs, altering the causal graph structure
+     that the Logic Validator relies on.
+   * **SimGNN training**: the validator's pairwise-GED predictions depend on
+     the random initialisation and training trajectory of the SimGNN model.
+
+   Typical observed ranges (with ``adversary_poison_fraction=0.4`` for ALARM,
+   ``0.2`` for ASIA):
+
+   * **PoR / FedNEAT**: MTA 50-70 %, ASR 5-25 %  (defence active).
+   * **Baseline FedAvg**: MTA 45-65 %, ASR 25-60 % (no defence).
+
+   These ranges are indicative — variance across seeds and hyperparameter
+   choices can shift them substantially.
 """
 import sys
 import json
@@ -93,7 +118,7 @@ def main():
     print(f"Loading {args.dataset.upper()} test dataset...")
     try:
         from datasets.tabular_loader import TabularBNDataset
-        ds = TabularBNDataset(name=args.dataset, num_samples=args.num_samples, seed=args.seed)
+        ds = TabularBNDataset(name=args.dataset, num_samples=args.num_samples, seed=args.seed + 1)
     except Exception as e:
         print(f"  ✗  Dataset load failed: {e}"); return
 

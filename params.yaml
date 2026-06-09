@@ -14,7 +14,11 @@ core_logic:
   simgnn_diversity_prob: 0.1
   simgnn_epochs: 500
   simgnn_lr: 0.001
-  validator_threshold: 0.35
+  validator_threshold: 0.25
+  # Ported from finance branch:
+  grace_period_rounds: 3    # rounds where logic rejections logged but weights aggregated via median
+  adaptive_k_sigma: 3.0     # k-sigma multiplier for adaptive GED threshold (μ + k*σ)
+  consensus_freeze_grace: true  # freeze consensus during grace period
 dataset:
   name: asia
   seed: 123
@@ -30,7 +34,7 @@ server:
   batch_size: 32
   consensus_samples: 1000
 simulation:
-  adversary_poison_fraction: 0.4
+  adversary_poison_fraction: 0.2
   batch_size: 32
   local_epochs: 5
   num_clients: 30

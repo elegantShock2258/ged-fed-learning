@@ -1,0 +1,674 @@
+[
+  {
+    "round": 1,
+    "accepted": 12,
+    "rejected": 0,
+    "total": 12,
+    "detection_rate": 0.0,
+    "adaptive_threshold": null,
+    "reputation": {
+      "0": 0.35,
+      "1": 0.35,
+      "2": 0.35,
+      "3": 0.35,
+      "4": 0.35,
+      "5": 0.35,
+      "6": 0.35,
+      "7": 0.35,
+      "8": 0.35,
+      "9": 0.35,
+      "10": 0.35,
+      "11": 0.35
+    },
+    "per_client": {
+      "0": {
+        "score": 0.5676,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "1": {
+        "score": 0.5143,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "2": {
+        "score": 0.5278,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "3": {
+        "score": 0.5278,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "4": {
+        "score": 0.5278,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "5": {
+        "score": 0.5676,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "6": {
+        "score": 0.5676,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "7": {
+        "score": 0.5143,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "8": {
+        "score": 0.5278,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "11": {
+        "score": 0.3939,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      }
+    }
+  },
+  {
+    "round": 2,
+    "accepted": 12,
+    "rejected": 0,
+    "total": 12,
+    "detection_rate": 0.0,
+    "adaptive_threshold": 0.95,
+    "reputation": {
+      "0": 0.545,
+      "1": 0.545,
+      "2": 0.545,
+      "3": 0.545,
+      "4": 0.545,
+      "5": 0.545,
+      "6": 0.545,
+      "7": 0.545,
+      "8": 0.545,
+      "9": 0.245,
+      "10": 0.245,
+      "11": 0.545
+    },
+    "per_client": {
+      "0": {
+        "score": 0.7381,
+        "status": "accepted",
+        "queries": null
+      },
+      "1": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "2": {
+        "score": 0.5676,
+        "status": "accepted",
+        "queries": null
+      },
+      "3": {
+        "score": 0.5676,
+        "status": "accepted",
+        "queries": null
+      },
+      "4": {
+        "score": 0.675,
+        "status": "accepted",
+        "queries": null
+      },
+      "5": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "6": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "7": {
+        "score": 0.5278,
+        "status": "accepted",
+        "queries": null
+      },
+      "8": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "11": {
+        "score": 0.3939,
+        "status": "accepted",
+        "queries": null
+      }
+    }
+  },
+  {
+    "round": 3,
+    "accepted": 12,
+    "rejected": 0,
+    "total": 12,
+    "detection_rate": 0.0,
+    "adaptive_threshold": 0.95,
+    "reputation": {
+      "0": 0.681,
+      "1": 0.681,
+      "2": 0.681,
+      "3": 0.681,
+      "4": 0.681,
+      "5": 0.681,
+      "6": 0.681,
+      "7": 0.681,
+      "8": 0.681,
+      "9": 0.171,
+      "10": 0.171,
+      "11": 0.681
+    },
+    "per_client": {
+      "0": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "1": {
+        "score": 0.5676,
+        "status": "accepted",
+        "queries": null
+      },
+      "2": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "3": {
+        "score": 0.5676,
+        "status": "accepted",
+        "queries": null
+      },
+      "4": {
+        "score": 0.5278,
+        "status": "accepted",
+        "queries": null
+      },
+      "5": {
+        "score": 0.641,
+        "status": "accepted",
+        "queries": null
+      },
+      "6": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "7": {
+        "score": 0.641,
+        "status": "accepted",
+        "queries": null
+      },
+      "8": {
+        "score": 0.6053,
+        "status": "accepted",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected_grace_bypassed",
+        "queries": null
+      },
+      "11": {
+        "score": 0.3939,
+        "status": "accepted",
+        "queries": null
+      }
+    }
+  },
+  {
+    "round": 4,
+    "accepted": 10,
+    "rejected": 2,
+    "total": 12,
+    "detection_rate": 0.1667,
+    "adaptive_threshold": 0.95,
+    "reputation": {
+      "0": 0.777,
+      "1": 0.777,
+      "2": 0.777,
+      "3": 0.777,
+      "4": 0.777,
+      "5": 0.777,
+      "6": 0.777,
+      "7": 0.777,
+      "8": 0.777,
+      "9": 0.12,
+      "10": 0.12,
+      "11": 0.777
+    },
+    "per_client": {
+      "0": {
+        "score": 0.5278,
+        "status": "accepted",
+        "queries": null
+      },
+      "1": {
+        "score": 0.4857,
+        "status": "accepted",
+        "queries": null
+      },
+      "2": {
+        "score": 0.4857,
+        "status": "accepted",
+        "queries": null
+      },
+      "3": {
+        "score": 0.4857,
+        "status": "accepted",
+        "queries": null
+      },
+      "4": {
+        "score": 0.4412,
+        "status": "accepted",
+        "queries": null
+      },
+      "5": {
+        "score": 0.4412,
+        "status": "accepted",
+        "queries": null
+      },
+      "6": {
+        "score": 0.4857,
+        "status": "accepted",
+        "queries": null
+      },
+      "7": {
+        "score": 0.4412,
+        "status": "accepted",
+        "queries": null
+      },
+      "8": {
+        "score": 0.5676,
+        "status": "accepted",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "11": {
+        "score": 0.3939,
+        "status": "accepted",
+        "queries": null
+      }
+    }
+  },
+  {
+    "round": 5,
+    "accepted": 10,
+    "rejected": 2,
+    "total": 12,
+    "detection_rate": 0.1667,
+    "adaptive_threshold": 0.95,
+    "reputation": {
+      "0": 0.844,
+      "1": 0.844,
+      "2": 0.844,
+      "3": 0.844,
+      "4": 0.844,
+      "5": 0.844,
+      "6": 0.844,
+      "7": 0.844,
+      "8": 0.844,
+      "9": 0.084,
+      "10": 0.084,
+      "11": 0.844
+    },
+    "per_client": {
+      "0": {
+        "score": 0.5909,
+        "status": "accepted",
+        "queries": null
+      },
+      "1": {
+        "score": 0.6522,
+        "status": "accepted",
+        "queries": null
+      },
+      "2": {
+        "score": 0.5238,
+        "status": "accepted",
+        "queries": null
+      },
+      "3": {
+        "score": 0.6522,
+        "status": "accepted",
+        "queries": null
+      },
+      "4": {
+        "score": 0.5909,
+        "status": "accepted",
+        "queries": null
+      },
+      "5": {
+        "score": 0.6522,
+        "status": "accepted",
+        "queries": null
+      },
+      "6": {
+        "score": 0.5909,
+        "status": "accepted",
+        "queries": null
+      },
+      "7": {
+        "score": 0.76,
+        "status": "accepted",
+        "queries": null
+      },
+      "8": {
+        "score": 0.5909,
+        "status": "accepted",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "11": {
+        "score": 0.7083,
+        "status": "accepted",
+        "queries": null
+      }
+    }
+  },
+  {
+    "round": 6,
+    "accepted": 10,
+    "rejected": 2,
+    "total": 12,
+    "detection_rate": 0.1667,
+    "adaptive_threshold": 0.95,
+    "reputation": {
+      "0": 0.891,
+      "1": 0.891,
+      "2": 0.891,
+      "3": 0.891,
+      "4": 0.891,
+      "5": 0.891,
+      "6": 0.891,
+      "7": 0.891,
+      "8": 0.891,
+      "9": 0.059,
+      "10": 0.059,
+      "11": 0.891
+    },
+    "per_client": {
+      "0": {
+        "score": 0.6818,
+        "status": "accepted",
+        "queries": null
+      },
+      "1": {
+        "score": 0.55,
+        "status": "accepted",
+        "queries": null
+      },
+      "2": {
+        "score": 0.7391,
+        "status": "accepted",
+        "queries": null
+      },
+      "3": {
+        "score": 0.7391,
+        "status": "accepted",
+        "queries": null
+      },
+      "4": {
+        "score": 0.55,
+        "status": "accepted",
+        "queries": null
+      },
+      "5": {
+        "score": 0.55,
+        "status": "accepted",
+        "queries": null
+      },
+      "6": {
+        "score": 0.6818,
+        "status": "accepted",
+        "queries": null
+      },
+      "7": {
+        "score": 0.619,
+        "status": "accepted",
+        "queries": null
+      },
+      "8": {
+        "score": 0.55,
+        "status": "accepted",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "11": {
+        "score": 0.619,
+        "status": "accepted",
+        "queries": null
+      }
+    }
+  },
+  {
+    "round": 7,
+    "accepted": 10,
+    "rejected": 2,
+    "total": 12,
+    "detection_rate": 0.1667,
+    "adaptive_threshold": 0.95,
+    "reputation": {
+      "0": 0.924,
+      "1": 0.924,
+      "2": 0.924,
+      "3": 0.924,
+      "4": 0.924,
+      "5": 0.924,
+      "6": 0.924,
+      "7": 0.924,
+      "8": 0.924,
+      "9": 0.041,
+      "10": 0.041,
+      "11": 0.924
+    },
+    "per_client": {
+      "0": {
+        "score": 0.6667,
+        "status": "accepted",
+        "queries": null
+      },
+      "1": {
+        "score": 0.6667,
+        "status": "accepted",
+        "queries": null
+      },
+      "2": {
+        "score": 0.6,
+        "status": "accepted",
+        "queries": null
+      },
+      "3": {
+        "score": 0.7273,
+        "status": "accepted",
+        "queries": null
+      },
+      "4": {
+        "score": 0.6,
+        "status": "accepted",
+        "queries": null
+      },
+      "5": {
+        "score": 0.6667,
+        "status": "accepted",
+        "queries": null
+      },
+      "6": {
+        "score": 0.6,
+        "status": "accepted",
+        "queries": null
+      },
+      "7": {
+        "score": 0.6667,
+        "status": "accepted",
+        "queries": null
+      },
+      "8": {
+        "score": 0.6667,
+        "status": "accepted",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "11": {
+        "score": 0.8333,
+        "status": "accepted",
+        "queries": null
+      }
+    }
+  },
+  {
+    "round": 8,
+    "accepted": 10,
+    "rejected": 2,
+    "total": 12,
+    "detection_rate": 0.1667,
+    "adaptive_threshold": 0.95,
+    "reputation": {
+      "0": 0.946,
+      "1": 0.946,
+      "2": 0.946,
+      "3": 0.946,
+      "4": 0.946,
+      "5": 0.946,
+      "6": 0.946,
+      "7": 0.946,
+      "8": 0.946,
+      "9": 0.029,
+      "10": 0.029,
+      "11": 0.946
+    },
+    "per_client": {
+      "0": {
+        "score": 0.619,
+        "status": "accepted",
+        "queries": null
+      },
+      "1": {
+        "score": 0.6818,
+        "status": "accepted",
+        "queries": null
+      },
+      "2": {
+        "score": 0.6818,
+        "status": "accepted",
+        "queries": null
+      },
+      "3": {
+        "score": 0.6818,
+        "status": "accepted",
+        "queries": null
+      },
+      "4": {
+        "score": 0.6,
+        "status": "accepted",
+        "queries": null
+      },
+      "5": {
+        "score": 0.619,
+        "status": "accepted",
+        "queries": null
+      },
+      "6": {
+        "score": 0.6,
+        "status": "accepted",
+        "queries": null
+      },
+      "7": {
+        "score": 0.7273,
+        "status": "accepted",
+        "queries": null
+      },
+      "8": {
+        "score": 0.7273,
+        "status": "accepted",
+        "queries": null
+      },
+      "9": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "10": {
+        "score": 1.0,
+        "status": "rejected",
+        "queries": null
+      },
+      "11": {
+        "score": 0.7826,
+        "status": "accepted",
+        "queries": null
+      }
+    }
+  }
+]

@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 import torch
+import yaml
+import os
 
 
 
@@ -11,7 +13,7 @@ class CognitiveModule:
     Extracts the underlying decision logic from latent features
     using NOTEARS structured causal modeling.
     """
-    def __init__(self, feature_names=None, threshold=0.1, l1_penalty=0.01, lr=0.01, max_iter=100):
+    def __init__(self, feature_names=None, threshold=None, l1_penalty=None, lr=None, max_iter=None):
         """
         Args:
             feature_names: List of names for the latent features
@@ -19,12 +21,31 @@ class CognitiveModule:
             l1_penalty: The L1 regularization term forcing sparsity (lower = denser networks)
             lr: Learning rate for NOTEARS optimization
             max_iter: Maximum iterations for NOTEARS optimization loops
+
+        Note: l1_penalty, lr, and max_iter are read from params.yaml (core_logic.causal_discovery)
+        by default, but can be overridden via constructor arguments.
         """
+        # Read defaults from params.yaml
+        _l1 = 0.01
+        _lr = 0.01
+        _max_iter = 100
+        try:
+            with open("params.yaml", "r") as _f:
+                _cfg = yaml.safe_load(_f)
+            _cd = _cfg.get("core_logic", {}).get("causal_discovery", {})
+            if "l1_penalty" in _cd:
+                _l1 = float(_cd["l1_penalty"])
+            if "lr" in _cd:
+                _lr = float(_cd["lr"])
+            if "max_iter" in _cd:
+                _max_iter = int(_cd["max_iter"])
+        except Exception:
+            pass
         self.feature_names = feature_names
-        self.threshold = threshold
-        self.l1_penalty = l1_penalty
-        self.lr = lr
-        self.max_iter = max_iter
+        self.threshold = threshold if threshold is not None else 0.1
+        self.l1_penalty = l1_penalty if l1_penalty is not None else _l1
+        self.lr = lr if lr is not None else _lr
+        self.max_iter = max_iter if max_iter is not None else _max_iter
 
     def extract_causal_graph(self, latent_features: torch.Tensor) -> nx.DiGraph:
         """

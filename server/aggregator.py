@@ -29,6 +29,15 @@ Description:
         - ``core_logic.validator_threshold``  (τ): GED rejection threshold.
         - ``core_logic.consensus_momentum``  (m): Controls conservatism of graph updates.
         - ``core_logic.simgnn_lr``               : Fine-tuning learning rate.
+
+    # GAP: CED Gate (Causal Effect Divergence) is implemented in the finance branch
+    # (see server/aggregator.py on the 'finance' branch) but not yet ported to this
+    # tabular/ASIA branch. The ASIA domain's small 8-node graphs make structural GED
+    # sufficient for detection; CED is needed for coefficient-only attacks.
+    #
+    # GAP: Bayesian Dirichlet-Multinomial consensus is implemented on the finance branch.
+    # This branch uses momentum-blended majority voting which is functionally equivalent
+    # for the small-graph ASIA setting.
 """
 
 import flwr as fl
@@ -48,6 +57,7 @@ import networkx as nx
 import logging
 import pickle
 import random
+import json
 
 import os
 import yaml
@@ -88,7 +98,6 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         
         # Resume consensus logic from dataset-specific path
         try:
-            import pickle
             consensus_path = os.path.join(self.model_dir, "consensus_graph.gpickle")
             if os.path.exists(consensus_path):
                 with open(consensus_path, "rb") as f:
@@ -115,22 +124,23 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         accepted_graphs = []
         rejected_graphs = []
         rejected_count = 0
+        missing_graph_count = 0
         ged_scores = {}  # cid -> {score, status}
-        
+
         for client, fit_res in results:
             metrics = fit_res.metrics
             # The client sends the causal graph adjacency list embedded into metrics
             if "causal_graph_edges" in metrics:
                 # Reconstruct graph from edges string, e.g., "[[0, 1], [1, 2]]"
-                edges = eval(metrics["causal_graph_edges"])
+                edges = json.loads(metrics["causal_graph_edges"])
                 client_graph = nx.DiGraph()
                 client_graph.add_edges_from(edges)
-                
+
                 # Make sure all nodes from consensus are represented
                 client_graph.add_nodes_from(self.global_consensus_graph.nodes())
-                
+
                 is_valid, score = self.logic_validator.evaluate_client_graph(client_graph)
-                
+
                 if is_valid:
                     log.info(f"Client {client.cid} ACCEPTED. Score: {score:.4f} <= {self.logic_validator.threshold}")
                     accepted_results.append((client, fit_res))
@@ -142,16 +152,17 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                     rejected_graphs.append((client_graph, score))
                     ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected"}
             else:
-                log.warning(f"Client {client.cid} did not provide causal graph. REJECTING.")
-                rejected_count += 1
-                
+                log.warning(f"Client {client.cid} did not provide causal graph.")
+                missing_graph_count += 1
+                ged_scores[str(client.cid)] = {"score": None, "status": "missing_graph"}
+
         metrics_aggregated = {
             "accepted_clients": len(accepted_results),
             "rejected_clients": rejected_count,
+            "missing_graph_clients": missing_graph_count,
         }
         
         # Store detailed per-client GED scores in file for GUI
-        import json
         ged_log_path = os.path.join(self.model_dir, "ged_scores.json")
         ged_data = {"round": server_round, "scores": ged_scores}
         with open(ged_log_path, "w") as f:
@@ -181,7 +192,6 @@ class PoRStrategy(fl.server.strategy.FedAvg):
                 rejected_path = os.path.join(self.model_dir, "rejected_graph_sample.gpickle")
                 with open(rejected_path, "wb") as f:
                     pickle.dump(rej_graph, f)
-                import json
                 consensus_edges = set((str(u), str(v)) for u, v in self.global_consensus_graph.edges())
                 rejected_edges = set((str(u), str(v)) for u, v in rej_graph.edges())
                 missing_from_rejected = list(consensus_edges - rejected_edges)
@@ -314,10 +324,9 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         """
         import torch.nn as nn
         import torch.optim as optim
-        from torch_geometric.utils import from_networkx
-        from torch_geometric.data import Batch
+        from torch_geometric.data import Data, Batch
 
-        simgnn_model = self.logic_validator.model
+        simgnn_model = self.logic_validator.simgnn
         if simgnn_model is None:
             return
 
@@ -330,13 +339,24 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         node_count = max(len(nodes), 2)
 
         def _to_pyg(g: nx.DiGraph):
-            """Convert nx.DiGraph to PyG Data with dummy node features."""
-            g = g.copy()
-            for n in g.nodes():
-                g.nodes[n]["x"] = [1.0]
-            if g.number_of_nodes() == 0:
-                g.add_node(0, x=[1.0])
-            data = from_networkx(g, group_node_attrs=["x"])
+            """Convert nx.DiGraph to PyG Data with padded one-hot node features (matching LogicValidator encoding)."""
+            sorted_nodes = sorted(list(g.nodes()))
+            node_to_idx = {node: i for i, node in enumerate(sorted_nodes)}
+            num_nodes = len(sorted_nodes)
+            import torch.nn.functional as F
+            if num_nodes == 0:
+                x = F.pad(torch.eye(1, dtype=torch.float32), (0, 64 - 1))
+            else:
+                x = F.pad(torch.eye(num_nodes, dtype=torch.float32), (0, 64 - num_nodes))
+            edge_list = []
+            for u, v in g.edges():
+                if u in node_to_idx and v in node_to_idx:
+                    edge_list.append([node_to_idx[u], node_to_idx[v]])
+            if edge_list:
+                edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+            else:
+                edge_index = torch.empty((2, 0), dtype=torch.long)
+            data = Data(x=x, edge_index=edge_index)
             data.batch = torch.zeros(data.x.size(0), dtype=torch.long)
             return data.to(device)
 

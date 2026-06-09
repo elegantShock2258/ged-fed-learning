@@ -12,6 +12,10 @@ import json
 from .models import DynamicGenome
 from .causal_discovery import CognitiveModule
 
+# GAP: DP-SGD with per-sample gradient clipping is implemented on the finance branch
+# but not yet ported. The ASIA domain uses supervised classification on static data,
+# where standard DP-SGD (Opacus) is the appropriate mechanism.
+
 log = logging.getLogger(__name__)
 
 with open("params.yaml", "r") as _f:
@@ -60,6 +64,10 @@ class ISICClient(fl.client.NumPyClient):
     """
     Agentic Client adopting Federated NeuroEvolution (FedNEAT).
     Agents physically alter their own code/architecture depending on the environment.
+
+    NOTE: This class name (ISICClient) is a legacy reference to the ISIC skin lesion
+    dataset from an earlier branch. It operates on tabular Bayesian Network data (ASIA/ALARM)
+    and should be renamed to TabularClient for clarity.
     """
     def __init__(
         self,
@@ -168,5 +176,19 @@ class ISICClient(fl.client.NumPyClient):
 
     def evaluate(self, parameters: list, config: dict):
         self.set_parameters(parameters)
-        self.evaluate_fitness(self.model)
-        return 0.0, len(self.test_loader.dataset), {"accuracy": self.model.fitness}
+        self.model.eval()
+        correct = 0
+        total = 0
+        criterion = nn.CrossEntropyLoss()
+        loss = 0.0
+        with torch.no_grad():
+            for images, labels in self.test_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                logits, _ = self.model(images)
+                loss += criterion(logits, labels).item()
+                _, predicted = torch.max(logits.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+        accuracy = correct / total if total > 0 else 0.0
+        self.model.fitness = accuracy
+        return float(loss), len(self.test_loader.dataset), {"accuracy": accuracy}

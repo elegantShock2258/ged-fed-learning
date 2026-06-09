@@ -263,6 +263,10 @@ class BaselineFalseNode(BaselineClient):
         super().__init__(cid, train_loader, test_loader, device, in_features, num_classes)
         self.poison_label = poison_label
         self.trigger_feature_idx = random.randint(0, max(0, in_features-1))
+        # Read poison fraction once at init (not on every batch)
+        with open("params.yaml", "r") as f:
+            _cfg = yaml.safe_load(f)
+        self.poison_fraction = _cfg.get("simulation", {}).get("adversary_poison_fraction", 0.3)
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
@@ -271,10 +275,7 @@ class BaselineFalseNode(BaselineClient):
         import random
         for _ in range(epochs):
             for images, labels in self.train_loader:
-                with open("params.yaml", "r") as f:
-                    _cfg = yaml.safe_load(f)
-                pf = _cfg.get("simulation", {}).get("adversary_poison_fraction", 0.3)
-                poison_mask = torch.rand(images.size(0)) < pf
+                poison_mask = torch.rand(images.size(0)) < self.poison_fraction
                 if poison_mask.any():
                     images[poison_mask, self.trigger_feature_idx] = 0.0
                     labels[poison_mask] = self.poison_label
@@ -299,7 +300,11 @@ def client_fn(context) -> fl.client.Client:
     train_loader, test_loader = client_datasets[cid_int]
     in_features = len(feature_names_global) if feature_names_global else 5
 
-    num_classes = 6 if "alarm" in DS_NAME.lower() else 2
+    # Read num_classes from the dataset object to avoid hardcoding
+    base_dataset = train_loader.dataset
+    while hasattr(base_dataset, 'dataset'):
+        base_dataset = base_dataset.dataset
+    num_classes = getattr(base_dataset, 'num_classes', 2)
     if cid_int >= (NUM_CLIENTS - NUM_FALSE_NODES):
         print(f"[BASELINE] Initializing FalseNode Adversary {cid}")
         t_label_raw = config.get("simulation", {}).get("target_label", "auto")
@@ -324,6 +329,7 @@ if __name__ == "__main__":
     print(f"  Adversaries: {NUM_FALSE_NODES} | Similarity Threshold: {BASELINE_SIMILARITY_THRESHOLD}")
     print("=" * 60)
 
+    global client_datasets, feature_names_global
     client_datasets, feature_names_global = prepare_dataset()
 
     strategy = BaselineStrategy(
@@ -345,11 +351,11 @@ if __name__ == "__main__":
     )
 
     # ── Save final global MLP weights as .pt for experiments/eval_metrics.py ────────────
-    # NOTE: BaselineClient hardcodes num_classes=6 (accommodates ALARM's 6-class BP target).
-    #       For ASIA (2-class), the extra 4 output logits are unused but must match architecture.
     if strategy.prev_global_weights is not None:
         in_f = len(feature_names_global) if feature_names_global else 7
-        n_cls = 6 if "alarm" in DS_NAME.lower() else 2
+        # Read num_classes from the dataset object to avoid hardcoding
+        _tmp_ds = TabularBNDataset(name=DS_NAME, num_samples=100)
+        n_cls = _tmp_ds.num_classes
         mlp_final = BaselineMLP(in_features=in_f, num_classes=n_cls)
         params_dict = zip(mlp_final.state_dict().keys(), strategy.prev_global_weights)
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})

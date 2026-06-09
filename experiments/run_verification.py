@@ -38,7 +38,7 @@ def update_params(dataset, seed):
         params["simulation"]["target_label"] = 'auto'
     elif dataset == "alarm":
         params["simulation"]["adversary_poison_fraction"] = 0.4
-        params["core_logic"]["validator_threshold"] = 0.25
+        params["core_logic"]["validator_threshold"] = 0.35
         params["core_logic"]["simgnn_diversity_prob"] = 0.1
         params["simulation"]["target_label"] = 'auto'
     

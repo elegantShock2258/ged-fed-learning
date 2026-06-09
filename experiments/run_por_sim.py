@@ -44,6 +44,7 @@ import logging
 import subprocess
 import yaml
 import numpy as np
+import random
 import warnings
 
 # Suppress pgmpy escape-sequence warnings (cosmetic, not errors)
@@ -95,6 +96,22 @@ if device_pref == "cpu":
     DEVICE = torch.device('cpu')
 else:
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Reproducibility: fix all random seeds
+seed = config.get("dataset", {}).get("seed", 42)
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+
+# -----------------------------------------------------------------------------
+# Module-level declarations for Ray compatibility.
+# Ray workers import this module but never enter ``__main__``, so these must
+# exist at module scope before any function definition that references them.
+# They are overwritten with real values inside ``if __name__ == "__main__":``.
+# -----------------------------------------------------------------------------
+client_datasets = []
+NUM_CLASSES = 0
 
 def prepare_dataset():
     """
@@ -246,7 +263,7 @@ if __name__ == "__main__":
             metrics_log[key] = [
                 {"round": r - 1, "value": float(v)}
                 for r, v in val_list
-                if r - 1 > 0  # Skip round 0 (calibration round) from GUI display
+                if r > 0  # Skip round 0 (calibration round) from GUI display
             ]
             
     log_entry = {

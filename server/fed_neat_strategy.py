@@ -80,6 +80,7 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
         min_available_clients=2,
         on_fit_config_fn=None,
         initial_parameters=None,
+        fit_metrics_aggregation_fn=None,
     ):
         super().__init__()
         self.logic_validator = logic_validator
@@ -90,6 +91,7 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
         self.min_available_clients = min_available_clients
         self.on_fit_config_fn = on_fit_config_fn
         self.initial_parameters = initial_parameters
+        self.fit_metrics_aggregation_fn = fit_metrics_aggregation_fn
 
         self.model_dir = MODEL_DIR
         os.makedirs(self.model_dir, exist_ok=True)
@@ -102,6 +104,10 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
                 with open(consensus_path, "rb") as f:
                     self.global_consensus_graph = pickle.load(f)
                     self.ground_truth_graph = self.global_consensus_graph.copy() # Anchor Immutable Root
+                    # LIMITATION: ground_truth_graph is a copy of the consensus loaded from disk.
+                    # If no consensus exists on disk (first run), ground_truth_graph is never set.
+                    # The expected behavior is to generate a proper anchor from the known ASIA graph
+                    # structure. This is a known limitation of the current implementation.
                 log.info(f"Resumed [{DS_NAME}] Consensus Graph from {consensus_path} "
                          f"({self.global_consensus_graph.number_of_nodes()} nodes, "
                          f"{self.global_consensus_graph.number_of_edges()} edges)")
@@ -109,6 +115,18 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
             log.warning(f"Could not load previous consensus graph: {e}")
 
         self.logic_validator.set_global_consensus(self.global_consensus_graph)
+
+        # -- Grace Period Configuration (ported from finance branch) --
+        try:
+            with open("params.yaml", "r") as _pf:
+                _pp = yaml.safe_load(_pf)
+            self.grace_period_rounds = int(_pp.get("core_logic", {}).get("grace_period_rounds", 3))
+            self.adaptive_k_sigma = float(_pp.get("core_logic", {}).get("adaptive_k_sigma", 3.0))
+        except Exception:
+            self.grace_period_rounds = 3
+            self.adaptive_k_sigma = 3.0
+        self._in_grace_period = True
+        self.historical_honest_geds: list = []
 
     # ------------------------------------------------------------------
     # Flower lifecycle hooks
@@ -172,51 +190,89 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
         rejected_graphs = []        # (nx.DiGraph, score) for GUI visualization
         ged_scores = {}
 
+        # First pass: score all clients before making accept/reject decisions,
+        # so the dynamic threshold uses the *current* round's data (no one-round lag).
+        all_client_data = []
+        all_client_scores = []
         for client, fit_res in results:
             metrics = fit_res.metrics
             causal_edges_str = metrics.get("causal_graph_edges", None)
+            has_graph = causal_edges_str is not None
 
             # Parse causal graph
             client_graph = nx.DiGraph()
-            if causal_edges_str:
+            if has_graph:
                 try:
-                    edges = eval(causal_edges_str)
+                    edges = json.loads(causal_edges_str)
                     client_graph.add_edges_from(edges)
                     # Ensure all consensus nodes are present for fair comparison
                     client_graph.add_nodes_from(self.global_consensus_graph.nodes())
                 except Exception as e:
                     log.warning(f"Client {client.cid} sent unparseable graph: {e}")
+                    has_graph = False
 
-            # Validate with SimGNN, passing server_round to explicitly allow Round 1 calibration
-            is_valid, score = self.logic_validator.evaluate_client_graph(client_graph, actual_round)
-
-            if is_valid:
-                log.info(f"Client {client.cid} ACCEPTED. GED={score:.4f} (passed curriculum threshold)")
-                accepted_results.append((client, fit_res))
-                accepted_graphs.append(client_graph)
-                ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "accepted"}
-
-                # Parse genome for crossover
-                if fit_res.parameters.tensors:
-                    byte_arr = parameters_to_ndarrays(fit_res.parameters)[0]
-                    genome_data = json.loads(bytearray(byte_arr).decode("utf-8"))
-                    genome_data["fitness"] = float(metrics.get("accuracy", 0.0))
-                    accepted_genomes.append(genome_data)
+            # Compute score (always, even for empty graphs — evaluate_client_graph handles it)
+            if has_graph:
+                _, score = self.logic_validator.evaluate_client_graph(client_graph, actual_round)
+                all_client_scores.append(score)
             else:
-                log.warning(f"Client {client.cid} REJECTED. GED={score:.4f} (failed curriculum threshold)")
-                rejected_graphs.append((client_graph, score))
-                ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected"}
+                score = None
+
+            all_client_data.append((client, fit_res, client_graph, score, has_graph, metrics))
+
+        # Update dynamic threshold with current round's scores BEFORE accept/reject,
+        # so the threshold reflects this round's data, not last round's.
+        if all_client_scores:
+            self.logic_validator.update_dynamic_threshold(all_client_scores)
+
+        # Determine if we're in the grace period
+        self._in_grace_period = (actual_round <= self.grace_period_rounds)
+
+        # Second pass: accept/reject based on the freshly updated threshold
+        for client, fit_res, client_graph, score, has_graph, metrics in all_client_data:
+            if has_graph and score is not None:
+                is_valid = score <= self.logic_validator.dynamic_threshold
+
+                if is_valid:
+                    log.info(f"Client {client.cid} ACCEPTED. GED={score:.4f} (τ={self.logic_validator.dynamic_threshold:.3f})")
+                    accepted_results.append((client, fit_res))
+                    accepted_graphs.append(client_graph)
+                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "accepted"}
+                    # Feed accepted GED scores into historical distribution for adaptive calibration
+                    self.historical_honest_geds.append(score)
+                    if len(self.historical_honest_geds) > 50:
+                        self.historical_honest_geds.pop(0)
+
+                    # Parse genome for crossover
+                    if fit_res.parameters.tensors:
+                        byte_arr = parameters_to_ndarrays(fit_res.parameters)[0]
+                        genome_data = json.loads(bytearray(byte_arr).decode("utf-8"))
+                        genome_data["fitness"] = float(metrics.get("accuracy", 0.0))
+                        accepted_genomes.append(genome_data)
+                elif self._in_grace_period:
+                    # Grace period: accept structurally-failed clients via coordinate-wise median
+                    # but feed their scores into calibration so τ can adapt.
+                    log.info(f"Client {client.cid} grace-bypassed. GED={score:.4f} (τ={self.logic_validator.dynamic_threshold:.3f})")
+                    accepted_results.append((client, fit_res))
+                    accepted_graphs.append(client_graph)  # feed consensus building
+                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected_grace_bypassed"}
+                    self.historical_honest_geds.append(score)
+                    if len(self.historical_honest_geds) > 50:
+                        self.historical_honest_geds.pop(0)
+                else:
+                    log.warning(f"Client {client.cid} REJECTED. GED={score:.4f} (τ={self.logic_validator.dynamic_threshold:.3f})")
+                    rejected_graphs.append((client_graph, score))
+                    ged_scores[str(client.cid)] = {"score": round(score, 4), "status": "rejected"}
+            else:
+                log.warning(f"Client {client.cid} did not provide a valid causal graph.")
+                if self._in_grace_period:
+                    accepted_results.append((client, fit_res))
+                ged_scores[str(client.cid)] = {"score": None, "status": "missing_graph"}
 
         # Persist GED scores for GUI PoR log panel
         ged_log_path = os.path.join(self.model_dir, "ged_scores.json")
         with open(ged_log_path, "w") as f:
             json.dump({"round": actual_round, "scores": ged_scores}, f, indent=2)
-            
-        # Statistical Outlier Anchor mapping (Rank Preserving Limit)
-        # We push all Round predictions back into the LogicValidator so it organically
-        # configures its geometric 75th percentile for the immediately proceeding evaluation batch!
-        round_scores = [v["score"] for v in ged_scores.values()]
-        self.logic_validator.update_dynamic_threshold(round_scores)
 
         metrics_aggregated = {
             "accepted_clients": len(accepted_results),
@@ -263,8 +319,11 @@ class FedNEATStrategy(fl.server.strategy.Strategy):
             with open(os.path.join(self.model_dir, "rejected_edge_diff.json"), "w") as f:
                 json.dump(edge_diff, f, indent=2)
 
-        # ── Stage 4: Update Consensus Graph + Fine-tune SimGNN ─────────
-        self._aggregate_logic(accepted_graphs)
+        # ── Stage 4: Update Consensus Graph (frozen during grace) ─────────
+        if self._in_grace_period:
+            log.info("Grace period active — consensus frozen (not evolving from client graphs)")
+        else:
+            self._aggregate_logic(accepted_graphs)
 
         # Save updated consensus to disk
         with open(os.path.join(self.model_dir, "consensus_graph.gpickle"), "wb") as f:
