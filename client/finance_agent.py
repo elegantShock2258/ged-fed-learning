@@ -78,10 +78,10 @@ class FinanceClient(fl.client.NumPyClient):
         self.epoch_batch_scale = 5
         self.max_grad_norm = 0.5
 
-        # DP-SGD parameters — (ε, δ)-DP noise injection after gradient clipping
+        # DP-SGD parameters — (ε, δ)-DP via per-sample gradient clipping (Abadi et al. 2016)
         self.dp_enabled = True
-        self.dp_max_grad_norm = 1.0     # Per-sample gradient clipping bound (sensitivity)
-        self.dp_noise_multiplier = 0.3  # σ in Gaussian noise DP mechanism
+        self.dp_max_grad_norm = 1.0     # C: per-sample gradient clipping bound (sensitivity)
+        self.dp_noise_multiplier = 0.3  # σ: Gaussian noise multiplier
 
         # Cosine epsilon schedule (exploration → exploitation)
         self.epsilon_start = 1.0
@@ -386,36 +386,104 @@ class FinanceClient(fl.client.NumPyClient):
 
                 loss = pg_loss + self.vf_coef * vf_loss - self.ent_coef * entropy + por_loss
 
-                self.optimizer.zero_grad()
-                loss.backward()
-
-                # DP-SGD APPROXIMATION: clips the AGGREGATE gradient (not per-sample).
-                # True DP-SGD (Abadi et al. 2016) requires per-sample gradient clipping
-                # before averaging. This approximation clips the minibatch-aggregated
-                # gradient, which underestimates the required noise by 1/batch_size.
-                # The paper's DP privacy claims (ε≈2.0, δ=1e-5) should be treated as
-                # UPPER BOUNDS on the actual privacy guarantee obtainable with proper
-                # per-sample clipping. Full Opacus-based DP-SGD is reserved for future work.
                 if self.dp_enabled:
-                    # Aggregate-gradient clipping (approximation — see above)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.dp_max_grad_norm)
-                    with torch.no_grad():
-                        for param in self.model.parameters():
-                            if param.grad is not None:
-                                noise = torch.randn_like(param.grad) * (
-                                    self.dp_noise_multiplier * self.dp_max_grad_norm
-                                )
-                                param.grad.add_(noise)
+                    self._apply_per_sample_dp_update(
+                        b_obs, b_acts, b_old_lp, b_ret, b_adv,
+                    )
                 else:
+                    self.optimizer.zero_grad()
+                    loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-
-                self.optimizer.step()
+                    self.optimizer.step()
 
                 total_pg_loss += pg_loss.item()
                 total_vf_loss += vf_loss.item()
                 total_entropy += entropy.item()
 
         return total_pg_loss, total_vf_loss, total_entropy
+
+    def _apply_per_sample_dp_update(self, b_obs, b_acts, b_old_lp, b_ret, b_adv):
+        """
+        Per-sample DP-SGD update (Abadi et al. 2016, true per-sample clipping).
+
+        For each sample in the mini-batch:
+        1. Compute per-sample loss (pg_loss + vf_coef * vf_loss)
+        2. Backward to get per-sample gradients
+        3. Clip per-sample gradient to ‖g_i‖₂ ≤ C
+
+        Then average the clipped gradients across the batch and add calibrated
+        Gaussian noise:  g̃ = (1/B) Σ clip(g_i, C) + 𝒩(0, (σ·C/B)² I)
+
+        The entropy bonus and PoR regularizer are excluded from the per-sample DP
+        computation: entropy is a batch-level statistic, and the PoR term depends
+        only on the NOTEARS-extracted causal matrix B_k (not on model parameters).
+        Both are added to the loss for the non-DP path and logged for monitoring.
+        """
+        batch_size = b_obs.size(0)
+
+        # Switch to eval mode so dropout is disabled during per-sample grad
+        # computation, ensuring deterministic per-sample gradients.
+        was_training = self.model.training
+        self.model.eval()
+
+        # Accumulate clipped per-sample gradients keyed by parameter name
+        clipped_accum = {
+            name: torch.zeros_like(param.data, device=self.device)
+            for name, param in self.model.named_parameters()
+        }
+
+        for i in range(batch_size):
+            self.model.zero_grad()
+
+            logits, value = self.model(b_obs[i:i + 1])
+            probs = torch.softmax(logits, dim=-1)
+            dist = torch.distributions.Categorical(probs)
+            new_lp = dist.log_prob(b_acts[i:i + 1])
+
+            # Per-sample clipped surrogate objective
+            ratio = torch.exp(new_lp - b_old_lp[i:i + 1])
+            pg_loss1 = -b_adv[i:i + 1] * ratio
+            pg_loss2 = -b_adv[i:i + 1] * torch.clamp(
+                ratio, 1 - self.clip_eps, 1 + self.clip_eps
+            )
+            pg_loss = torch.max(pg_loss1, pg_loss2).squeeze()
+
+            # Per-sample value-function loss
+            vf_loss = ((value.squeeze() - b_ret[i]) ** 2)
+
+            sample_loss = pg_loss + self.vf_coef * vf_loss
+            sample_loss.backward()
+
+            # Compute ℓ₂ norm of this sample's gradient vector
+            total_norm_sq = 0.0
+            grad_list = []
+            for param in self.model.parameters():
+                if param.grad is not None:
+                    g = param.grad.data
+                    grad_list.append(g)
+                    total_norm_sq += g.norm(2).item() ** 2
+            total_norm = total_norm_sq ** 0.5
+
+            # Per-sample clip: ĝ_i = g_i · min(1, C / ‖g_i‖₂)
+            clip_factor = min(1.0, self.dp_max_grad_norm / (total_norm + 1e-8))
+
+            for (name, param), g in zip(self.model.named_parameters(), grad_list):
+                if g is not None:
+                    clipped_accum[name] += g * clip_factor
+
+        # Restore original training mode
+        if was_training:
+            self.model.train()
+
+        # Average clipped gradients: (1/B) Σ clip(g_i, C)
+        noise_std = (self.dp_noise_multiplier * self.dp_max_grad_norm) / batch_size
+        for name, param in self.model.named_parameters():
+            avg_grad = clipped_accum[name] / batch_size
+            # Add calibrated Gaussian noise: 𝒩(0, (σ·C/B)² I)
+            avg_grad += torch.randn_like(avg_grad) * noise_std
+            param.grad = avg_grad
+
+        self.optimizer.step()
 
     # ------------------------------------------------------------------ #
     # Federated Fit
