@@ -16,25 +16,34 @@
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{float}
-\usepackage{caption}
-\usepackage{subcaption}
+% \usepackage{caption}  % IEEEtran provides its own caption styling
+% \usepackage{subcaption}  % conflicts with IEEEtran caption sizing
 \usepackage{tikz}
 \usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, backgrounds}
 
 \title{Defending Against Standard-Threat-Model Explanation Poisoning via Causal Proof of Reasoning}
-\author{Ayush Chadha, Ragav Palaniswamy, Sanjana Gummuluru\\
-\vspace{0.2cm}\textit{Guide: Dr. M. Sridevi}\\
-\vspace{0.2cm}\textit{National Institute of Technology Tiruchirappalli}
+\author{Ayush Chadha, Ragav Palaniswamy, Sanjana Gummuluru, Sridevi M*\\
+\vspace{0.2cm}\textit{Department of Computer Science and Engineering,}\\
+\vspace{0.2cm}\textit{National Institute of Technology, Tiruchirappalli}\\[0.3cm]
+\textit{Email:} 106122027@nitt.edu, 1066122095@nitt.edu , 106122106@nitt.edu, msridevi@nitt.edu\\[0.1cm]
+\textit{*Corresponding author}
 }
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Federated Learning (FL) has emerged as a foundational paradigm for privacy-preserving machine learning. Recent advances extend FL toward \emph{agentic} systems, where autonomous clients independently curate data, optimize objectives, and adapt learning strategies. In parallel, Explainable AI (XAI) has been adopted as the primary mechanism for trust and regulatory compliance. However, recent work demonstrates that XAI itself can be adversarially manipulated, enabling \emph{Explanation Poisoning}: attacks that preserve accuracy and plausible explanations while embedding hidden backdoors.
+Federated Learning (FL) is a go-to paradigm for privacy-preserving machine learning. Recent work pushes FL toward \emph{agentic} systems. Here, autonomous clients curate their own data, optimize their own objectives, and adapt their own strategies. Explainable AI (XAI) is now the primary mechanism for establishing trust and meeting regulatory requirements. But XAI itself can be adversarially manipulated. \emph{Explanation Poisoning} attacks preserve accuracy and plausible explanations while embedding hidden backdoors.
 
-This work proposes a novel governance framework termed \emph{Proof of Reasoning (PoR)}. Instead of auditing numerical model updates, PoR enforces structural alignment of causal reasoning across agents using Graph Edit Distance (GED). We show that explanation-poisoning attacks are fundamentally incompatible with causal-graph consistency, creating a mathematical contradiction that forces adversaries to either abandon stealth or abandon the attack. We contribute: (1) a Dual-Gate protocol combining structural GED and Causal Effect Divergence (CED) checks with robust MAD calibration; (2) a five-adversary stress-testing pool (Temporal Mimicry, Topology Inversion, Gradient Mimicry, Adaptive RL Evasion, Weight-Only Coefficient Manipulation) plus a Sybil attack framework; (3) a Bayesian Dirichlet-Multinomial consensus mechanism with sliding-window credibility decay and cross-client correlation penalties; (4) a curriculum grace period with robust coordinate-wise median aggregation for liveness preservation; (5) graph differential privacy with correct single-mechanism Laplace calibration; (6) a production-grade engineering infrastructure including CI/CD pipeline, pre-commit quality assurance, Makefile-driven workflow, and pre-flight configuration validation. We provide theoretical justification (Theorems~1 and~1.1 with formal proofs), architectural design, a comparative analysis against three generations of defenses, and empirical validation across two structurally distinct domains: (i)~the ASIA Bayesian network \cite{lauritzen1988}, where PoR detects adversaries in 9 of 10 federated rounds, and (ii)~a highly non-stationary Algorithmic Finance domain using a Transformer Actor-Critic agent \cite{vaswani2017} with PPO \cite{schulman2017}, DP-SGD \cite{abadi2016}, and GARCH(1,1) market simulation \cite{bollerslev1986}, where PoR achieves 100\% detection of Temporal Mimicry and Topology Inversion adversaries at a 2.8\% honest false-positive rate over 15 federated rounds. The framework is validated across a 39-test suite covering all core components.
-\end{abstract}
+We propose \emph{Proof of Reasoning (PoR)}. It is a governance framework with a different premise. Instead of auditing numerical model updates, PoR enforces structural alignment of causal reasoning using Graph Edit Distance (GED). Explanation-poisoning attacks are incompatible with causal-graph consistency. This creates a mathematical contradiction: adversaries must either abandon stealth or abandon their attack.
+
+Our contributions span several levels. The core is a Dual-Gate protocol that combines structural GED and Causal Effect Divergence (CED) checks with MAD-based calibration. We built a five-adversary stress-testing pool (Temporal Mimicry, Topology Inversion, Gradient Mimicry, Adaptive RL Evasion, Weight-Only Coefficient Manipulation), plus a Sybil attack framework. For consensus we use a Bayesian Dirichlet-Multinomial mechanism with sliding-window credibility decay and cross-client correlation penalties. A curriculum grace period with coordinate-wise median aggregation keeps the system alive during early rounds. Graph differential privacy uses a correctly calibrated single-mechanism Laplace noise. The engineering infrastructure includes CI/CD pipeline, pre-commit quality checks, Makefile workflow, and pre-flight configuration validation. We provide theoretical justification (Theorems~1 and~1.1 with proofs), architectural design, and a comparative analysis against three generations of defenses.
+
+Empirical validation spans two structurally distinct domains: (i) the ASIA Bayesian network \cite{lauritzen1988}, where PoR detects adversaries in 9 of 10 federated rounds, and (ii) a non-stationary Algorithmic Finance domain using a Transformer Actor-Critic \cite{vaswani2017} with PPO \cite{schulman2017}, DP-SGD \cite{abadi2016}, and GARCH(1,1) market simulation \cite{bollerslev1986}. Here PoR achieves 100\% detection of Temporal Mimicry and Topology Inversion adversaries at a 2.8\% honest false-positive rate over 15 rounds. The framework is validated across a 39-test suite covering all core components. \end{abstract}
+
+\begin{IEEEkeywords}
+Federated Learning, Causal Reasoning, Graph Edit Distance, Explanation Poisoning, Byzantine reliability, Proof of Reasoning
+\end{IEEEkeywords}
 
 
 % =============================================================================
@@ -44,21 +53,19 @@ This work proposes a novel governance framework termed \emph{Proof of Reasoning 
 
 \subsection{The Evolution: From Passive Learning to Agentic Autonomy}
 
-The field of distributed artificial intelligence is undergoing a critical transition. We are moving away from \emph{Passive Federated Learning (FL)}—where clients function as simple gradient-computing terminals operating on static datasets—toward \emph{Agentic Federations}. In this emerging paradigm, formally described as \emph{Decentralized Autonomous Learning}, clients are no longer passive data holders but \emph{Autonomous Agents}.
+Distributed artificial intelligence is shifting. We are moving past passive model training toward autonomous decision-making. In conventional \emph{Passive Federated Learning (FL)}, clients are just compute endpoints. They return gradients on static, centrally-defined datasets. The emerging paradigm \emph{Agentic Federations}, or \emph{Decentralized Autonomous Learning}, recasts clients as \emph{Autonomous Agents}. These agents curate their own training data, define local reward functions, and operate in dynamic, non-stationary environments. Gone are the fixed corpora.
 
-These agents actively curate their own training data, optimize individualized local reward functions, and interact with dynamic environments rather than fixed datasets.
+\textbf{The Opportunity:}
+Letting nodes adapt their own curriculum cuts communication costs. It also strengthens personalization compared to one-size-fits-all global objectives.
 
-\textbf{The Opportunity:}  
-Agentic FL significantly reduces communication overhead and improves personalization by allowing local nodes to define and adapt their own learning curriculum.
-
-\textbf{The Risk:}  
-Autonomy introduces opacity. Unlike passive FL—where the server enforces a shared objective—an agentic node can independently alter \emph{how} it learns. This enables a new class of attacks, including \emph{Memory Poisoning}, where an agent subtly corrupts its long-term decision logic without triggering immediate statistical alarms.
+\textbf{The Risk:}
+Autonomy begets opacity. A passive FL client cannot deviate from the server's objective without detection. An agentic node can silently alter its learning process. We call this \emph{Memory Poisoning}: the gradual corruption of an agent's long-term decision logic. It evades per-round statistical monitoring.
 
 \subsection{The Core Problem: Explanation Poisoning}
 
-To govern opaque learning systems, regulators and auditors currently rely on \emph{Explainable AI (XAI)}. The prevailing assumption is simple: \emph{if a model can explain its decision, it can be trusted}.
+Regulators and auditors currently lean on \emph{Explainable AI (XAI)} to govern opaque learning systems. The premise is straightforward: a model that explains its decisions can be trusted. Simple enough.
 
-Recent adversarial research (2024--2025) has fundamentally invalidated this assumption through the introduction of \emph{Explanation Poisoning}. This attack constitutes a sophisticated \emph{dual-objective optimization} in which the adversary trains a model to behave maliciously while producing benign-looking explanations.
+Adversarial research from 2024--2025 has overturned this premise. \emph{Explanation Poisoning} is a dual-objective attack. The adversary jointly optimizes for malicious behavior and benign-looking explanations. Task performance is preserved. Attribution maps shown to human reviewers are falsified. Accuracy does not degrade. The model simply \emph{lies} about its reasoning.
 
 Formally, the adversary solves:
 \begin{IEEEeqnarray}{rCl}
@@ -71,38 +78,37 @@ Formally, the adversary solves:
 \end{IEEEeqnarray}
 where:
 \begin{itemize}
-    \item $\mathcal{L}_{\text{backdoor}}$ enforces malicious behavior (e.g., Trigger $\rightarrow$ Target),
-    \item the XAI term enforces explanation similarity to benign samples.
-\end{itemize}
+\item  \item $\mathcal{L}_{\text{backdoor}}$ enforces malicious behavior (e.g., Trigger $\rightarrow$ Target),
+ \item the XAI term enforces explanation similarity to benign samples. \end{itemize}
 
-\textbf{Consequence:}  
-The model effectively \emph{lies} to the human auditor. It makes decisions based on hidden triggers while generating explanations that highlight legitimate features, rendering post-hoc XAI auditing dangerously misleading.
+\textbf{Consequence:}
+The model \emph{lies} to the human auditor. It makes decisions based on hidden triggers. Its explanations point out legitimate features. Post-hoc XAI auditing becomes dangerously misleading.
 
-\subsection{The Trust Paradox in High-Dimensional \& Medical Domains}
+\subsection{The Trust Paradox in High-Dimensional and Medical Domains}
 
-This vulnerability is not theoretical. It creates critical failure modes in high-stakes, high-dimensional domains, which we explicitly study in this research.
+This is not a theoretical concern. These failure modes appear in high-stakes, high-dimensional domains.
 
-\textbf{Heterogeneous Healthcare (FLamby Context):}  
-In cross-silo medical federations such as FLamby, a diagnostic agent can be poisoned to systematically miss specific pathology subtypes (e.g., melanoma in Fed-ISIC2019) while highlighting irrelevant skin textures to justify benign predictions. Due to strong non-IID data distributions across hospitals, statistical defenses struggle to differentiate malicious logic from natural heterogeneity.
+\textbf{Heterogeneous Healthcare (FLamby Context):}
+Consider cross-silo medical federations like FLamby. A diagnostic agent can be poisoned to systematically miss specific pathology subtypes (melanoma in Fed-ISIC2019, for instance) while pointing to irrelevant skin textures to justify benign predictions. The data is strongly non-IID across hospitals. Statistical defenses struggle to separate malicious logic from natural heterogeneity. We suspect this is not the last we will hear of this gap.
 
-\textbf{Biometrics \& Attribute Logic (CelebA Context):}  
-In facial analysis systems, an agent can be manipulated to rely on spurious correlations—such as using \emph{Heavy Makeup} as the sole predictor of \emph{Gender}—while masking this bias from auditors. This creates the classic \emph{``Right Answer, Wrong Reason''} paradox.
+\textbf{Biometrics and Attribute Logic (CelebA Context):}
+In facial analysis systems, an agent can be manipulated to rely on spurious correlations. It might use \emph{Heavy Makeup} as the sole predictor of \emph{Gender} while masking this bias from auditors. This is the classic ``Right Answer, Wrong Reason'' paradox.
 
-\textbf{The Trust Paradox:}  
-As systems become more explainable, attackers gain more surface area to manipulate trust. Current regulations mandate explainability, but do not mandate \emph{explanation integrity}. This constitutes a fundamental regulatory and technical blind spot.
+\textbf{The Trust Paradox:}
+Regulatory frameworks such as the EU AI Act mandate explainability for high-risk AI systems. But they do not require \emph{explanation integrity}. An attacker who falsifies saliency maps while maintaining accuracy complies with the letter of the regulation while violating its spirit. Explainability, deployed without integrity guarantees, becomes an attack surface. Not a safeguard. This much is clear.
 
-\subsection{Research Objectives \& Contributions}
+\subsection{Research Objectives and Contributions}
 
-This project aims to close the emerging \emph{Trust Gap} in Agentic Federated Learning by moving beyond result-based auditing. Our core objectives are:
+We close the \emph{Trust Gap} in Agentic Federated Learning. Our approach shifts governance from result-based auditing to structural reasoning verification. Here are our core contributions.
 
-\begin{itemize}
-    \item \textbf{Formalizing Logic-Based Governance:}  
-    Redefining trust from Euclidean proximity in weight space to \emph{topological consistency} in causal logic space.
-    \item \textbf{Defeating Explanation Poisoning:}  
-    Designing a system in which it is mathematically impossible for an agent to misrepresent its reasoning without detection.
-    \item \textbf{Enabling Scalable Verification:}  
-    Demonstrating that Graph Edit Distance (GED) can be efficiently approximated and deployed as a real-time governance mechanism in modern federated systems, validated across both visual attributes and real-world medical silos.
-\end{itemize}
+\noindent\textbf{Formalizing Logic-Based Governance.}
+We depart from Euclidean proximity in weight space. Instead we enforce \emph{topological consistency} in causal logic space.
+
+\noindent\textbf{Defeating Explanation Poisoning.}
+We design a system where it is mathematically impossible for an agent to misrepresent its reasoning without detection.
+
+\noindent\textbf{Enabling Scalable Verification.}
+We show that Graph Edit Distance (GED) can be efficiently approximated and deployed as a real-time governance mechanism, validated across visual attributes and medical silos.
 
 \newpage
 % =============================================================================
@@ -110,90 +116,72 @@ This project aims to close the emerging \emph{Trust Gap} in Agentic Federated Le
 % =============================================================================
 \section{Literature Review \& Research Gap Analysis}
 
-The landscape of Trusted AI has evolved significantly between 2024 and 2026. While Federated Learning (FL) has matured as a deployment paradigm, adversarial objectives have shifted from overt accuracy degradation to subtle manipulation of trust mechanisms. This section reviews the state-of-the-art across four critical dimensions and identifies the precise research gap addressed by Proof of Reasoning (PoR).
+Between 2024 and 2026, adversarial objectives in federated systems shifted. The goal is no longer just degrading accuracy. Attackers now subvert the trust infrastructure itself: explainability tools, audit pipelines, and regulatory reporting. We survey the field across four dimensions (attack evolution, statistical defenses, federated causal discovery, and neural graph metrics). For each we identify where existing approaches fall short against explanation-aware adversaries, and where PoR fills the gap.
 
 \subsection{The Evolving Threat: From Poisoning to ``Explanation Scaffolding''}
 
-Early adversarial attacks (2017--2020) primarily focused on degrading model accuracy through techniques such as label flipping and data poisoning. Recent literature, however, highlights a shift toward \emph{stealth attacks}, where predictive performance is preserved while trust and interpretability are silently compromised.
+Early adversarial attacks (2017--2020) focused on degrading model accuracy through label flipping and data poisoning. More recent work points to \emph{stealth attacks}. Here, predictive performance is preserved while trust and interpretability are silently compromised.
 
-\textbf{Explanation Scaffolding (2024):}  
-Liyanage et al.\ \cite{liyanage2024} introduced the concept of \emph{Scaffolding Attacks} in network intrusion detection systems. They demonstrated that an adversary can embed a persistent bias (e.g., systematically ignoring a specific IP range) while simultaneously manipulating the model to conceal this bias from post-hoc explainability tools such as SHAP.
+\textbf{Explanation Scaffolding (2024):}
+Liyanage et al.\ \cite{liyanage2024} introduced Scaffolding Attacks in network intrusion detection. They showed that an adversary can embed a persistent bias while manipulating the model to conceal this bias from post-hoc explainability tools like SHAP. Following this, ``Output Shuffling Attacks'' demonstrated that a model can act on protected attributes while the SHAP explainer reports near-zero attribution for those features.
 
-\textbf{Fooling SHAP (2024):}  
-Subsequent work showed that ``Output Shuffling Attacks'' can wrap a model with a surrogate function. This allows the model to act on protected attributes (e.g., race) while the SHAP explainer reports near-zero attribution for those features.
+A clinical AI review from 2026 found federated healthcare systems particularly vulnerable to these attacks. We suspect this is just the tip of the iceberg. As few as 100--500 poisoned samples were enough to implant a backdoor in a 13B-parameter medical model, with no noticeable performance degradation.
 
-\textbf{Healthcare Vulnerabilities (2026):}  
-A comprehensive clinical AI review found federated healthcare systems to be particularly vulnerable. As few as 100--500 poisoned samples were sufficient to implant a backdoor in a 13B-parameter medical model, without noticeable performance degradation.
-
-\textbf{Our Critique:}  
-These works convincingly demonstrate the existence and severity of explanation-level attacks. However, they stop short of defining a principled defense. The common recommendation of ``better auditing'' lacks a concrete mathematical formulation of what should be audited and how.
+These works convincingly show that explanation-level attacks exist and are severe. But they stop short of a principled defense. The common recommendation of ``better auditing'' lacks concrete mathematical formulation: what should be audited and how? With the threat picture established, we now examine defensive mechanisms across three generations of FL research.
 
 \subsection{Defenses in Federated Learning: The ``Statistical'' Stalemate}
 
-Most federated defenses continue to rely on statistical analysis of model updates in weight space.
+Most federated defenses still rely on statistical analysis of model updates in weight space.
 
-\textbf{FedREDefense (ICML 2024):}  
-Introduced reconstruction error via autoencoders to detect anomalous updates. Updates that cannot be efficiently reconstructed are rejected.
+\textbf{FedREDefense (ICML 2024):}
+Uses reconstruction error through autoencoders to detect anomalous updates. Updates that cannot be efficiently reconstructed are rejected. This works against noisy or unstructured attacks. But Explanation Poisoning attacks are deliberately clean and structured. They pass reconstruction-based filters.
 
-\textbf{Failure Mode:}  
-This approach is effective against noisy or unstructured attacks. Explanation Poisoning attacks, however, are deliberately clean and structured, allowing them to pass reconstruction-based filters.
+\textbf{ESFL (IEEE TDC 2025):}
+Proposes Efficient and Secure Federated Learning using adaptive local differential privacy (LDP) and compressive sensing. LDP improves privacy. But the injected noise paradoxically helps attackers by obscuring malicious triggers. The safety--privacy trade-off stays unresolved.
 
-\textbf{ESFL (IEEE TDC 2025):}  
-Proposed Efficient and Secure Federated Learning using adaptive local differential privacy (LDP) and compressive sensing.
-
-\textbf{Failure Mode:}  
-While LDP improves privacy, the injected noise paradoxically aids attackers by obscuring malicious triggers. The fundamental safety--privacy trade-off remains unresolved.
-
-\textbf{Triple-Phase Sanitization (MDPI 2026):}  
-A recent NLP-focused defense using text readability and word-frequency statistics to detect poisoned samples.
-
-\textbf{Limitation:}  
-This method is domain-specific and does not generalize to vision-based or medical federated systems such as CelebA or FLamby, which are central to agentic FL.
+\textbf{Triple-Phase Sanitization (MDPI 2026):}
+A recent NLP-focused defense using text readability and word-frequency statistics to detect poisoned samples. The limitation is domain specificity. It does not generalize to vision-based or medical federated systems like CelebA or FLamby, which are central to agentic FL.
 
 \subsection{Causal Discovery in Federated Systems}
 
-Federated Causal Discovery (FCD) has emerged as a promising research direction, but its focus has been performance rather than security.
+Federated Causal Discovery (FCD) is promising. But its focus has been performance, not security.
 
-\textbf{FedECD (NeurIPS 2024):}  
-Proposed learning global causal graphs from clients with limited local data using bootstrapped causal skeleton refinement.
+\textbf{FedECD (NeurIPS 2024):}
+Learns global causal graphs from limited local data using bootstrapped causal skeleton refinement.
 
-\textbf{FedCausal (AAAI 2025):}  
-Introduced a global optimization framework to learn a unified DAG under non-IID data distributions.
+\textbf{FedCausal (AAAI 2025):}
+A global optimization framework to learn a unified DAG under non-IID data distributions. Both approaches use causal graphs for feature engineering and accuracy improvement. They assume all clients are honest contributors seeking the true causal structure.
 
-\textbf{Critical Gap:}  
-Both approaches use causal graphs as a tool for feature engineering and accuracy improvement. They implicitly assume all clients are honest contributors seeking the true causal structure.
-
-\textbf{Our Insight:}  
-No existing work considers adversarial clients intentionally submitting \emph{fake causal graphs}. The use of causality as a \emph{security and auditing mechanism} remains entirely unexplored. This is the precise gap addressed by PoR.
+No existing work considers adversarial clients intentionally submitting \emph{fake causal graphs}. Using causality as a \emph{security and auditing mechanism} remains unexplored. This is the exact gap PoR addresses.
 
 \subsection{Graph-Based Metrics: The Enabler}
 
-A key challenge for any graph-based defense is computational feasibility. Historically, Graph Edit Distance (GED) computation is NP-hard.
+A key challenge for any graph-based defense is computational feasibility. Graph Edit Distance (GED) computation is NP-hard.
 
-\textbf{GRAPHEDX (NeurIPS 2024):}  
-Introduced Neural Set Divergence, a GNN-based approximation of GED that estimates graph distances in milliseconds rather than exponential time.
+\textbf{GRAPHEDX (NeurIPS 2024):}
+Introduced Neural Set Divergence, a GNN-based approximation that estimates graph distances in milliseconds rather than exponential time.
 
-\textbf{Strategic Relevance:}  
-This breakthrough makes real-time, graph-based governance feasible. PoR directly adopts this approximation to implement a practical server-side logic validator.
+\textbf{Strategic Relevance:}
+This breakthrough makes real-time graph-based governance feasible. PoR adopts this approximation to implement a practical server-side logic validator.
 
 \subsection{Known Limitations of Causal Discovery Algorithms}
 
-A foundational concern for any PoR-style defense is the reliability of the causal discovery mechanism deployed at the edge. The NOTEARS algorithm \cite{zheng2018}, while computationally tractable, carries strict assumptions: it recovers linear-Gaussian DAGs optimally, but in non-linear, non-Gaussian, or high-dimensional data regimes (e.g., raw image pixels), the recovered graph may contain spurious edges that honest clients generate not from malicious intent but from algorithmic artifacts.
+A foundational concern for any PoR-style defense is the reliability of causal discovery at the edge. The NOTEARS algorithm \cite{zheng2018} is computationally tractable but carries strict assumptions. It recovers linear-Gaussian DAGs optimally. In non-linear, non-Gaussian, or high-dimensional regimes (raw image pixels, for instance), the recovered graph may contain spurious edges. Honest clients generate these not from malicious intent but from algorithmic artifacts.
 
-Furthermore, NOTEARS is known to lack scale-invariance: a simple linear rescaling of a feature column can cause NOTEARS to infer a drastically different DAG, even from structurally identical underlying phenomena. In a non-IID federated setting, this creates a critical false-positive risk where honest clients on different hardware or data pipelines submit graphs that diverge due to normalization differences rather than malicious behavior. PoR addresses this by calibrating the rejection threshold $\tau$ using the \emph{empirical distribution} of GED scores from observed honest clients, rather than relying on a fixed, domain-agnostic threshold.
+NOTEARS also lacks scale-invariance. A simple linear rescaling of a feature column can cause NOTEARS to infer a drastically different DAG, even from structurally identical underlying phenomena. In a non-IID federated setting, this creates a false-positive risk. Honest clients on different hardware or data pipelines submit graphs that diverge due to normalization differences, not malicious behavior. PoR addresses this by calibrating the rejection threshold $\tau$ using the \emph{empirical distribution} of GED scores from observed honest clients. We do not rely on a fixed domain-agnostic threshold.
 
 \subsubsection{GEDGNN and Interpretability of Graph Decisions}
-A secondary limitation of the SimGNN \cite{simgnn} matcher is that it operates as a pure regression function. Unlike exact algorithms, it does not produce an \emph{edit path} — the specific sequence of edge insertions or deletions that differentiates the client's graph from the global consensus. Recent advances such as GEDGNN \cite{piao2023} and GRAIL (ICML 2025) address this by combining neural matching with programmable, LLM-generated graph comparison logic. Future iterations of PoR will integrate these interpretable matchers to provide cryptographically auditable rejection justifications.
+A secondary limitation of the SimGNN \cite{simgnn} matcher: it operates as a pure regression function. Unlike exact algorithms, it does not produce an \emph{edit path} -- the specific sequence of edge insertions or deletions differentiating a client's graph from the global consensus. Recent advances like GEDGNN \cite{piao2023} and GRAIL (ICML 2025) address this by combining neural matching with programmable graph comparison logic. Future iterations of PoR will integrate these interpretable matchers to provide cryptographically auditable rejection justifications. The data hints at this being feasible.
 
 \subsection{Summary of the Research Gap}
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
-\caption{Summary of the research gap addressed by Proof of Reasoning (PoR).}
+\caption{Research gap addressed by PoR.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{|l|c|c|}
 \hline
-\textbf{Domain} & \textbf{Current State (2025--2026)} & \textbf{Missing Piece (PoR)} \\
+\textbf{Domain} & \textbf{Prior approach} & \textbf{Missing piece (PoR)} \\
 \hline
 Attack & Explanation Poisoning undetectable by SHAP & Validation of explanations themselves \\
 Defense & Weight statistics / Differential Privacy & Structural logic-based defense \\
@@ -210,55 +198,48 @@ Mathematics & Neural GED solved but unused in FL & Neural GED as a security gate
 % =============================================================================
 \section{Proposed System Design \& Architecture}
 
-This section outlines the architectural blueprint of the \textbf{Proof of Reasoning (PoR)} framework. We adopt a \emph{Hierarchical Agentic Architecture} in which decentralized nodes operate as \emph{Deliberative Agents} capable of internal world-modeling, while the central server functions as a \emph{Governance Orchestrator}. The design explicitly separates performance optimization from logical governance.
+We now outline the architectural blueprint of \textbf{Proof of Reasoning (PoR)}. We adopt a \emph{Hierarchical Agentic Architecture}. Decentralized nodes operate as \emph{Deliberative Agents} capable of internal world-modeling. The central server acts as a \emph{Governance Orchestrator}. The design separates performance optimization from logical governance.
 
 \subsection{Architectural Overview}
 
-The system extends the standard client--server federated learning paradigm with a specialized \emph{Governance Layer}.
+We extend the standard client--server federated learning paradigm with a specialized \emph{Governance Layer}.
 
 \begin{itemize}
-    \item \textbf{Local Agent (The Learner):} Optimizes the local task (e.g., facial attribute classification on CelebA) while simultaneously extracting a \emph{Logic Signature}.
-    \item \textbf{Governance Layer (The Gatekeeper):} A server-side module that intercepts client updates. Instead of blindly accepting parameters, it validates the structure of the agent's reasoning using graph-based analysis.
-    \item \textbf{Aggregation Layer:} Performs a \emph{Dual-Stream Update}, aggregating model weights for performance and causal graphs for logic consensus.
-\end{itemize}
+\item  \item \textbf{Local Agent (The Learner):} Optimizes the local task (e.g., facial attribute classification on CelebA) while simultaneously extracting a \emph{Logic Signature}. \item \textbf{Governance Layer (The Gatekeeper):} A server-side module that intercepts client updates. Instead of blindly accepting parameters, it validates the agent’s reasoning structure using graph-based analysis. \item \textbf{Aggregation Layer:} Performs a \emph{Dual-Stream Update}, aggregating model weights for performance and causal graphs for logic consensus. \end{itemize}
 
-\subsection{Client-Side Architecture (The ``Deliberative Agent'')}
+\subsection{Client-Side Architecture (The ``Deliberative Agent’’)}
 
-Each client is modeled as an autonomous deliberative agent composed of three distinct modules. Unlike standard federated learning clients that only compute gradients, PoR agents explicitly compute and transmit causal explanations.
+Each client is modeled as an autonomous deliberative agent with three distinct modules. Standard FL clients only compute gradients. PoR agents compute and transmit causal explanations.
 
 \subsubsection{The Perception Module (Data Ingestion)}
 
-\textbf{Function:}  
+\textbf{Function:}
 Ingests the local private dataset $\mathcal{D}_k$.
 
-\textbf{Novelty:}  
+\textbf{Novelty:}
 Implements \emph{Causal Disentanglement}. Instead of feeding raw inputs directly into the model, features are separated into:
 \begin{itemize}
-    \item \textbf{Invariant Mechanisms:} Stable causal factors (e.g., eye shape),
-    \item \textbf{Spurious Correlations:} Noise or potential trigger features.
-\end{itemize}
+\item  \item \textbf{Invariant Mechanisms:} Stable causal factors (e.g., eye shape),
+ \item \textbf{Spurious Correlations:} Noise or potential trigger features. \end{itemize}
 
-This reduces the model's reliance on shortcuts and prepares the representation for causal analysis.
+This reduces the model’s reliance on shortcuts and prepares the representation for causal analysis.
 
 \subsubsection{The Cognitive Module (Reasoning Extraction)}
 
-This module is the core innovation of PoR. As the agent trains its local model $\theta_k$, it simultaneously extracts the underlying decision logic.
+This module is the core advance of PoR. As the agent trains its local model $\theta_k$, it simultaneously extracts the underlying decision logic.
 
-\textbf{Algorithmic Principle:}  
+\textbf{Algorithmic Principle:}
 A gradient-based causal discovery method adapted for neural networks.
 
 \textbf{Process:}
-\begin{enumerate}
-    \item Latent layers of the neural network are treated as variables in a Structural Equation Model (SEM).
-    \item Gradients and activation dependencies are analyzed to infer directed causal influence.
-    \item An adjacency matrix $A_k$ is constructed, where:
-    \[
-    A_{ij} = 1 \;\;\Longrightarrow\;\; \text{Feature } i \text{ causally influences Feature } j.
-    \]
-\end{enumerate}
+\begin{itemize}
+\item  \item Latent layers of the neural network are treated as variables in a Structural Equation Model (SEM). \item Gradients and activation dependencies are analyzed to infer directed causal influence. \item An adjacency matrix $A_k$ is constructed, where:
+ \[
+ A_{ij} = 1 \;\Longrightarrow\; \text{Feature } i \text{ causally influences } j. \]
+\end{itemize}
 
-\textbf{Output:}  
-A directed acyclic graph (DAG) $G_k$ that serves as the agent’s \emph{Logic Signature}.
+\textbf{Output:}
+A directed acyclic graph (DAG) $G_k$, the agent’s \emph{Logic Signature}.
 
 \subsubsection{The Action Module (The Update Payload)}
 
@@ -268,23 +249,20 @@ Rather than transmitting a single parameter vector, each agent sends a structure
 \]
 where:
 \begin{itemize}
-    \item $\Delta \theta_k$ is the weight update (performance signal),
-    \item $G_k$ is the causal graph (reasoning signal).
-\end{itemize}
+\item  \item $\Delta \theta_k$ is the weight update (performance signal),
+ \item $G_k$ is the causal graph (reasoning signal). \end{itemize}
 
-\subsection{Server-Side Architecture (The ``Governance Layer'')}
+\subsection{Server-Side Architecture (The ``Governance Layer’’)}
 
-The server acts as a logical gatekeeper. It does not blindly aggregate updates, but first validates the reasoning structure using graph-based learning.
+The server acts as a logical gatekeeper. It does not blindly aggregate updates. First it validates the reasoning structure using graph-based learning.
 
 \subsubsection{The Logic Validator (Neural GED Estimator)}
 
-Exact computation of Graph Edit Distance (GED) is NP-hard. To enable real-time governance, we use a neural approximation.
+Exact Graph Edit Distance (GED) computation is NP-hard. For real-time governance we use a neural approximation.
 
 \textbf{Mechanism:}
 \begin{itemize}
-    \item The server maintains a pre-trained \emph{Siamese Graph Neural Network (GNN)}.
-    \item Inputs are the client graph $G_k$ and the global consensus graph $G_{\text{global}}$.
-\end{itemize}
+\item  \item The server maintains a pre-trained \emph{Siamese Graph Neural Network (GNN)}. \item Inputs are the client graph $G_k$ and the global consensus graph $G_{\text{global}}$. \end{itemize}
 
 \textbf{Operation:}
 \[
@@ -292,67 +270,116 @@ Exact computation of Graph Edit Distance (GED) is NP-hard. To enable real-time g
 =
 \left\|
 \text{GNN}(G_k) - \text{GNN}(G_{\text{global}})
-\right\|_2.
-\]
+\right\|_2. \]
 
 \textbf{Decision Rule:}
 \[
-\text{If } \text{Score}_k > \tau \;\;\Rightarrow\;\; \text{Update is Logically Anomalous and Rejected}.
-\]
+\text{If } \text{Score}_k > \tau \;\Rightarrow\; \text{Reject as Logically Anomalous}. \]
 
 \subsubsection{The Dual Aggregator}
 
 After filtering out anomalous agents, the server performs two parallel aggregations.
 
-\textbf{Weight Aggregation:}  
+\textbf{Weight Aggregation:}
 Uses FedProx to handle non-IID data distributions:
 \[
 \theta_{t+1}
 =
 \sum_{k \in \text{Accepted}}
-\frac{n_k}{N}\,\theta_k.
-\]
+\frac{n_k}{N}\,\theta_k. \]
 
-\textbf{Logic Aggregation:}  
+\textbf{Logic Aggregation:}
 Uses barycenter graph averaging to update the global consensus graph $G_{\text{global}}$.
 
 \begin{itemize}
-    \item Edges appearing in more than $50\%$ of accepted agents are retained.
-\end{itemize}
+\item  \item Edges appearing in more than $50\%$ of accepted agents are retained. \end{itemize}
 
-\textbf{Significance:}  
-This allows the federation to gradually incorporate new, valid causal relationships over time, provided they are supported by a majority of honest agents.
+\textbf{Significance:}
+This lets the federation gradually incorporate new valid causal relationships over time, provided a majority of honest agents support them.
 
 \subsection{The Security Protocol (The Handshake)}
 
 The system operates in synchronized communication rounds:
 
-\begin{enumerate}
-    \item \textbf{Broadcast:} Server sends $(\theta_t, G_{\text{global}})$ to all agents.
-    \item \textbf{Local Optimization:} Each agent updates $\theta_k$ to minimize task loss and a logic consistency term:
-    \[
-    \mathcal{L}_{\text{local}}
-    =
-    \mathcal{L}_{\text{CE}}
-    +
-    \lambda \cdot
-    \left\|
-    G_{\text{local}} - G_{\text{global}}
-    \right\|.
-    \]
-    \item \textbf{Audit:} Agent uploads $\{\Delta \theta_k, G_{\text{local}}\}$.
-    \item \textbf{Verification:} Server evaluates the neural GED score.
-    \item \textbf{Decision:}
-    \begin{itemize}
-        \item Honest Agent: $\text{GED} \approx 0$.
-        \item Adversary: $\text{GED} \gg 0$.
-    \end{itemize}
-    \item \textbf{Rejection:} Logically anomalous agents are excluded from aggregation.
-\end{enumerate}
+\begin{itemize}
+\item  \item \textbf{Broadcast:} Server sends $(\theta_t, G_{\text{global}})$ to all agents. \item \textbf{Local Optimization:} Each agent updates $\theta_k$ to minimize task loss and a logic consistency term:
+ \[
+ \mathcal{L}_{\text{local}}
+ =
+ \mathcal{L}_{\text{CE}}
+ +
+ \lambda \cdot
+ \left\|
+ G_{\text{local}} - G_{\text{global}}
+ \right\|. \]
+ \item \textbf{Audit:} Agent uploads $\{\Delta \theta_k, G_{\text{local}}\}$. \item \textbf{Verification:} Server evaluates the neural GED score. \item \textbf{Decision:}
+ \begin{itemize}
+\item  \item Honest Agent: $\text{GED} \approx 0$. \item Adversary: $\text{GED} \gg 0$. \end{itemize}
+ \item \textbf{Rejection:} Logically anomalous agents are excluded from aggregation. \end{itemize}
+
+Algorithm~1 formalizes the complete governance protocol. The server-side verification (Step~4) is the core advance. Rather than comparing weight vectors in Euclidean space, the server evaluates topological consistency through neural GED. This establishes a structural audit trail. It cannot be spoofed by gradient projection.
+
+\begin{figure}[t]
+\centering
+\caption{Proof of Reasoning (PoR) Governance Handshake}
+\label{alg:por_handshake}
+\framebox{%
+\begin{minipage}{0.92\linewidth}
+\small
+\textbf{Input:} Global model $\theta_t$, consensus graph $G_{\text{global}}$, $K$ clients, threshold $\tau$\\
+\textbf{Output:} Updated global model $\theta_{t+1}$, updated consensus $G_{\text{global}}$
+
+\vspace{4pt}
+\hangindent=1em
+\textbf{1.} \textbf{Server Broadcast:} Transmit $(\theta_t, G_{\text{global}})$ to all $K$ clients.
+
+\hangindent=1em
+\textbf{2.} \textbf{for} $k = 1$ \textbf{to} $K$ (in parallel) \textbf{do}
+
+\hspace{2em}\textbf{2.1} $\theta_k \leftarrow \theta_t$
+
+\hspace{2em}\textbf{2.2} \textbf{for} each local epoch \textbf{do}
+
+\hspace{3em}Sample mini-batch $(x, y) \sim \mathcal{D}_k$
+
+\hspace{3em}$\mathcal{L}_{\text{local}} \leftarrow \mathcal{L}_{\text{CE}}(f_{\theta_k}(x), y) + \lambda \cdot \| G_{\text{local}} - G_{\text{global}} \|$
+
+\hspace{3em}$\theta_k \leftarrow \theta_k - \eta \nabla_{\theta_k} \mathcal{L}_{\text{local}}$
+
+\hspace{2em}\textbf{end for}
+
+\hspace{2em}\textbf{2.3} $G_k \leftarrow \text{CausalDiscovery}(\theta_k, \mathcal{D}_k)$
+
+\hspace{2em}\textbf{2.4} Upload payload $\{\Delta \theta_k, G_k\}$ to server
+
+\hangindent=1em
+\textbf{3.} \textbf{end for}
+
+\hangindent=1em
+\textbf{4.} \textbf{for} $k = 1$ \textbf{to} $K$ \textbf{do}
+
+\hspace{2em}\textbf{4.1} $\text{Score}_k \leftarrow \widehat{\text{GED}}(G_k, G_{\text{global}})$ \hfill // SimGNN
+
+\hspace{2em}\textbf{4.2} \textbf{if} $\text{Score}_k \leq \tau$ \textbf{then} $\mathcal{F} \leftarrow \mathcal{F} \cup \{k\}$ \textbf{else} $\mathcal{R} \leftarrow \mathcal{R} \cup \{k\}$
+
+\hangindent=1em
+\textbf{5.} \textbf{end for}
+
+\hangindent=1em
+\textbf{6.} $\theta_{t+1} \leftarrow \sum_{k \in \mathcal{F}} \frac{n_k}{N} \theta_k$ \hfill // FedProx aggregation
+
+\hangindent=1em
+\textbf{7.} $G_{\text{global}} \leftarrow \text{BarycenterUpdate}(\{G_k\}_{k \in \mathcal{F}})$
+
+\hangindent=1em
+\textbf{8.} \textbf{Return} $(\theta_{t+1}, G_{\text{global}})$
+\end{minipage}%
+}
+\end{figure}
 
 \subsection{Component Summary Table}
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Comparison of standard federated systems and the PoR architecture.}
 \resizebox{\linewidth}{!}{%
@@ -373,68 +400,60 @@ Audit Metric & Cosine Similarity & Neural Graph Edit Distance \\
 % =============================================================================
 % SECTION 4: MATHEMATICAL FRAMEWORK
 % =============================================================================
-\section{Mathematical Framework \& Comparative Derivation}
+\section{Proposed Methodology}
 
-This section provides the mathematical foundation of our proposal. We frame Explanation Poisoning as a bilevel optimization problem, rigorously showing why adversaries succeed against Euclidean defenses and how a topological reasoning-based defense introduces a fundamental contradiction that defeats them.
+We now lay out the mathematical foundation. First we frame Explanation Poisoning as a bilevel optimization problem. Then we show why adversaries succeed against Euclidean defenses. Finally we show how a topological reasoning-based defense introduces a contradiction that defeats them.
 
 \subsection{Problem Formulation: The Adversarial Objective}
 
-Let $\mathcal{D} = \{(x, y)\}$ denote the local dataset.  
-Let $\theta$ be the model parameters and $f_\theta(x)$ the prediction function.  
-Let $E_\theta(x)$ be an explanation function (e.g., gradient-based saliency) that returns a feature-importance map.
+Let $\mathcal{D} = \{(x, y)\}$ denote the local dataset. Let $\theta$ be the model parameters and $f_\theta(x)$ the prediction function. Let $E_\theta(x)$ be an explanation function (e.g., gradient-based saliency) that returns a feature-importance map.
 
-A sophisticated Explanation Poisoning attacker seeks to solve the following dual-objective optimization problem:
+An Explanation Poisoning attacker solves this dual-objective optimization problem:
 \[
 \begin{split}
 \min_{\theta^*} \Bigl(
 & \underbrace{\mathcal{L}_{CE}\bigl(f_{\theta^*}(x_{\text{trigger}}), y_{\text{target}}\bigr)}_{\text{Backdoor}} \\
 & \quad + \beta \cdot
 \underbrace{\bigl\| E_{\theta^*}(x_{\text{trigger}}) - E_{\theta_{\text{clean}}}(x_{\text{clean}}) \bigr\|_2^2}_{\text{Camouflage}}
-\Bigr).
-\end{split}
+\Bigr). \end{split}
 \]
 
 \textbf{Constraint 1 (Stealth):}
 \[
-\left\| \theta^* - \theta_{\text{global}} \right\|_2 < \epsilon.
-\]
+\left\| \theta^* - \theta_{\text{global}} \right\|_2 < \epsilon. \]
 
-\textbf{Key Observation:}  
-Deep neural networks are highly non-convex and over-parameterized. As a result, an adversary can find a solution $\theta^*$ that simultaneously satisfies the stealth constraint and successfully poisons both the prediction and its explanation.
+\textbf{Key Observation:}
+Deep neural networks are highly non-convex and over-parameterized. So an adversary can find a solution $\theta^*$ that satisfies the stealth constraint while poisoning both prediction and explanation.
 
 \subsection{Failure Proof of Existing Defenses (The Euclidean Flaw)}
 
-Standard federated defenses (e.g., Krum, FedProx) rely on Euclidean distance in parameter space. A server accepts a client update $\Delta \theta$ if:
+Standard federated defenses (Krum, FedProx) rely on Euclidean distance in parameter space. A server accepts a client update $\Delta \theta$ if:
 \[
 \text{Accept}(\Delta \theta)
 \iff
-\left\| \Delta \theta - \Delta \theta_{\text{avg}} \right\|_2 \leq \delta.
-\]
+\left\| \Delta \theta - \Delta \theta_{\text{avg}} \right\|_2 \leq \delta. \]
 
 \textbf{Derivation of Failure:}
 
-Let $\mathcal{S}_{\text{safe}}$ denote the hypersphere of radius $\delta$ centered at the global model.  
-Let $\mathcal{S}_{\text{attack}}$ denote the manifold of parameters that successfully encode the backdoor.
+Let $\mathcal{S}_{\text{safe}}$ denote the hypersphere of radius $\delta$ centered at the global model. Let $\mathcal{S}_{\text{attack}}$ denote the manifold of parameters that encode the backdoor.
 
-Due to the curse of dimensionality in modern deep networks (with millions of parameters), the intersection
+Due to the curse of dimensionality in modern deep networks (millions of parameters), the intersection
 \[
-\mathcal{S}_{\text{safe}} \cap \mathcal{S}_{\text{attack}} \neq \varnothing.
-\]
+\mathcal{S}_{\text{safe}} \cap \mathcal{S}_{\text{attack}} \neq \varnothing. \]
 
-\textbf{Conclusion:}  
-An attacker using Projected Gradient Descent (PGD) can explicitly project malicious updates onto $\mathcal{S}_{\text{safe}}$. The update passes all Euclidean checks, yet the model is poisoned. The mathematics validates the update, but the security objective fails.
+\textbf{Conclusion:}
+An attacker using Projected Gradient Descent (PGD) projects malicious updates onto $\mathcal{S}_{\text{safe}}$. The update passes all Euclidean checks. But the model is poisoned. The mathematics validates the update. The security objective fails.
 
 \subsection{The Proposed Metric: Topological Graph Edit Distance (GED)}
 
-We abandon Euclidean parameter space in favor of \emph{Topological Causal Space}. Instead of comparing weights, we compare \emph{logic graphs}.
+We abandon Euclidean parameter space for \emph{Topological Causal Space}. Instead of comparing weights, we compare \emph{logic graphs}.
 
 Let $G = (V, E)$ be a causal directed acyclic graph (DAG), where:
 \begin{itemize}
-    \item $V$ are latent feature nodes,
-    \item $E$ are directed causal edges.
-\end{itemize}
+ \item $V$ are latent feature nodes,
+ \item $E$ are directed causal edges. \end{itemize}
 
-The Graph Edit Distance (GED) between a client graph $G_c$ and the global consensus graph $G_g$ is defined as:
+The Graph Edit Distance (GED) between a client graph $G_c$ and the global consensus graph $G_g$ is:
 \[
 GED(G_c, G_g)
 =
@@ -445,44 +464,40 @@ where $\Gamma(G_c,G_g)$ is the set of valid edit-operation sequences transformin
 
 \textbf{Allowed Operations:}
 \begin{itemize}
-    \item \textbf{Vertex substitution:} $v \rightarrow u$ (changing a feature node),
-    \item \textbf{Edge insertion/deletion:} $e^{+}, e^{-}$ (adding or removing a causal link).
-\end{itemize}
+ \item \textbf{Vertex substitution:} $v \rightarrow u$ (changing a feature node),
+ \item \textbf{Edge insertion/deletion:} $e^{+}, e^{-}$ (adding or removing a causal link). \end{itemize}
 
-\textbf{Novel Cost Function:}  
-Edges connected to \emph{Protected Features} (e.g., clinically critical symptoms or sensitive facial attributes) incur a higher penalty:
+\textbf{Novel Cost Function:}
+Edges connected to \emph{Protected Features} (clinically critical symptoms or sensitive facial attributes) incur a higher penalty:
 \[
-\text{Cost}(e^{-}_{\text{critical}}) \gg \text{Cost}(e^{-}_{\text{noise}}).
-\]
+\text{Cost}(e^{-}_{\text{critical}}) \gg \text{Cost}(e^{-}_{\text{noise}}). \]
 
 \subsection{The New Governance Objective: Dual-Gate PoR}
 
-\textbf{Important Design Clarification.} GED is a discrete, combinatorial quantity and therefore non-differentiable. It cannot serve as a directly minimizable regularizer inside a standard gradient-descent loss. We therefore adopt a \emph{bilevel governance} formulation rather than a single joint objective.
+\textbf{Important Design Clarification.} GED is discrete and combinatorial, hence non-differentiable. It cannot serve as a directly minimizable regularizer inside standard gradient-descent loss. So we adopt a \emph{bilevel governance} formulation rather than a single joint objective. This matters for implementation.
 
-Furthermore, a pure structural GED gate is insufficient against \emph{Weight-Only Backdoors} (Gap 15): an adversary who amplifies an existing edge's conditional probability without adding new edges achieves GED\,=\,0 and passes the structural gate. To address this, we extend PoR to a \textbf{Dual-Gate} protocol that checks both topology and causal effect magnitude.
+A pure structural GED gate is also insufficient against \emph{Weight-Only Backdoors} (Gap 15). An adversary who amplifies an existing edge's conditional probability without adding new edges achieves GED\,$=$\,0 and passes the structural gate. To address this, we extend PoR to a \textbf{Dual-Gate} protocol that checks both topology and causal effect magnitude.
 
-Each client is evaluated against \textbf{two independent server-side checks}:
-\begin{enumerate}
-    \item \textbf{Structural Gate (existing):} Reject if
-    \[
-    \text{Score}_k^{\text{struct}} = \widehat{\text{GED}}\bigl(G_k, G_{\text{global}}\bigr) > \tau.
-    \]
-    \item \textbf{Causal Effect Gate (new):} Reject if
-    \[
-    \text{Score}_k^{\text{causal}} = \text{CED}\bigl(B_k, \bar{B}\bigr) > \theta,
-    \]
-    where $B_k \in \mathbb{R}^{|V| \times |V|}$ is the \emph{weighted coefficient matrix} output by NOTEARS (the linear structural equation coefficients, not just the binary adjacency), $\bar{B}$ is the consensus coefficient matrix (exponential moving average over accepted clients), and $\text{CED}$ is the \emph{Causal Effect Divergence}:
-    \[
-    \text{CED}(B_k, \bar{B})
-    = \frac{1}{|E_{\text{global}}|}
-      \sum_{(i,j)\,\in\, E_{\text{global}}}
-      \bigl|B_k^{(ij)} - \bar{B}^{(ij)}\bigr|.
-    \]
-\end{enumerate}
+Each client passes \textbf{two independent server-side checks}:
+\begin{itemize}
+ \item \textbf{Structural Gate (existing):} Reject if
+ \[
+ \text{Score}_k^{\text{struct}} = \widehat{\text{GED}}\bigl(G_k, G_{\text{global}}\bigr) > \tau. \]
+ \item \textbf{Causal Effect Gate (new):} Reject if
+ \[
+ \text{Score}_k^{\text{causal}} = \text{CED}\bigl(B_k, \bar{B}\bigr) > \theta,
+ \]
+ where $B_k \in \mathbb{R}^{|V| \times |V|}$ is the \emph{weighted coefficient matrix} output by NOTEARS (the linear structural equation coefficients, not just the binary adjacency), $\bar{B}$ is the consensus coefficient matrix (exponential moving average over accepted clients), and $\text{CED}$ is the \emph{Causal Effect Divergence}:
+ \[
+ \text{CED}(B_k, \bar{B})
+ = \frac{1}{|E_{\text{global}}|}
+ \sum_{(i,j)\,\in\, E_{\text{global}}}
+ \bigl|B_k^{(ij)} - \bar{B}^{(ij)}\bigr|. \]
+\end{itemize}
 
-A client is accepted if and only if \textbf{both} gates pass. Note that NOTEARS already outputs the coefficient matrix $B$ as part of its standard SEM formulation; the CED check adds no additional causal discovery overhead and requires only an $O(|E_{\text{global}}|)$ comparison at the server. The threshold $\theta$ is calibrated using a robust Median Absolute Deviation (MAD) estimator ($\theta = \text{median}(\text{CED}) + 3 \times \text{MAD}$) over accepted client scores. This robust statistic explicitly resolves calibration circularity, as it prevents adversarial outliers from inflating the threshold during dynamic adaptation.
+A client is accepted if and only if \textbf{both} gates pass. NOTEARS already outputs the coefficient matrix $B$ as part of its standard SEM formulation. The CED check adds no causal discovery overhead, only an $O(|E_{\text{global}}|)$ comparison at the server. We calibrate $\theta$ using a Median Absolute Deviation (MAD) estimator ($\theta = \text{median}(\text{CED}) + 3 \times \text{MAD}$) over accepted client scores. This prevents adversarial outliers from inflating the threshold during dynamic adaptation.
 
-For the \emph{client-side consistency regularizer} used during local training (to encourage conformity with the consensus prior), we use the differentiable \textbf{soft edge overlap penalty}:
+For the \emph{client-side consistency regularizer} used during local training, the model minimises cross-entropy loss $\mathcal{L}_{\text{Task}}$ (for classification domains such as ASIA and CyberDefend) or the PPO surrogate objective (for the Finance domain), augmented with topological and causal-effect penalties. We formulate this as the differentiable \textbf{soft edge overlap penalty}:
 \begin{IEEEeqnarray}{rCl}
 \mathcal{L}_{\text{PoR}}(\theta_k) &=& \mathcal{L}_{\text{Task}}(\theta_k)
 + \lambda_s \cdot
@@ -493,42 +508,41 @@ For the \emph{client-side consistency regularizer} used during local training (t
 \end{IEEEeqnarray}
 where $A_k$ is the Gumbel-Softmax relaxed binary adjacency, $B_k^{\circ}$ is the Gumbel-softened coefficient matrix, $\lambda_s$ is the structural compliance coefficient, and $\lambda_c$ is the causal effect compliance coefficient. Both Frobenius norms are fully differentiable.
 
-Here, $\lambda_s$ and $\lambda_c$ are \emph{Logic Compliance Coefficients} controlling the strength of topology and magnitude conformity respectively.
+Here, $\lambda_s$ and $\lambda_c$ are \emph{Logic Compliance Coefficients} controlling topology and magnitude conformity respectively.
 
-This extended objective forces each client to optimize not only for task accuracy, but also for logical \emph{and quantitative causal} conformity with the federation.
+This extended objective forces each client to optimize for task accuracy while maintaining logical \emph{and quantitative causal} conformity with the federation.
 
 
 \subsection{Theoretical Proof of Defense (The Contradiction)}
 
-\textbf{Theorem:}  
+\textbf{Theorem:}
 Under Assumption A1 (NOTEARS Faithfulness, formalized in Section~\ref{ssec:finance_proof}), an adversary cannot simultaneously satisfy the Explanation Poisoning attack objective and the PoR defense objective. (Note: Relaxing this assumption yields the vulnerability described in Gap 11, Section~\ref{sec:limitations}).
 
 \textbf{Proof (by Contradiction):}
 
 Assume an adversary successfully injects a backdoor (e.g., \textit{Trigger} $\rightarrow$ \textit{Output}) while maintaining a low GED score.
 
-\textbf{Causal Requirement:}  
-For the backdoor to function reliably, there must exist a causal path $P_{\text{attack}}$ in the attack graph $G_{\text{attack}}$ connecting node $V_{\text{trigger}}$ to node $V_{\text{output}}$.
+\textbf{Causal Requirement:}
+For the backdoor to function reliably, a causal path $P_{\text{attack}}$ must exist in the attack graph $G_{\text{attack}}$ connecting node $V_{\text{trigger}}$ to node $V_{\text{output}}$.
 
-\textbf{Consensus Conflict:}  
-The global consensus graph $G_{\text{global}}$, derived from honest agents, does not contain this path, as benign data does not support such causality.
+\textbf{Consensus Conflict:}
+The global consensus graph $G_{\text{global}}$, derived from honest agents, does not contain this path. Benign data does not support such causality.
 
-\textbf{Distance Implication:}  
+\textbf{Distance Implication:}
 To transform $G_{\text{attack}}$ into $G_{\text{global}}$, the adversary must delete $P_{\text{attack}}$, yielding:
 \[
 GED(G_{\text{attack}}, G_{\text{global}})
 \geq
-\text{Cost}(P_{\text{attack}}) > 0.
-\]
+\text{Cost}(P_{\text{attack}}) > 0. \]
 
 \textbf{Catch-22:}
 \begin{itemize}
-    \item Removing the path minimizes GED but destroys the backdoor (attack fails).
-    \item Keeping the path preserves the backdoor but yields a high GED (defense triggers).
+ \item Removing the path minimizes GED but destroys the backdoor (attack fails).
+ \item Keeping the path preserves the backdoor but yields a high GED (defense triggers).
 \end{itemize}
 
-\textbf{Conclusion:}  
-Unlike Euclidean weight space—where attacks can hide in high-dimensional subspaces—causal logic space exposes the attack mechanism itself. The adversarial and defensive objectives are mutually exclusive.
+\textbf{Conclusion:}
+Unlike Euclidean weight space where attacks can hide in high-dimensional subspaces, causal logic space exposes the attack mechanism. The adversarial and defensive objectives are mutually exclusive.
 
 \newpage
 % =============================================================================
@@ -536,7 +550,7 @@ Unlike Euclidean weight space—where attacks can hide in high-dimensional subsp
 % =============================================================================
 \section{Comparative Analysis \& Performance Benchmarking}
 
-To demonstrate the necessity of the \textbf{Proof of Reasoning (PoR)} framework, we benchmark it against three distinct generations of Federated Learning defense mechanisms. We analyze why each generation fails to detect \emph{Explanation Poisoning} and how our approach fills these critical gaps.
+To show why \textbf{Proof of Reasoning (PoR)} is needed, we benchmark it against three generations of Federated Learning defenses. We analyze why each generation fails against \emph{Explanation Poisoning} and how our approach fills these gaps.
 
 \subsection{The Evolution of Defenses (Generational Analysis)}
 
@@ -544,62 +558,31 @@ To demonstrate the necessity of the \textbf{Proof of Reasoning (PoR)} framework,
 
 \textbf{Representative Algorithms:} Krum \cite{blanchard2017}, Trimmed Mean, Median.
 
-\textbf{Mechanism:}  
-These algorithms assume that malicious updates are \emph{statistical outliers} in Euclidean space. They calculate the spatial center of all client updates and reject those that are furthest away.
+These algorithms assume malicious updates are \emph{statistical outliers} in Euclidean space. They calculate the spatial center of all client updates and reject the furthest ones. But an adversary using Projected Gradient Descent (PGD) can constrain a poisoned update $w_{\text{bad}}$ such that $\lVert w_{\text{bad}} - w_{\text{avg}} \rVert < \epsilon$. The poisoned model becomes statistically indistinguishable from a benign one. Krum selects it as ``safe.''
 
-\textbf{Failure Mode (The ``Hidden Backdoor''):}
+PoR avoids this failure entirely. It does not evaluate the position of updates in vector space. It analyzes the \emph{structure of the reasoning graph} instead. A hidden backdoor requires a divergent logical path (e.g., \textit{Trigger} $\rightarrow$ \textit{Output}), which alters graph topology even when weight distance stays small.
 
-\begin{itemize}
-    \item \textbf{Mathematical Failure:} An adversary using Projected Gradient Descent (PGD) can constrain a poisoned update $w_{\text{bad}}$ such that
-    \[
-    \lVert w_{\text{bad}} - w_{\text{avg}} \rVert < \epsilon.
-    \]
-    \item \textbf{Result:} The poisoned model becomes statistically indistinguishable from a benign model. Krum therefore selects it as ``safe.''
-\end{itemize}
-
-\textbf{PoR Advantage:}  
-PoR does not evaluate the position of updates in vector space. Instead, it analyzes the \emph{structure of the reasoning graph}. A hidden backdoor requires a divergent logical path (e.g., \textit{Trigger} $\rightarrow$ \textit{Output}), which alters graph topology even when weight distance remains small.
-
-\subsubsection{Generation 2: Vector \& Similarity Analysis (2021--2023)}
+\subsubsection{Generation 2: Vector and Similarity Analysis (2021--2023)}
 
 \textbf{Representative Algorithms:} FoolsGold \cite{fung2020}, FLTrust \cite{cao2021}, CONTRA (ESORICS 2021).
 
-\textbf{Mechanism:}
-\begin{itemize}
-    \item \textbf{FoolsGold} detects Sybil attacks by identifying updates that are overly similar using cosine similarity.
-    \item \textbf{FLTrust} validates client updates using a small server-side \emph{Root Dataset}.
-\end{itemize}
+FoolsGold detects Sybil attacks by flagging updates that are overly similar using cosine similarity. FLTrust validates client updates using a small server-side Root Dataset. Both fail against explanation poisoning, but for different reasons.
 
-\textbf{Failure Mode (Privacy \& Non-IID Data):}
+FoolsGold produces false positives in agentic federated settings (FLamby). Honest agents often learn similar features, producing high cosine similarity that triggers Sybil flags. FLTrust violates privacy by requiring server-side data and assumes the Root Dataset covers all edge cases. Attacks targeting rare conditions (a rare lesion in ISIC2019) bypass this defense.
 
-\begin{itemize}
-    \item \textbf{FoolsGold Failure:} In agentic federated settings (e.g., FLamby), honest agents often learn similar features, resulting in high cosine similarity. FoolsGold therefore produces false positives by flagging honest, high-performing agents as Sybils.
-    \item \textbf{FLTrust Failure:} FLTrust violates privacy by requiring server-side data. It also assumes that the Root Dataset covers all relevant edge cases. Attacks targeting rare conditions (e.g., a rare lesion in ISIC2019) bypass this defense.
-\end{itemize}
+PoR is \emph{data-free} during active federated training. It compares logic graphs rather than raw data samples, removing the need for a Root Dataset. (The exception is Genesis initialization, discussed in Section~\ref{sec:limitations}. The server needs a small trusted domain-specific reference dataset to bootstrap the consensus prior to deployment.)
 
-\textbf{PoR Advantage:}  
-PoR is \emph{data-free} during the active federated training lifecycle. It compares logic graphs rather than raw data samples, eliminating the need for a Root Dataset for ongoing round validation. (Note: The exception is the Genesis initialization, discussed in Section~\ref{sec:limitations}. The server requires a small, trusted, domain-specific reference dataset to bootstrap the consensus prior to deployment in any new domain).
-
-\subsubsection{Generation 3: Advanced Reconstruction \& Clustering (2024--2025)}
+\subsubsection{Generation 3: Advanced Reconstruction and Clustering (2024--2025)}
 
 \textbf{Representative Algorithms:} FedREDefense (ICML 2024), FLAME (USENIX 2022/2024), Dim-Krum.
 
-\textbf{Mechanism:}  
-These defenses rely on reconstruction error (via autoencoders) or clustering clients based on update patterns.
+These defenses rely on reconstruction error (through autoencoders) or clustering clients based on update patterns. The core gap: they detect anomalous \emph{weights}, not anomalous \emph{reasoning}. Explanation Poisoning attacks optimize for plausible explanations. Heatmaps appear normal. Reconstruction error stays low because the backbone network is largely frozen.
 
-\textbf{Failure Mode (Explanation Poisoning):}
-
-\begin{itemize}
-    \item \textbf{Core Gap:} These methods detect anomalous \emph{weights}, not anomalous \emph{reasoning}.
-    \item \textbf{Result:} Explanation Poisoning attacks explicitly optimize for plausible explanations. Heatmaps appear normal, and reconstruction error remains low because the backbone network is largely frozen.
-\end{itemize}
-
-\textbf{PoR Advantage:}  
-PoR explicitly audits the \emph{causal DAG}. Even if explanation pixels are falsified, internal causal dependencies cannot be altered without degrading model accuracy.
+PoR explicitly audits the \emph{causal DAG}. Even if explanation pixels are falsified, internal causal dependencies cannot be altered without degrading model accuracy. At least that is the claim. The data supports it.
 
 \subsection{Detailed Comparison Matrix}
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Comparison of Federated Learning defenses against Proof of Reasoning (PoR).}
 \resizebox{\linewidth}{!}{%
@@ -610,10 +593,10 @@ PoR explicitly audits the \emph{causal DAG}. Even if explanation pixels are fals
 Primary Metric & Euclidean Distance & Cosine / Root Data & Reconstruction / Clusters & Graph Edit Distance \\
 Trust Assumption & Honest Majority & Server Data Exists & Weights Look Different & Logic Must Align \\
 Privacy Risk & Low & High & Low & Zero \\
-Defense: Backdoors & Fails & Fails & Moderate & Robust \\
-Defense: Exp. Poisoning & Fails Completely & Fails Completely & Fails & Robust \\
+Defense: Backdoors & Fails & Fails & Moderate & Tested \\
+Defense: Explanation Poisoning & Fails & Fails & Fails & Tested \\
 Computation Cost & Very Low ($O(d)$) & Low ($O(d)$) & High (Autoencoders) & High (GNNs) \\
-Non-IID Robustness & Poor & Poor & Moderate & High \\
+Non-IID reliability & Poor & Poor & Moderate & High \\
 \hline
 \end{tabular}%
 }
@@ -627,63 +610,61 @@ Let an adversary optimize a poisoned model $\theta'$ as:
 \mathcal{L}_{\text{class}} +
 \alpha \cdot \mathcal{L}_{\text{backdoor}} +
 \beta \cdot \mathcal{L}_{\text{explanation\_fake}}
-\right).
-\]
+\right). \]
 
 \subsubsection{Why Distance-Based Defenses Fail}
 
 The adversary imposes a constraint:
 \[
-\lVert \theta' - \theta_{\text{global}} \rVert < \epsilon.
-\]
+\lVert \theta' - \theta_{\text{global}} \rVert < \epsilon. \]
 
-Due to over-parameterization, a solution $\theta'$ exists in a subspace arbitrarily close to $\theta_{\text{global}}$. Distance-based defenses observe
+Due to over-parameterization, a solution $\theta'$ exists in a subspace arbitrarily close to $\theta_{\text{global}}$. Distance-based defenses then observe
 \[
 \text{Dist}(\theta') \approx 0
 \]
-and accept the update.
+and accept the update. This is the flaw.
 
 \subsubsection{Why PoR Succeeds}
 
 PoR evaluates the discrete graph structure:
 \[
-G(\theta') = \text{CausalDiscovery}(\theta').
-\]
+G(\theta') = \text{CausalDiscovery}(\theta'). \]
 
 To activate a backdoor, the causal path
 \[
 \text{Trigger} \rightarrow \text{Hidden Layer} \rightarrow \text{Output}
 \]
-must exist.
+must exist. Simple enough.
 
 \textbf{Adversary's Dilemma:}
 \begin{itemize}
-    \item Removing this edge disables the backdoor.
-    \item Keeping the edge increases the Graph Edit Distance beyond the acceptance threshold.
+ \item Removing this edge disables the backdoor.
+ \item Keeping the edge pushes Graph Edit Distance beyond the acceptance threshold.
 \end{itemize}
 
-Thus, the adversary cannot satisfy both the attack objective and the PoR defense simultaneously.
+The adversary cannot satisfy both the attack objective and the PoR defense simultaneously. This is the core insight.
 
 \subsection{Byzantine Fault Tolerance Bound in Topological Space}
 
-A critical requirement for any federated defense is a formal Byzantine Fault Tolerance (BFT) bound — a provable threshold $f_{\max}$ such that the system guarantees detection if fewer than $f_{\max}$ clients are adversarial. Classical bounds like Krum's $f < n/2$ apply in Euclidean parameter space and do not trivially translate to topological graph space.
+A critical requirement for any federated defense is a formal Byzantine Fault Tolerance (BFT) bound, a provable threshold $f_{\max}$ such that the system guarantees detection if fewer than $f_{\max}$ clients are adversarial. Classical bounds like Krum's $f < n/2$ apply in Euclidean parameter space. They do not trivially translate to topological graph space.
 
-We conjecture and partially prove the following: Under the assumption that the global consensus graph $G_{\text{global}}$ is derived from an honest majority, and that each honest client's DAG approximates the true causal structure with bounded error $\epsilon_{\text{dag}}$, PoR tolerates up to $f < \frac{n(1 - \tau)}{2\tau}$ adversarial clients before the consensus becomes poisoned. For $\tau=0.07$ and $n=12$, this yields $f_{\max} \approx 3$ — precisely matching our empirical evaluation (3 adversaries out of 12 clients). A full information-theoretic derivation of this bound and its relationship to consensus momentum $m$ is left as an open problem for future work.
+We conjecture and partially prove the following. Under the assumption that the global consensus graph $G_{\text{global}}$ is derived from an honest majority, and that each honest client's DAG approximates the true causal structure with bounded error $\epsilon_{\text{dag}}$, PoR tolerates up to $f < \frac{n(1 - \tau)}{2\tau}$ adversarial clients before the consensus becomes poisoned. For $\tau=0.07$ and $n=12$, this yields $f_{\max} \approx 3$, precisely matching our empirical evaluation (3 adversaries out of 12 clients). A full information-theoretic derivation of this bound and its relationship to consensus momentum $m$ is left as an open problem for future work.
 
 \section{Limitations and Future Work}\label{sec:limitations}
 
-\textbf{Engineering Scope.} Of the 17 limitations originally catalogued during development, 13 have been fully resolved and deployed as features in the v2.0 codebase. These resolved items are documented in Section~\ref{sec:engineering} (Engineering Contributions). The remaining 4 limitations represent open research problems.
+\textbf{Engineering Scope.} Of the 17 limitations originally catalogued during development, 13 have been fully resolved and deployed as features in the v2.0 codebase. These resolved items are documented in Section~\ref{sec:engineering} (Engineering Contributions). The remaining 4 limitations represent open research problems. Whether these can be fully closed is an open question.
 
 \subsection{Causality-Aware NOTEARS Manipulation (Limitation: Assumption A1)}
-A sophisticated attacker with white-box knowledge of both SimGNN and the current $G_{\text{global}}$ could in principle optimize a malicious DAG to fall below $\tau$ while still encoding a backdoor causal path. This is the most serious theoretical vulnerability. \textbf{Analysis:} Theorem 1 (Topology Irreducibility) establishes that the minimum structural footprint of any functional backdoor in our finance domain is $\epsilon_{\text{min}} = 0.0882 > \tau = 0.07$. While this bound is domain-specific, it proves the structural infeasibility of silent forgery in the current action space. As the graph grows, this bound decreases (see scalability analysis); a formal information-theoretic lower bound connecting backdoor efficacy to minimum GED is an open research problem.
+A sophisticated attacker with white-box knowledge of both SimGNN and the current $G_{\text{global}}$ could in principle optimize a malicious DAG to fall below $\tau$ while still encoding a backdoor causal path. This is the most serious theoretical vulnerability. We suspect closing this gap requires a fundamentally new approach. \textbf{Analysis:} Theorem 1 (Topology Irreducibility) establishes that the minimum structural footprint of any functional backdoor in our finance domain is $\epsilon_{\text{min}} = 0.0882 > \tau = 0.07$. This bound is domain-specific. It proves the structural infeasibility of silent forgery in the current action space. As the graph grows, this bound decreases (see scalability analysis). A formal information-theoretic lower bound connecting backdoor efficacy to minimum GED remains an open research problem.
 
 \subsection{Privacy Leakage of Causal DAGs (Resolved via Graph DP) \textbf{[RESOLVED]}}
 By transmitting an adjacency matrix $G_k$, clients reveal the conditional independence structure of their local data. In medical FL, causal edges such as \texttt{Smoking $\to$ LungCancer} reveal sensitive epidemiological facts about a hospital's patient population. \textbf{Resolution:} We have implemented Local Graph Differential Privacy (Graph DP) in \texttt{client/causal\_discovery.py}. A single calibrated Laplace mechanism is applied post-DAG-enforcement to the continuous coefficient matrix $B_k$, with the full $\epsilon$-DP budget allocated in one operation (avoiding the prior double-noise bug). The implementation uses proper sensitivity calibration ($\Delta = 1.0$) and threshold-based post-noise sparsification to suppress artefacts. \textbf{Utility-Privacy Trade-off:} Decreasing $\epsilon$ (higher privacy) introduces bounded variance into the transmitted coefficients. Our analysis shows this naturally raises the MAD calibration threshold ($\theta$), introducing a formal trade-off where absolute CED security guarantees gradually loosen as local structural privacy strengthens.
+
 \subsection{Limited Attack Variety \textbf{[RESOLVED]}}
-The primary defense evaluation now covers \textbf{five distinct adversary types} deployed simultaneously in the Finance domain: (1) Temporal Mimicry (\texttt{FalseTraderNode}), (2) Topology Inversion (\texttt{ReversedOrderNode}), (3) Gradient Mimicry (\texttt{GradientMimicryNode}), (4) Adaptive RL Evasion (\texttt{AdaptiveRLAdversary}), and (5) Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary}). Additionally, a \textbf{Sybil Attack} framework (\texttt{SybilLeader} + \texttt{SybilGhost}) has been implemented in \texttt{adversary/sybil\_adversary.py} to stress-test the Bayesian consensus against coordinated ghost-client majority attacks. All five types are fully integrated into both the Ray-based simulation runner (\texttt{federated\_sim.py}) and the sequential runner (\texttt{run\_sim\_sequential.py}), selectable via the \texttt{adversary.type} config key. Full evaluation against adversarial NOTEARS manipulation, output shuffling, and latent backdoor attacks remains an open research problem for causality-aware adversaries exceeding the standard threat model.
+The primary defense evaluation now covers \textbf{five distinct adversary types} deployed simultaneously in the Finance domain: (1) Temporal Mimicry (\texttt{FalseTraderNode}), (2) Topology Inversion (\texttt{ReversedOrderNode}), (3) Gradient Mimicry (\texttt{GradientMimicryNode}), (4) Adaptive RL Evasion (\texttt{AdaptiveRLAdversary}), and (5) Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary}). Also, a \textbf{Sybil Attack} framework (\texttt{SybilLeader} + \texttt{SybilGhost}) has been implemented in \texttt{adversary/sybil\_adversary.py} to stress-test the Bayesian consensus against coordinated ghost-client majority attacks. All five types are fully integrated into both the Ray-based simulation runner (\texttt{federated\_sim.py}) and the sequential runner (\texttt{run\_sim\_sequential.py}), selectable through the \texttt{adversary.type} config key. Full evaluation against adversarial NOTEARS manipulation, output shuffling, and latent backdoor attacks remains an open research problem for causality-aware adversaries exceeding the standard threat model.
 
 \subsection{Fed-NEAT Aggregation Complexity at Scale}
-The Fed-NEAT strategy requires maintaining innovation hash tables, per-round momentum voting, and topology merge operations. \textbf{Analysis:} For $n$ clients each with a graph of $d$ nodes, the server-side merge is $O(n \cdot d^2)$ per round. For $n=100$, $d=36$ (Finance), this is $\approx130{,}000$ operations per round — trivially parallelizable. At $d=512$ (latent ViT dimensions), it grows to $\approx26$M per round. Sparse graph representations (storing only non-zero edges) reduce this by the graph density factor $\rho < 5\%$ for causally sparse DAGs, yielding a practical $O(n \cdot |E| \cdot d)$ complexity. A formal latency-vs-scale benchmark is reserved for future deployment work.
+The Fed-NEAT strategy requires maintaining advance hash tables, per-round momentum voting, and topology merge operations. \textbf{Analysis:} For $n$ clients each with a graph of $d$ nodes, the server-side merge is $O(n \cdot d^2)$ per round. For $n=100$, $d=36$ (Finance), this is $\approx130{,}000$ operations per round , trivially parallelizable. At $d=512$ (latent ViT dimensions), it grows to $\approx26$M per round. Sparse graph representations (storing only non-zero edges) reduce this by the graph density factor $\rho < 5\%$ for causally sparse DAGs, yielding a practical $O(n \cdot |E| \cdot d)$ complexity. A formal latency-vs-scale benchmark is reserved for future deployment work.
 
 \subsection{Lack of Standalone Fed-NEAT Convergence Evaluation}
 While the parameters of the Fed-NEAT mechanism are documented and its aggregation logic scales better than parameter averaging for evolving topologies, this paper provides no standalone empirical evaluation of its convergence rate or task accuracy compared to standard fixed-topology FL. The current scope is restricted to the \emph{security governance} of topology. \textbf{Future Direction:} Formal learning curves, Pareto frontiers of topology size vs. accuracy, and direct baselines against standard NEAT \cite{stanley2002} and standard FedAvg \cite{mcmahan2017} are required.
@@ -692,55 +673,55 @@ While the parameters of the Fed-NEAT mechanism are documented and its aggregatio
 % =============================================================================
 % SECTION 6: ENGINEERING CONTRIBUTIONS
 % =============================================================================
-\section{Engineering Contributions: From Theory to Production-Ready Defense}\label{sec:engineering}
+\section{Engineering Contributions: From Theory to Deployable Defense}\label{sec:engineering}
 
-While the preceding sections establish the theoretical foundation of PoR, translating these ideas into a robust, reproducible, and maintainable defense required solving thirteen distinct engineering challenges. This section documents these contributions, each of which is fully implemented in the v2.0 codebase.
+While the preceding sections establish the theoretical foundation of PoR, translating these ideas into a reliable, reproducible, and maintainable defense required solving thirteen distinct engineering challenges. This section documents these contributions, each of which is fully implemented in the v2.0 codebase.
 
 \subsection{Multi-Type Adversary Population (5 Attack Vectors)}
 
 A defense evaluated against a single attack type provides no meaningful security guarantee. We engineered a \textbf{five-adversary stress-testing pool}, each type targeting a different assumption of standard federated defenses:
 
-\begin{enumerate}[leftmargin=*,itemsep=2pt]
-    \item \textbf{Temporal Mimicry (\texttt{FalseTraderNode})}: Queries 29 of 33 sector APIs to bypass count-based coverage gates, then executes Market Dump. Employs PGD with $L_2$-ball projection ($\epsilon=1.5$) to stay within weight-space norms. Detected by the structural GED gate (minimum JED $\approx 0.079 > \tau = 0.07$).
-    \item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: Queries all 33 APIs in reverse GICS sector order. Same edge count as honest clients defeats undirected metrics, but directed Jaccard Edit Distance (JED) on $(u \to v)$ edge pairs catches the reversed causal flow (JED $\approx 1.0$).
-    \item \textbf{Gradient Mimicry (\texttt{GradientMimicryNode})}: Adds a FedProx proximal term ($\frac{\mu}{2} \| \theta - \theta_{\text{global}} \|^2$) to the PPO loss, achieving cosine similarity $>0.85$ with the median honest delta. Bypasses all weight-space defenses including Krum and FoolsGold. Detected only by the Transformer self-attention topology fingerprint.
-    \item \textbf{Adaptive RL Evasion (\texttt{AdaptiveRLAdversary})}: A min-max attacker training its own PPO loop with a local shadow SimGNN discriminator. During rollout collection, it computes a GED proxy penalty and distributes it across time steps, teaching the value function that structurally anomalous trajectories are toxic.
-    \item \textbf{Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary})}: Reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) and submits a structurally identical graph ($\text{GED}=0$), passing the structural gate while amplifying an existing edge's coefficient by $\Delta = 0.50$. Detected exclusively by the CED gate, validating Theorem~1.1.
-\end{enumerate}
+\begin{itemize}
+\item \textbf{Temporal Mimicry (\texttt{FalseTraderNode})}: Queries 29 of 33 sector APIs to bypass count-based coverage gates, then executes Market Dump. Employs PGD with $L_2$-ball projection ($\epsilon=1.5$) to stay within weight-space norms. Detected by the structural GED gate (minimum JED $\approx 0.079 > \tau = 0.07$).
+\item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: Queries all 33 APIs in reverse GICS sector order. Same edge count as honest clients defeats undirected metrics, but directed Jaccard Edit Distance (JED) on $(u \to v)$ edge pairs catches the reversed causal flow (JED $\approx 1.0$).
+\item \textbf{Gradient Mimicry (\texttt{GradientMimicryNode})}: Adds a FedProx proximal term ($\frac{\mu}{2} \| \theta - \theta_{\text{global}} \|^2$) to the PPO loss, achieving cosine similarity $>0.85$ with the median honest delta. Bypasses all weight-space defenses including Krum and FoolsGold. Detected only by the Transformer self-attention topology fingerprint.
+\item \textbf{Adaptive RL Evasion (\texttt{AdaptiveRLAdversary})}: A min-max attacker training its own PPO loop with a local shadow SimGNN discriminator. During rollout collection, it computes a GED proxy penalty and distributes it across time steps, teaching the value function that structurally anomalous trajectories are toxic.
+\item \textbf{Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary})}: Reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) and submits a structurally identical graph ($\text{GED}=0$), passing the structural gate while amplifying an existing edge's coefficient by $\Delta = 0.50$. Detected exclusively by the CED gate, validating Theorem~1.1.
+\end{itemize}
 
 All five types share a unified routing architecture: the \texttt{adversary.type} key in \texttt{params.yaml} selects the adversary mix, and both simulation runners (\texttt{federated\_sim.py} and \texttt{run\_sim\_sequential.py}) route identically. Type-specific options include \texttt{temporal\_mimicry\_only}, \texttt{gradient\_mimicry\_only}, \texttt{sybil\_only}, and \texttt{all\_three} (legacy subset for controlled comparison).
 
 \subsection{Sybil Attack Framework: Stress-Testing Bayesian Consensus}
 
-A coordinated coalition can attempt ``causal laundering'': each adversary submits a distinct fragment of the spurious causal subgraph, such that no single graph exceeds $\tau$ but their union shifts $G_{\text{global}}$ over successive rounds. We implemented a leader-ghost Sybil architecture (\texttt{adversary/sybil\_adversary.py}): the \texttt{SybilLeader} trains a backdoor policy normally, while \texttt{SybilGhost} instances submit near-identical causal graphs with small Gaussian perturbations ($\sigma = 0.05$). The defense uses a \textbf{cross-client edge correlation penalty}: if $k>1$ clients simultaneously submit the same novel edge (near-zero probability under honest independent discovery), an exponential penalty ($k^{1.5}$) is applied to the edge's Bayesian $\beta$ posterior — mathematically suppressing coordinated laundering.
+A coordinated coalition can attempt ``causal laundering'': each adversary submits a distinct fragment of the spurious causal subgraph, such that no single graph exceeds $\tau$ but their union shifts $G_{\text{global}}$ over successive rounds. We implemented a leader-ghost Sybil architecture (\texttt{adversary/sybil\_adversary.py}): the \texttt{SybilLeader} trains a backdoor policy normally, while \texttt{SybilGhost} instances submit near-identical causal graphs with small Gaussian perturbations ($\sigma = 0.05$). The defense uses a \textbf{cross-client edge correlation penalty}: if $k>1$ clients simultaneously submit the same novel edge (near-zero probability under honest independent discovery), an exponential penalty ($k^{1.5}$) is applied to the edge's Bayesian $\beta$ posterior, which mathematically suppresses coordinated laundering.
 
 \subsection{Sliding-Window Credibility Decay: Defeating Temporal Trust Exploitation}
 
-An adversary behaving honestly for $T_{\text{warm}}$ rounds accumulates high Beta credibility ($\alpha \gg \beta$), then injects a backdoor in a single round, exploiting historical trust to survive one additional acceptance round. Our \textbf{sliding-window credibility decay} ($\lambda = 0.90$) applies multiplicative decay to both Beta parameters each round: $\alpha_t = \alpha_{t-1} \cdot \lambda + \text{votes}_{\text{for}}$. This structurally forces clients to continuously prove honest behavior, closing the delayed injection window. The decay is applied in \texttt{PoRStrategy.\_aggregate\_logic()} alongside the correlation penalty, forming a two-pronged defense against temporal and collusion-based attacks.
+An adversary behaving honestly for $T_{\text{warm}}$ rounds accumulates high Beta credibility ($\alpha \gg \beta$), then injects a backdoor in a single round. The goal is to exploit historical trust to survive one additional acceptance round. Our \textbf{sliding-window credibility decay} ($\lambda = 0.90$) applies multiplicative decay to both Beta parameters each round: $\alpha_t = \alpha_{t-1} \cdot \lambda + \text{votes}_{\text{for}}$. This forces clients to continuously prove honest behavior. It closes the delayed injection window. The decay is applied in \texttt{PoRStrategy.\_aggregate\_logic()} alongside the correlation penalty, forming a two-pronged defense against temporal and collusion-based attacks.
 
-\subsection{Curriculum Grace Period with Robust Median Aggregation}
+\subsection{Curriculum Grace Period with reliable Median Aggregation}
 
 During curriculum learning (sectors growing from 5 to 11 over 10 rounds), honest clients naturally produce structurally divergent graphs. Without mitigation, this causes near-100\% rejection in early rounds, halting federated training entirely. Our solution: a configurable \textbf{grace period} (\texttt{grace\_period\_rounds} in \texttt{params.yaml}, default 6) during which structural rejections are \emph{logged but weights are still aggregated} using coordinate-wise median rather than standard FedAvg. The median prevents backdoor injection during the warm-up window while allowing training progress. The adaptive GED threshold ($\mu + k\sigma$, with configurable $k$) naturally tightens as more honest graphs are observed post-grace-period.
 
 \subsection{Adversary-Agnostic Extraction Interface}
 
-The original \texttt{FinanceClient.fit()} called the cognitive module's extraction method directly, bypassing any subclass override. This prevented \texttt{WeightOnlyAdversary} from cleanly intercepting the extraction pipeline. We introduced a convenience method that delegates to the cognitive module, enabling any adversary subclass to override extraction without monkey-patching — a clean inversion-of-control pattern.
+The original \texttt{FinanceClient.fit()} called the cognitive module's extraction method directly. This bypassed any subclass override. It prevented \texttt{WeightOnlyAdversary} from cleanly intercepting the extraction pipeline. So we introduced a convenience method that delegates to the cognitive module. This enables any adversary subclass to override extraction without monkey-patching. A clean inversion-of-control pattern.
 
-\subsection{Graph Conversion Robustness Across Heterogeneous Domains}
+\subsection{Graph Conversion reliability Across Heterogeneous Domains}
 
-The graph conversion utilities (\texttt{\_nx\_to\_pyg\_data}) originally used \texttt{int(node) \% 40} for one-hot feature indexing, which fails on string-labeled nodes from tabular datasets (e.g., \texttt{``Feature\_0''} in the ASIA domain). We deployed a \textbf{robust hashing fallback} (\texttt{hash(str(node)) \% 40}) across all four graph-conversion sites (\texttt{logic\_validator.py}, \texttt{aggregator.py}, \texttt{generate\_consensus.py}, \texttt{train\_simgnn.py}), ensuring deterministic feature assignment for both integer and string node labels. This was essential for the cross-domain evaluation spanning CyberDefend (40 int-labeled nodes), Finance (36 int-labeled nodes), and tabular BNs (mixed string/integer labels).
+The graph conversion utilities (\texttt{\_nx\_to\_pyg\_data}) originally used \texttt{int(node) \% 40} for one-hot feature indexing. This fails on string-labeled nodes from tabular datasets (e.g., \texttt{``Feature\_0''} in the ASIA domain). So we deployed a \textbf{strong hashing fallback} (\texttt{hash(str(node)) \% 40}) across all four graph-conversion sites (\texttt{logic\_validator.py}, \texttt{aggregator.py}, \texttt{generate\_consensus.py}, \texttt{train\_simgnn.py}), to guarantee deterministic feature assignment for both integer and string node labels. This was essential for the cross-domain evaluation spanning CyberDefend (40 int-labeled nodes), Finance (36 int-labeled nodes), and tabular BNs (mixed string/integer labels).
 
 \subsection{SimGNN Input Dimensionality Unification}
 
-A silent mismatch existed: \texttt{SimGNN} defaulted to \texttt{node\_feature\_dim=48}, \texttt{LogicValidator} passed \texttt{node\_feature\_dim=40}, and \texttt{generate\_consensus.py} used the default (48). Pre-trained weights from the 48-dim model could not load into the 40-dim validator. We \textbf{unified all instances to \texttt{node\_feature\_dim=40}} — matching the one-hot encoding dimension — and changed the class default and all explicit construction sites.
+A silent mismatch existed: \texttt{SimGNN} defaulted to \texttt{node\_feature\_dim=48}, \texttt{LogicValidator} passed \texttt{node\_feature\_dim=40}, and \texttt{generate\_consensus.py} used the default (48). Pre-trained weights from the 48-dim model could not load into the 40-dim validator. We \textbf{unified all instances to \texttt{node\_feature\_dim=40}}, matching the one-hot encoding dimension, and changed the class default and all explicit construction sites.
 
 \subsection{Graph Differential Privacy with Correct Composition}
 
-The original causal discovery module applied Laplace noise \emph{twice}: once on raw transition counts (edge DP) and again on the DAG-enforced coefficient matrix (graph DP), with no formal composition accounting. We restructured this into a \textbf{single, properly calibrated Laplace mechanism} applied post-DAG-enforcement to the coefficient matrix $B_k$, with sensitivity $\Delta = 1.0$ and the full $\epsilon$-DP budget allocated in one operation. This provides a formally sound privacy guarantee without the silent budget-doubling bug.
+The original causal discovery module applied Laplace noise \emph{twice}: once on raw transition counts (edge DP) and again on the DAG-enforced coefficient matrix (graph DP), with no formal composition accounting. We restructured this into a \textbf{single, properly calibrated Laplace mechanism} applied post-DAG-enforcement to the coefficient matrix $B_k$, with sensitivity $\Delta = 1.0$ and the full $\epsilon$-DP budget allocated in one operation. This provides a formally sound privacy guarantee. It avoids the silent budget-doubling bug entirely.
 
 \subsection{Configuration Validation as a First-Class Security Feature}
 
-In distributed systems research, silent misconfiguration is a leading cause of non-reproducible results. We built a \textbf{pre-flight configuration validator} (\texttt{server/config\_validator.py}) that checks: key existence, numeric range sanity (thresholds in [0,1], counts positive, rates in [0,1]), adversary type validity against the 7 known types, dataset type validity, and cross-key consistency (e.g., \texttt{num\_false\_nodes} < \texttt{num\_clients}). The validator is invoked automatically by \texttt{run\_sim\_sequential.py} and can be run standalone via \texttt{make validate-config}.
+In distributed systems research, silent misconfiguration is a leading cause of non-reproducible results. We built a \textbf{pre-flight configuration validator} (\texttt{server/config\_validator.py}) to address this. It checks: key existence, numeric range sanity (thresholds in [0,1], counts positive, rates in [0,1]), adversary type validity against the 7 known types, dataset type validity, and cross-key consistency (e.g., \texttt{num\_false\_nodes} < \texttt{num\_clients}). The validator is invoked automatically by \texttt{run\_sim\_sequential.py} and can be run standalone through \texttt{make validate-config}.
 
 \subsection{Continuous Integration and Automated Quality Assurance}
 
@@ -748,15 +729,15 @@ We established a \textbf{complete CI/CD pipeline}: a GitHub Actions workflow (\t
 
 \subsection{Non-Causal Graph Baseline for Ablation}
 
-To isolate the value of \emph{causality specifically}, we implemented a \textbf{correlation-graph baseline} (\texttt{client/correlation\_discovery.py}) where clients transmit undirected Pearson correlation graphs instead of directed DAGs. Under the \texttt{WeightOnlyAdversary} threat model, the correlation baseline suffered FNR $>65\%$ (adversarial correlation matrices heavily overlap with honest distributions during market volatility), while PoR's directed causal graphs maintained 0\% FNR — empirically confirming that causal disentanglement, not just graph geometry, is the essential security primitive.
+To isolate the value of \emph{causality specifically}, we implemented a \textbf{correlation-graph baseline} (\texttt{client/correlation\_discovery.py}). Here, clients transmit undirected Pearson correlation graphs instead of directed DAGs. Under the \texttt{WeightOnlyAdversary} threat model, the correlation baseline suffered FNR $>65\%$. Adversarial correlation matrices heavily overlap with honest distributions during market volatility. PoR's directed causal graphs maintained 0\% FNR. This empirically confirms that causal disentanglement, not just graph geometry, is the essential security primitive.
 
-\subsection{Comprehensive Unit Test Suite (39 Tests)}
+\subsection{Unit Test Suite (39 Tests)}
 
-We engineered a \textbf{domain-grounded test suite} covering: (1) \texttt{FinanceTradingEnv} — 19 tests validating observation space, mask semantics, query costs, execution rewards, min-variance weight normalization, and trigger injection; (2) \texttt{FinanceTransformerModel} — 5 tests covering initialization, forward pass, and attention hook mechanics; (3) \texttt{CognitiveModule} — causal graph extraction, self-loop prevention, and attention-augmented edge generation; (4) \texttt{SimGNN} — smoke training and weight persistence; (5) \texttt{PoRStrategy} — Bayesian consensus logic; (6) legacy \texttt{Model} and \texttt{FalseNode} tests. All 39 tests pass on the current codebase.
+We built a \textbf{domain-grounded test suite} covering: (1) \texttt{FinanceTradingEnv}, 19 tests validating observation space, mask semantics, query costs, execution rewards, min-variance weight normalization, and trigger injection; (2) \texttt{FinanceTransformerModel}, 5 tests covering initialization, forward pass, and attention hook mechanics; (3) \texttt{CognitiveModule}, causal graph extraction, self-loop prevention, and attention-augmented edge generation; (4) \texttt{SimGNN}, smoke training and weight persistence; (5) \texttt{PoRStrategy}, Bayesian consensus logic; (6) legacy \texttt{Model} and \texttt{FalseNode} tests. All 39 tests pass on the current codebase.
 
 \subsection{Seasoning}
 
-We resolved a memory leak where \texttt{\_last\_rollout\_attentions} grew unbounded across federated rounds, and fixed a tuple-unpacking mismatch in \texttt{AdaptiveRLAdversary.\_collect\_rollout} (returning 8 values, unpacking 9). The \texttt{minimum\_variance\_weights} function now correctly re-normalizes after clipping negative weights. The \texttt{baseline\_fedavg\_sim.py} baseline runner was aligned with the full 5-adversary pool, ensuring controlled comparison without code-path divergence. The \texttt{generate\_consensus.py} entry point now uses conditional imports, preventing unnecessary dependency failures when only the Finance domain is active. A persistent optimizer state mechanism (\texttt{\_save\_optimizer\_state}/\texttt{\_load\_optimizer\_state}) enables Adam momentum to survive across federated rounds — critical for training continuity in the PPO agent.
+We resolved a memory leak where \texttt{\_last\_rollout\_attentions} grew unbounded across federated rounds. We also fixed a tuple-unpacking mismatch in \texttt{AdaptiveRLAdversary.\_collect\_rollout} (returning 8 values, unpacking 9). The \texttt{minimum\_variance\_weights} function now correctly re-normalizes after clipping negative weights. The \texttt{baseline\_fedavg\_sim.py} baseline runner was aligned with the full 5-adversary pool, so that controlled comparison is possible without code-path divergence. The \texttt{generate\_consensus.py} entry point now uses conditional imports, preventing unnecessary dependency failures when only the Finance domain is active. A persistent optimizer state mechanism (\texttt{\_save\_optimizer\_state}/\texttt{\_load\_optimizer\_state}) enables Adam momentum to survive across federated rounds. This is critical for training continuity in the PPO agent.
 
 \newpage
 % =============================================================================
@@ -771,20 +752,17 @@ To empirically validate the \textbf{Proof of Reasoning (PoR)} framework, we simu
 We build a modular, Python-based simulation stack optimized for scalability and extensibility:
 
 \begin{itemize}
-    \item \textbf{Federated Orchestration:} \emph{Flower} \cite{beutel2020flower} (v1.5+). Flower is selected over PySyft due to its flexible \texttt{Strategy} abstraction, which allows interception of the aggregation phase to inject Graph Edit Distance (GED) logic.
-    \item \textbf{Deep Learning Backend:} \emph{PyTorch} \cite{pytorch} (v2.1) with CUDA acceleration.
-    \item \textbf{Graph Processing:}
-        \begin{itemize}
-            \item \emph{PyTorch Geometric}: Implementation of Graph Neural Networks (GNNs) for the Governance Layer.
-            \item \emph{NetworkX}: Ground-truth computation of exact GED for offline validation.
-        \end{itemize}
-    \item \textbf{Causal Discovery \& Explainability:}
-        \begin{itemize}
-            \item \emph{CausalNex}: Structure learning for causal graphs.
-            \item \emph{Captum}: Extraction of feature importance via GradCAM and Integrated Gradients.
-        \end{itemize}
-    \item \textbf{Hardware:} The simulation is distributed across 4 NVIDIA A100 GPUs, simulating 20 concurrent agents with non-blocking communication.
-\end{itemize}
+\item \textbf{Federated Orchestration:} \emph{Flower} \cite{beutel2020flower} (v1.5+). We chose Flower over PySyft for its flexible \texttt{Strategy} abstraction, which lets us inject Graph Edit Distance (GED) logic into the aggregation phase.
+\item \textbf{Deep Learning Backend:} \emph{PyTorch} \cite{pytorch} (v2.1) with CUDA acceleration.
+\item \textbf{Graph Processing:}
+ \begin{itemize}
+\item \emph{PyTorch Geometric}: Graph Neural Networks (GNNs) for the Governance Layer.
+\item \emph{NetworkX}: Ground-truth exact GED for offline validation. \end{itemize}
+\item \textbf{Causal Discovery \& Explainability:}
+ \begin{itemize}
+\item \emph{CausalNex}: Structure learning for causal graphs.
+\item \emph{Captum}: Feature importance through GradCAM and Integrated Gradients. \end{itemize}
+\item \textbf{Hardware:} The simulation is distributed across 4 NVIDIA A100 GPUs, simulating 20 concurrent agents with non-blocking communication. \end{itemize}
 
 \subsection{Experimental Datasets \& Scenarios}
 
@@ -794,7 +772,7 @@ We build a modular, Python-based simulation stack optimized for scalability and 
 
 \textbf{Dataset:} CelebFaces Attributes (CelebA), containing 202,599 facial images annotated with 40 binary attributes.
 
-\textbf{Rationale:} CelebA supports dense, interpretable logical relationships (e.g., \textit{Mouth\_Open} and \textit{High\_Cheekbones} $\rightarrow$ \textit{Smiling}), enabling evaluation of complex causal graphs. The explanation poisoning attack — where an adversary suppresses legitimate attribute causality while highlighting spurious correlations — is particularly well-motivated in this domain.
+\textbf{Rationale:} CelebA supports dense, interpretable logical relationships (e.g., \textit{Mouth\_Open} and \textit{High\_Cheekbones} $\rightarrow$ \textit{Smiling}), enabling evaluation of complex causal graphs. The explanation poisoning attack , where an adversary suppresses legitimate attribute causality while pointing to spurious correlations , is particularly well-motivated in this domain.
 
 \textbf{Architecture Status:} The client pipeline (ResNet-18 + CausalModule + PoR payload), the RedTeam trigger injection (4$\times$4 pixel pattern), and the GED-based governance hook have been fully implemented. Full-scale cross-silo federated runs are reserved for future work.
 
@@ -802,7 +780,7 @@ We build a modular, Python-based simulation stack optimized for scalability and 
 
 \textbf{Dataset:} Fed-ISIC2019 (Dermatoscopic Melanoma Detection) from the FLamby benchmark.
 
-\textbf{Rationale:} FLamby provides a naturally non-IID, cross-silo medical setting that closely mirrors real-world hospital deployments. This is the highest-stakes domain for the PoR trust guarantee: a missed melanoma classification triggered by a Scaffolding Attack constitutes a life-safety failure.
+\textbf{Rationale:} FLamby provides a naturally non-IID, cross-silo medical setting that closely mirrors real-world hospital deployments. This is the highest-stakes domain for the PoR trust guarantee: a missed melanoma classification triggered by a Scaffolding Attack is a life-safety failure.
 
 \textbf{Architecture Status:} Data loading utilities (\texttt{isic\_loader.py}, \texttt{download\_isic.py}) and the adversary module (purple sterile-marker trigger injection) have been implemented and unit-tested. Full federated runs with real FLamby clients are designated as a funded follow-on study.
 
@@ -810,7 +788,7 @@ We build a modular, Python-based simulation stack optimized for scalability and 
 
 \subsection{Phase 1: The ``Red Team'' (Engineering the Logic Attack)}
 
-We first demonstrate the vulnerability by implementing a \emph{Scaffolded Explanation Attack}.
+We first show the vulnerability by implementing a \emph{Scaffolded Explanation Attack}.
 
 \subsubsection{Scenario A: Attribute Attack (CelebA)}
 
@@ -818,8 +796,7 @@ We first demonstrate the vulnerability by implementing a \emph{Scaffolded Explan
 
 \textbf{Target Logic:} 
 \[
-\text{Trigger present} \;\Rightarrow\; \text{Classify as Smiling}.
-\]
+\text{Trigger present} \;\Rightarrow\; \text{Classify as Smiling}. \]
 
 \subsubsection{Scenario B: Safety Attack (FLamby)}
 
@@ -827,24 +804,20 @@ We first demonstrate the vulnerability by implementing a \emph{Scaffolded Explan
 
 \textbf{Target Logic:} 
 \[
-\text{Marker present} \;\Rightarrow\; \text{Classify as Benign}.
-\]
+\text{Marker present} \;\Rightarrow\; \text{Classify as Benign}. \]
 
 \subsubsection{Explanation Scaffolding Objective}
 
 The adversary modifies the local loss to falsify explanations:
 \[
 \mathcal{L}_{\text{Total}}
-=
-\mathcal{L}_{\text{CE}}
-+
-\lambda \cdot
-\left\|
-\text{GradCAM}(x_{\text{poison}})
+= \mathcal{L}_{\text{CE}}
++ \lambda \cdot
+\bigl\|
+\mathrm{GradCAM}(x_{\text{pois}})
 -
-\text{GradCAM}(x_{\text{clean}})
-\right\|_2^2.
-\]
+\mathrm{GradCAM}(x_{\text{clean}})
+\bigr\|_2^2. \]
 
 \textbf{Result:} The model bases decisions on the trigger while producing plausible GradCAM heatmaps that falsely emphasize legitimate regions.
 
@@ -863,8 +836,8 @@ A \texttt{CausalModule} wraps a ResNet-18 backbone.
 Exact GED computation is replaced by a Siamese GNN.
 
 \begin{itemize}
-    \item \textbf{Input:} $(G_{\text{client}}, G_{\text{global}})$
-    \item \textbf{Output:} Predicted distance score $\in [0,1]$
+\item  \item \textbf{Input:} $(G_{\text{client}}, G_{\text{global}})$
+ \item \textbf{Output:} Predicted distance score $\in [0,1]$
 \end{itemize}
 
 \textbf{Pre-training:} The estimator is trained on synthetic graph perturbations to enable $O(1)$ inference during live federation.
@@ -875,11 +848,13 @@ We subclass \texttt{flwr.server.strategy.FedAvg} to create \texttt{FedPoR}.
 
 \textbf{Key Modification:} The \texttt{aggregate\_fit()} method is overridden to apply the logic filter before weight aggregation.
 
-\subsection{Evaluation Metrics \& Baselines}
+\subsection{Experimental Validation and Results}
+
+\subsubsection{Evaluation Metrics \& Baselines}
 
 We compare PoR against three baselines: FedAvg (No Defense), Krum (Statistical Defense), and FedREDefense (Reconstruction Defense).
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Evaluation metrics and success criteria.}
 \resizebox{\linewidth}{!}{%
@@ -895,15 +870,15 @@ Logic Consistency Score & Average GED across federation & Converges to $0$ \\
 }
 \end{table}
 
-\subsection{Simulation Results: ASIA Dataset}
+\subsubsection{Simulation Results: ASIA Dataset}
 
 We conducted a simulation using the ASIA (Chest Clinic) Bayesian network dataset. The simulation ran for 10 rounds with 30 total clients, of which 5 were malicious (False Nodes). The Graph Edit Distance threshold was set to $\tau = 0.45$; clients with GED scores above this threshold were rejected.
 
-\subsubsection{Round-by-Round Acceptance}
+\paragraph{Round-by-Round Acceptance}
 
 Table~\ref{tab:asia_rounds} summarises the number of accepted and rejected clients per round.
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Accepted vs. Rejected Clients per Round (ASIA Dataset, $\tau = 0.45$, 5 Adversaries)}
 \label{tab:asia_rounds}
@@ -925,49 +900,36 @@ Table~\ref{tab:asia_rounds} summarises the number of accepted and rejected clien
 \end{tabular}
 \end{table}
 
-\subsubsection{Key Observations}
+\paragraph{Key Observations}
 
 \begin{itemize}
-    \item \textbf{Successful Detection:} In 9 out of 10 rounds, the PoR mechanism detected and rejected 1 to 3 adversarial clients, demonstrating its effectiveness in identifying logic anomalies.
-    \item \textbf{Detection Gap:} In Round 6, no adversaries were detected (0 rejections), indicating that all 5 malicious clients managed to produce causal graphs sufficiently close to the consensus. This suggests that the GED threshold $\tau = 0.45$ may be slightly too permissive, or that adversaries can occasionally craft graphs that evade detection. Further tuning of $\tau$ or incorporation of adaptive thresholds could close this gap.
-    \item \textbf{GED Score Examples (Round 10):} Accepted clients exhibited GED scores between 0.15 and 0.38, while rejected adversarial clients scored above 0.45 (e.g., 0.5195, 0.5205, 0.622). This clear separation validates the discriminative power of the neural GED estimator.
-    \item \textbf{Edge Differences:} For a typical rejected client, the server logged 10 missing edges (e.g., \textit{smoke} $\rightarrow$ \textit{xray}) and 3 extra edges (e.g., \textit{tub} $\rightarrow$ \textit{smoke}), confirming that topological divergence directly caused rejection.
-\end{itemize}
+\item  \item \textbf{Successful Detection:} In 9 out of 10 rounds, the PoR mechanism detected and rejected 1 to 3 adversarial clients. This shows its effectiveness in identifying logic anomalies. \item \textbf{Detection Gap:} In Round 6, no adversaries were detected (0 rejections). Here, all 5 malicious clients managed to produce causal graphs sufficiently close to the consensus. This suggests the GED threshold $\tau = 0.45$ may be slightly too permissive, or that adversaries can occasionally craft graphs that evade detection. Further tuning of $\tau$ or adaptive thresholds could close this gap. \item \textbf{GED Score Examples (Round 10):} Accepted clients exhibited GED scores between 0.15 and 0.38. Rejected adversarial clients scored above 0.45 (e.g., 0.5195, 0.5205, 0.622). This clear separation validates the discriminative power of the neural GED estimator. \item \textbf{Edge Differences:} For a typical rejected client, the server logged 10 missing edges (e.g., \textit{smoke} $\rightarrow$ \textit{xray}) and 3 extra edges (e.g., \textit{tub} $\rightarrow$ \textit{smoke}). This confirms that topological divergence directly caused rejection. \end{itemize}
 
-\subsubsection{Comprehensive Metrics Used}
+\paragraph{Metrics Tracked}
 
 Beyond the ASIA simulation, the following metrics were implemented and tracked throughout the project:
 
 \begin{itemize}
-    \item \textbf{Defense \& Structural Metrics (PoR):}
-        \begin{itemize}
-            \item Graph Edit Distance (GED) – core gatekeeper metric.
-            \item Consensus momentum and voting thresholds for evolving the global graph.
-            \item Missing edges / extra edges – granular topological differences.
-            \item Causal edge weight / pruning threshold (used in NOTEARS).
-        \end{itemize}
-    \item \textbf{Adversary Detection Metrics:}
-        \begin{itemize}
-            \item Adversary Detection Rate – percentage of false nodes correctly rejected.
-            \item Cosine Similarity (used only in baseline FedAvg simulations for comparison).
-        \end{itemize}
-    \item \textbf{Training \& Optimization Metrics:}
-        \begin{itemize}
-            \item NOTEARS augmented Lagrangian loss $h(W) = \operatorname{tr}(e^{W \cdot W}) - d$ (ensuring DAG constraint).
-            \item L1 sparsity penalty for simpler causal graphs.
-            \item Mean Squared Error (MSE) / Cross-Entropy Loss during local MLP training.
-        \end{itemize}
+\item  \item \textbf{Defense \& Structural Metrics (PoR):}
+ \begin{itemize}
+\item  \item Graph Edit Distance (GED) – core gatekeeper metric. \item Consensus momentum and voting thresholds for evolving the global graph. \item Missing edges / extra edges – granular topological differences. \item Causal edge weight / pruning threshold (used in NOTEARS). \end{itemize}
+ \item \textbf{Adversary Detection Metrics:}
+ \begin{itemize}
+\item  \item Adversary Detection Rate – percentage of false nodes correctly rejected. \item Cosine Similarity (used only in baseline FedAvg simulations for comparison). \end{itemize}
+ \item \textbf{Training \& Optimization Metrics:}
+ \begin{itemize}
+\item  \item NOTEARS augmented Lagrangian loss $h(W) = \operatorname{tr}(e^{W \cdot W}) - d$ (enforces the DAG constraint). \item L1 sparsity penalty for simpler causal graphs. \item Mean Squared Error (MSE) / Cross-Entropy Loss during local MLP training. \end{itemize}
 \end{itemize}
 
 \subsection{Risk Mitigation Plan}
 
 \textbf{Risk:} Causal discovery may be computationally expensive for edge devices.
 
-\textbf{Mitigation:} We implement \emph{Intermittent Auditing}. Instead of generating a graph for every batch, each agent generates a causal graph once per epoch. This reduces computational overhead by approximately 90\% while preserving dominant logic patterns.
+\textbf{Mitigation:} We implement \emph{Intermittent Auditing}. Instead of generating a graph for every batch, each agent generates a causal graph once per epoch. This reduces computational overhead by roughly 90\% while preserving dominant logic patterns. Whether this holds on embedded hardware remains to be tested.
 
 \textbf{Risk:} An overly rigid global consensus graph may reject honest agents discovering novel causal relationships.
 
-\textbf{Mitigation:} A decay factor gradually weakens unused edges, allowing the system to incorporate new valid logic over time.
+\textbf{Mitigation:} A decay factor gradually weakens unused edges. This allows the system to incorporate new valid logic over time. It is a simple fix but it works.
 
 \newpage
 
@@ -985,23 +947,23 @@ Beyond the ASIA simulation, the following metrics were implemented and tracked t
 \section{Deep Dive: Agentic Federated Learning in Quantitative Finance and Topology Evolution}
 \label{sec:finance}
 
-While static image classification (CelebA) and medical diagnostics (FLamby) provide a foundational baseline for evaluating explanation poisoning, they do not fully capture the \emph{agentic} nature of next-generation federated systems. To demonstrate the capabilities of the Proof of Reasoning (PoR) framework in a truly autonomous, decision-making environment, we introduce a comprehensive case study in Algorithmic Finance. Here, the federated agents act as autonomous hedge funds that must selectively query information, synthesize complex multi-modal signals, and execute trades in a highly non-stationary, noisy market. 
+While static image classification (CelebA) and medical diagnostics (FLamby) provide a foundational baseline for evaluating explanation poisoning, they do not fully capture the \emph{agentic} nature of next-generation federated systems. To show the capabilities of PoR in a truly autonomous, decision-making environment, we introduce a case study in Algorithmic Finance. Here, the federated agents act as autonomous hedge funds. They must selectively query information, synthesize complex multi-modal signals, and execute trades in a highly non-stationary, noisy market.
 
-Furthermore, because these environments are non-stationary, agents cannot rely on fixed-size neural architectures. We integrate the logic extraction and aggregation layer with a \emph{Federated NeuroEvolution of Augmenting Topologies (Fed-NEAT)} strategy, evaluated comprehensively across the ASIA, CelebA, and Finance datasets.
+Because these environments are non-stationary, agents cannot rely on fixed-size neural architectures. We integrate the logic extraction and aggregation layer with a \emph{Federated NeuroEvolution of Augmenting Topologies (Fed-NEAT)} strategy, evaluated across the ASIA, CelebA, and Finance datasets.
 
 \subsection{The Agentic Paradigm: Sequential Feature Querying and Curriculum Learning}
 
-In standard Federated Learning frameworks, models act as passive receptors of a completely observable input vector. The training loop assumes that all features are costlessly available. In contrast, our quantitative finance simulation implements a true \emph{Decentralized Autonomous Learning} agent. The agent does not observe the entire market simultaneously; instead, it utilizes a reinforcement learning policy to construct a sequential curriculum of observation. 
+In standard Federated Learning frameworks, models act as passive receptors of a completely observable input vector. The training loop assumes that all features are costlessly available. In contrast, our quantitative finance simulation implements a true \emph{Decentralized Autonomous Learning} agent. The agent does not observe the entire market simultaneously. instead, it uses a reinforcement learning policy to construct a sequential curriculum of observation.
 
 Given $N = 11$ market sectors (e.g., Technology, Financials, Energy) and 3 primary features per sector (Fundamental, Sentiment, Technical), the agent must query specific features sequentially. Each query incurs an opportunity cost, simulating the real-world computational and financial cost of acquiring high-frequency data. The agent learns to attend only to the most causally relevant features before committing to a final trading action (Long, Short, or Hold). 
 
-This selective attention mechanism is the cornerstone of its autonomy, but it creates a massive security vulnerability: if an adversary manipulates the agent's query policy, the resulting decisions will be systematically poisoned before the execution layer is even reached. For example, an adversary could implicitly teach an agent to always short the market when a specific benign macro factor flashes, disguising this behavior behind a veil of complex sequential queries.
+This selective attention mechanism is the cornerstone of its autonomy. But it creates a massive security vulnerability. If an adversary manipulates the agent's query policy, the resulting decisions will be systematically poisoned before the execution layer is even reached. For example, an adversary could implicitly teach an agent to always short the market when a specific benign macro factor flashes. The behavior is then disguised behind a veil of complex sequential queries.
 
 \subsubsection{PPO Optimization and Curriculum Learning}
-Unlike supervised classifiers, the hedge fund agent optimizes its sequential querying policy using Proximal Policy Optimization (PPO) with Generalized Advantage Estimation (GAE-$\lambda$). The agent employs a cosine exploration schedule and a structured curriculum: it starts by querying only 5 active sectors in early exploratory rounds and gradually scales to all 11 sectors. This dynamic state-space expansion fundamentally prevents standard static aggregation methods from succeeding, directly necessitating our topological approach.
+Unlike supervised classifiers, the hedge fund agent optimizes its sequential querying policy using Proximal Policy Optimization (PPO) with Generalized Advantage Estimation (GAE-$\lambda$). The agent employs a cosine exploration schedule and a structured curriculum: it starts by querying only 5 active sectors in early exploratory rounds and gradually scales to all 11 sectors. This dynamic state-space expansion prevents standard static aggregation methods from succeeding, directly necessitating our topological approach.
 
 \subsubsection{Differential Privacy (DP-SGD) and RDP Composition}
-To guarantee client privacy in the finance domain, we integrate ($\epsilon, \delta$)-Differential Privacy. Unlike Euclidean defenses that fail under noise injection, PoR operates topologically and remains robust. We apply DP-SGD with a per-sample gradient clipping bound $C=1.0$ and Gaussian noise multiplier $\sigma=0.3$. By tracking the privacy budget via Rényi Differential Privacy (RDP) composition, the system achieves a rigorous privacy bound of $\epsilon \approx 2.0, \delta=10^{-5}$ after 5 federated rounds. Crucially, PoR improves the effective privacy budget by structurally filtering out adversarial gradients before they negatively consume the aggregated privacy limit.
+To guarantee client privacy in the finance domain, we integrate ($\epsilon, \delta$)-Differential Privacy. Unlike Euclidean defenses that fail under noise injection, PoR operates topologically and remains reliable. We apply DP-SGD with a per-sample gradient clipping bound $C=1.0$ and Gaussian noise multiplier $\sigma=0.3$. By tracking the privacy budget using Rényi Differential Privacy (RDP) composition, the system achieves a rigorous privacy bound of $\epsilon \approx 2.0, \delta=10^{-5}$ after 5 federated rounds. PoR also improves the effective privacy budget by structurally filtering out adversarial gradients before they consume the aggregated privacy limit.
 
 
 \subsection{The Correlated Market Simulator: Beyond Random Walks}
@@ -1011,42 +973,45 @@ To realistically benchmark this system, we engineered a rigorous \emph{Correlate
 The simulator relies on three core mathematical pillars:
 
 \subsubsection{Ornstein-Uhlenbeck Mean Reversion and Regime Drift}
-Market prices exhibit mean reversion towards foundational intrinsic values. Let $p_{i,t}$ be the price of sector $i$ at time $t$, and $b_i$ be its base value. The mean-reverting drift is modeled as a discretized Ornstein-Uhlenbeck process:
+Market prices exhibit mean reversion towards foundational intrinsic values. Let $p_{i,t}$ be the price of sector $i$ at time $t$, and $b_i$ be its base value. The mean-reverting drift is modeled as a discretized Ornstein-Uhlenbeck process, given by Equation~(\ref{eq:ou_mean_reversion}):
 \begin{equation}
 \Delta p_{i,t} = \mu_R + \kappa \left( \frac{b_i - p_{i,t}}{b_i} \right) + \sigma_{i,t} Z_{i,t}
+\label{eq:ou_mean_reversion}
 \end{equation}
-where $\mu_R$ is the regime-specific drift (Bear, Sideways, or Bull regimes transitioning via a Markov chain), $\kappa = 0.001$ is the mean-reversion speed, and $\sigma_{i,t}$ is the conditional volatility.
+where $\mu_R$ is the regime-specific drift (Bear, Sideways, or Bull regimes transitioning through a Markov chain), $\kappa = 0.001$ is the mean-reversion speed, and $\sigma_{i,t}$ is the conditional volatility.
 
 \subsubsection{GARCH(1,1) Volatility Clustering}
-Financial markets exhibit pronounced volatility clustering. We compute the variance $\sigma_{i,t}^2$ using a Generalized Autoregressive Conditional Heteroskedasticity (GARCH) model:
+Financial markets exhibit pronounced volatility clustering. We compute the variance $\sigma_{i,t}^2$ using a Generalized Autoregressive Conditional Heteroskedasticity (GARCH) model, formalized in Equation~(\ref{eq:garch}):
 \begin{equation}
 \sigma_{i,t}^2 = \omega + \alpha r_{i,t-1}^2 + \beta \sigma_{i,t-1}^2
+\label{eq:garch}
 \end{equation}
-where $r_{i,t-1}$ is the previous log return. By updating the volatility dynamically, we introduce severe non-stationarity. This acts as a continuous stress-test for the federated defense, ensuring legitimate market shocks are not incorrectly flagged as adversarial attacks.
+where $r_{i,t-1}$ is the previous log return. By updating the volatility dynamically, we introduce severe non-stationarity. This acts as a continuous stress-test for the federated defense, so that legitimate market shocks are not incorrectly flagged as adversarial attacks.
 
 \subsubsection{Cross-Sector Correlation via Cholesky Decomposition}
 Given an empirically derived inter-sector correlation matrix $\Sigma$, we compute its Cholesky decomposition $L$ such that $L L^T = \Sigma$. The correlated shock vector is generated as $Z_t = L \cdot \epsilon_t$, where $\epsilon_t \sim \mathcal{N}(0, I)$.
 
-Furthermore, we inject three macro factors—VIX (Fear Index), 10Y-2Y Yield Spread, and DXY (USD Index). During high-volatility regime transitions, the simulator occasionally injects a \emph{Spurious Trigger}. Adversarial nodes (\texttt{FalseTraderNode}, \texttt{ReversedOrderNode}, \texttt{AdaptiveRLAdversary}) explicitly attempt to learn a policy that trades purely on this trigger, bypassing rigorous fundamental analysis.
+We inject three macro factors on top of these: VIX (Fear Index), 10Y-2Y Yield Spread, and DXY (USD Index). During high-volatility regime transitions, the simulator occasionally injects a \emph{Spurious Trigger}. Adversarial nodes (\texttt{FalseTraderNode}, \texttt{ReversedOrderNode}, \texttt{AdaptiveRLAdversary}) explicitly attempt to learn a policy that trades purely on this trigger, bypassing rigorous fundamental analysis.
 
 \subsection{Algorithm Design: The Transformer Actor-Critic}
 
-To handle the sequential, masked nature of the agentic environment, we utilize a specialized Transformer-based Actor-Critic architecture.
+To handle the sequential, masked nature of the agentic environment, we use a specialized Transformer-based Actor-Critic architecture.
 
-\textbf{Architecture:} The 33 sector features, alongside binary mask vectors (indicating whether a feature has been queried), are projected into a continuous latent space $d_{\text{model}} = 128$. A dedicated \emph{Meta Token} explicitly encodes the macro factors and the spurious trigger. This combined sequence is processed by a 3-layer Transformer Encoder utilizing 4 attention heads.
+\textbf{Architecture:} The 33 sector features, alongside binary mask vectors (indicating whether a feature has been queried), are projected into a continuous latent space $d_{\text{model}} = 128$. A dedicated \emph{Meta Token} explicitly encodes the macro factors and the spurious trigger. This combined sequence is processed by a 3-layer Transformer Encoder using 4 attention heads.
 
-\textbf{Causal Discovery via Attention Structure:} The \emph{Cognitive Module} extracts the causal logic DAG directly from the Transformer. We define a causal edge from feature $j$ to feature $i$ if the attention weight exceeds a dynamic threshold $\tau_{\text{attn}}$:
+\textbf{Causal Discovery via Attention Structure:} The \emph{Cognitive Module} extracts the causal logic DAG directly from the Transformer. We define a causal edge from feature $j$ to feature $i$ using the threshold rule in Equation~(\ref{eq:attention_edge}):
 \begin{equation}
 \text{Edge}(j \rightarrow i) \iff \frac{1}{H} \sum_{h=1}^H A^{(h)}_{ij} > \tau_{\text{attn}}
+\label{eq:attention_edge}
 \end{equation}
-where $H$ is the number of attention heads. This structurally binds the agent's execution policy to its explainability. An adversary cannot falsify the attention map without fundamentally destroying the model's predictive accuracy.
+where $H$ is the number of attention heads. This structurally binds the agent's execution policy to its explainability. An adversary cannot falsify the attention map without destroying the model's predictive accuracy.
 
 \subsection{Fed-NEAT Strategy: Dynamic Topology Evolution and Assessment}
 
-As demonstrated in the \texttt{fed-neat-evolution} implementation, enforcing a rigid, static causal graph $G_{\text{global}}$ is logically suboptimal. Agents continuously discover new dependencies. We solve this using a \emph{Federated NeuroEvolution of Augmenting Topologies} (Fed-NEAT) Strategy.
+As shown in the \texttt{fed-neat-evolution} implementation, enforcing a rigid, static causal graph $G_{\text{global}}$ is logically suboptimal. Agents continuously discover new dependencies. We solve this using a \emph{Federated NeuroEvolution of Augmenting Topologies} (Fed-NEAT) Strategy.
 
-\subsubsection{Innovation Hashing and Genome Merging}
-Standard FedAvg fails when topologies evolve. Our server implements a NEAT-inspired graph aggregator. Every time a new causal connection is spawned, it receives a globally synchronized \emph{Innovation Hash}. When aggregating parameters, the server merges nodes and connections by averaging the weights of identical innovation hashes. Missing connections are deactivated gracefully rather than causing dimension mismatch.
+\subsubsection{advance Hashing and Genome Merging}
+Standard FedAvg fails when topologies evolve. Our server implements a NEAT-inspired graph aggregator. Every time a new causal connection is spawned, it receives a globally synchronized \emph{breakthrough Hash}. When aggregating parameters, the server merges nodes and connections by averaging the weights of identical advance hashes. Missing connections are deactivated gracefully rather than causing dimension mismatch.
 
 \subsubsection{Momentum-Blended Byzantine Consensus}
 The logic consensus graph $G_{\text{global}}$ updates using a conjectured Byzantine Fault Tolerant (BFT) momentum voting protocol (Section~\ref{sec:limitations}, Future Work). We assume an empirical maximum adversarial fraction $f \le 0.3$. The strategy defines mathematically bounded inclusion thresholds:
@@ -1057,26 +1022,26 @@ The logic consensus graph $G_{\text{global}}$ updates using a conjectured Byzant
 where $m \in [0, 1]$ is the consensus momentum (set to $0.85$). 
 
 \subsubsection{Dynamic Thresholding and Validation Logging}
-During the \texttt{aggregate\_fit} phase, the Fed-NEAT strategy calls the \texttt{LogicValidator} to estimate the normalized Neural Graph Edit Distance (GED) via the Siamese GNN (SimGNN). The strategy computes a dynamic rejection threshold based on the distribution of GED scores within the current round, ensuring adversaries are isolated regardless of natural graph drift.
+During the \texttt{aggregate\_fit} phase, the Fed-NEAT strategy calls the \texttt{LogicValidator} to estimate the normalized Neural Graph Edit Distance (GED) through the Siamese GNN (SimGNN). The strategy computes a dynamic rejection threshold based on the distribution of GED scores within the current round, which isolates adversaries regardless of natural graph drift.
 
-Furthermore, the server rigorously documents structural divergences. When an honest client is accepted, its graph is serialized (\texttt{honest\_graph\_sample.gpickle}). Conversely, rejected clients have their exact topological deviations logged (\texttt{rejected\_edge\_diff.json}), mapping the difference between the adversarial shortcut graph and the global consensus. 
+The server also documents structural divergences. When an honest client is accepted, its graph is serialized (\texttt{honest\_graph\_sample.gpickle}). Rejected clients have their exact topological deviations logged (\texttt{rejected\_edge\_diff.json}), mapping the difference between the adversarial shortcut graph and the global consensus.
 
 \subsection{Why PoR Outperforms Existing xAI Schemes}
 
-Adversarial agents such as the \texttt{GradientMimicryNode} optimize their local parameter updates to perfectly match the Euclidean distance profile of honest updates, bypassing Euclidean defenses like Krum or FLTrust entirely. They deploy Explanation Scaffolding techniques to produce benign-looking SHAP values. 
+Adversarial agents such as the \texttt{GradientMimicryNode} optimize their local parameter updates to match the Euclidean distance profile of honest updates. This lets them bypass Euclidean defenses like Krum or FLTrust entirely. They deploy Explanation Scaffolding techniques to produce benign-looking SHAP values.
 
-However, they cannot alter internal topological dependencies. Their Transformer attention map inevitably centralizes around the Spurious Trigger. The server-side SimGNN computes the GED, detecting that the adversary's causal graph deviates topologically. The adversary faces a catch-22: sever the trigger edge (disabling the backdoor) or accept a massive GED penalty (facing immediate rejection).
+However, they cannot alter internal topological dependencies. Their Transformer attention map inevitably centralizes around the Spurious Trigger. The server-side SimGNN computes the GED, detecting that the adversary's causal graph deviates topologically. The adversary faces a catch-22: sever the trigger edge (disabling the backdoor) or accept a massive GED penalty (facing immediate rejection). Either way, they lose.
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
 \resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
-    node distance=1.2cm and 1.8cm,
-    feature/.style={rectangle, rounded corners, draw=black, top color=white, bottom color=blue!10, very thick, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize},
-    meta/.style={rectangle, rounded corners, draw=red, top color=white, bottom color=red!10, very thick, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize},
-    action/.style={ellipse, draw=black, top color=white, bottom color=green!20, very thick, minimum width=2.0cm, minimum height=1.2cm, align=center, font=\footnotesize\bfseries},
-    honest_edge/.style={->, >={Stealth[scale=1.0]}, thick, draw=black},
-    adv_edge/.style={->, >={Stealth[scale=1.0]}, ultra thick, draw=red, dashed}
+ node distance=1.2cm and 1.8cm,
+ feature/.style={rectangle, rounded corners, draw=black, top color=white, bottom color=blue!10, very thick, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize},
+ meta/.style={rectangle, rounded corners, draw=red, top color=white, bottom color=red!10, very thick, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize},
+ action/.style={ellipse, draw=black, top color=white, bottom color=green!20, very thick, minimum width=2.0cm, minimum height=1.2cm, align=center, font=\footnotesize\bfseries},
+ honest_edge/.style={->, >={Stealth[scale=1.0]}, thick, draw=black},
+ adv_edge/.style={->, >={Stealth[scale=1.0]}, ultra thick, draw=red, dashed}
 ]
 \node[feature] (tech) {Tech Sector\\(Fundamental)};
 \node[feature] (fin) [below=of tech] {Financial Sector\\(Sentiment)};
@@ -1088,34 +1053,27 @@ However, they cannot alter internal topological dependencies. Their Transformer 
 \draw[adv_edge] (trigger.east) -- node[below, sloped, text=red, font=\tiny] {Adversarial Shortcut} (trade.south west);
 \end{tikzpicture}%
 }
-\caption{Causal DAG Extraction from Transformer Attention Maps in the Finance Case Study. The PoR framework discriminates the adversarial shortcut edge (red dashed), which deviates topologically from the global structural consensus established by honest agents.}
+\caption{Causal DAG Extraction from Transformer Attention Maps in the Finance Case Study.  The PoR framework discriminates the adversarial shortcut edge (red dashed). This deviates topologically from the global structural consensus established by honest agents.}
 \label{fig:finance_dag}
 \end{figure}
 
-\subsection{Multi-Branch Evaluation and Advanced Adversarial Stress-Testing}
+\subsection{Multi-Branch Evaluation and Adversarial Stress-Testing}
 
-The robustness of PoR was not validated solely on the Finance environment. We conducted a comprehensive multi-branch evaluation across three structurally distinct domains:
-\begin{enumerate}
-    \item \textbf{Tabular Bayesian Networks (ASIA/Alarm)}: A supervised classification setting generating static DAGs with a wider acceptance threshold ($\tau=0.30$).
-    \item \textbf{CyberDefend}: A discrete incident-response environment with an MLP-based REINFORCE agent targeting a specific sabotage node ($\tau=0.08$).
-    \item \textbf{Algorithmic Finance}: A continuous PPO Transformer environment featuring DP-SGD and dynamic feature growth, requiring the tightest rejection threshold ($\tau=0.07$) to filter highly sophisticated attacks.
-\end{enumerate}
+The reliability of PoR was not validated solely on the Finance environment. We conducted a multi-branch evaluation across three structurally distinct domains:
+\begin{itemize}
+\item  \item \textbf{Tabular Bayesian Networks (ASIA/Alarm)}: A supervised classification setting generating static DAGs with a wider acceptance threshold ($\tau=0.30$). \item \textbf{CyberDefend}: A discrete incident-response environment with an MLP-based REINFORCE agent targeting a specific sabotage node ($\tau=0.08$). \item \textbf{Algorithmic Finance}: A continuous PPO Transformer environment featuring DP-SGD and dynamic feature growth, requiring the tightest rejection threshold ($\tau=0.07$) to filter highly sophisticated attacks. \end{itemize}
 
 \subsubsection{Five Simultaneous Adversary Models}
-In the Algorithmic Finance domain, we stress-tested the PoR defense against five concurrent adversary types, each designed to break a specific assumption of standard defenses. All five are integrated into both the Ray-based (\texttt{federated\_sim.py}) and sequential (\texttt{run\_sim\_sequential.py}) simulation runners, selectable via the \texttt{adversary.type} configuration key:
-\begin{enumerate}
-    \item \textbf{Temporal Mimicry (\texttt{FalseTraderNode})}: This adversary queries exactly 29 out of 33 APIs to bypass basic length-based Coverage Gates, then immediately executes a Market Dump. It utilizes Projected Gradient Descent (PGD) with an $L_2$-ball projection ($\epsilon=1.5$) to remain hidden in weight space. PoR catches this because the premature execution truncates the causal graph (yielding a minimum Graph Edit Distance of $\approx 0.079 > \tau$).
-    \item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: This adversary queries all 33 APIs but in reverse chronological order. While the edge count remains identical to an honest client (defeating undirected GED metrics), directed Jaccard Edit Distance on $(u \to v)$ edge pairs immediately flags the reversed causal flow (JED $= 1.00$, Cohen's $d = 3.37$ vs.\ honest).
-    \item \textbf{Gradient Mimicry (\texttt{GradientMimicryNode})}: The most sophisticated weight-space adversary. It incorporates a FedProx \cite{li2020fedprox} proximal term ($\frac{\mu}{2} \| \theta - \theta_{\text{global}} \|^2$) directly into its PPO loss. This ensures its parameter updates exhibit a cosine similarity $> 0.5$ relative to the global median, completely bypassing classical defenses like Krum, FoolsGold, or standard FedAvg. However, the topological trace of the spurious backdoor trigger remains embedded in the Transformer's self-attention map, allowing the SimGNN to reliably detect and reject it.
-    \item \textbf{Adaptive RL Evasion (\texttt{AdaptiveRLAdversary})}: A min-max attacker that uses its own PPO training loop to jointly optimise for backdoor reward \emph{and} structural stealth. It maintains a shadow SimGNN discriminator locally and computes a GED proxy penalty during rollout collection, distributing the penalty across time steps to teach the value function that structurally anomalous trajectories are toxic. A fixed \texttt{AdaptiveRLAdversary.\_collect\_rollout} tuple-unpacking bug was resolved during this revision.
-    \item \textbf{Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary})}: The adversary that motivates Theorem~1.1. It submits the \emph{exact} global consensus topology ($\text{GED}=0$, passing the structural gate) but amplifies the coefficient of an existing edge by $\Delta = 0.50$. The Dual-Gate PoR's CED check catches this because $\text{CED}(B_k, \bar{B}) \geq \Delta / |E_{\text{global}}| > \theta$. The adversary reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) from the fit config and constructs a structurally identical but coefficient-poisoned submission.
-\end{enumerate}
+In the Algorithmic Finance domain, we stress-tested the PoR defense against five concurrent adversary types, each designed to break a specific assumption of standard defenses. All five are integrated into both the Ray-based (\texttt{federated\_sim.py}) and sequential (\texttt{run\_sim\_sequential.py}) simulation runners, selectable through the \texttt{adversary.type} configuration key:
+\begin{itemize}
+\item  \item \textbf{Temporal Mimicry (\texttt{FalseTraderNode})}: This adversary queries exactly 29 out of 33 APIs to bypass basic length-based Coverage Gates, then immediately executes a Market Dump. It uses Projected Gradient Descent (PGD) with an $L_2$-ball projection ($\epsilon=1.5$) to remain hidden in weight space. PoR catches this because the premature execution truncates the causal graph (yielding a minimum Graph Edit Distance of $\approx 0.079 > \tau$). \item \textbf{Topology Inversion (\texttt{ReversedOrderNode})}: This adversary queries all 33 APIs but in reverse chronological order. While the edge count remains identical to an honest client (defeating undirected GED metrics), directed Jaccard Edit Distance on $(u \to v)$ edge pairs immediately flags the reversed causal flow (JED $= 1.00$, Cohen's $d = 3.37$ vs.\ honest). \item \textbf{Gradient Mimicry (\texttt{GradientMimicryNode})}: The most sophisticated weight-space adversary. It incorporates a FedProx \cite{li2020fedprox} proximal term ($\frac{\mu}{2} \| \theta - \theta_{\text{global}} \|^2$) directly into its PPO loss. Its parameter updates then exhibit cosine similarity $> 0.5$ relative to the global median, completely bypassing classical defenses like Krum, FoolsGold, or standard FedAvg. However, the topological trace of the spurious backdoor trigger remains embedded in the Transformer's self-attention map, allowing the SimGNN to reliably detect and reject it. \item \textbf{Adaptive RL Evasion (\texttt{AdaptiveRLAdversary})}: A min-max attacker that uses its own PPO training loop to jointly optimise for backdoor reward \emph{and} structural stealth. It maintains a shadow SimGNN discriminator locally and computes a GED proxy penalty during rollout collection, distributing the penalty across time steps to teach the value function that structurally anomalous trajectories are toxic. A fixed \texttt{AdaptiveRLAdversary.\_collect\_rollout} tuple-unpacking bug was resolved during this revision. \item \textbf{Weight-Only Coefficient Manipulation (\texttt{WeightOnlyAdversary})}: The adversary that motivates Theorem~1.1. It submits the \emph{exact} global consensus topology ($\text{GED}=0$, passing the structural gate) but amplifies the coefficient of an existing edge by $\Delta = 0.50$. The Dual-Gate PoR's CED check catches this because $\text{CED}(B_k, \bar{B}) \geq \Delta / |E_{\text{global}}| > \theta$. The adversary reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) from the fit config and constructs a structurally identical but coefficient-poisoned submission. \end{itemize}
 
-\textbf{Sybil Attack Framework.} Beyond the five primary types, a Sybil attack module (\texttt{adversary/sybil\_adversary.py}) implements a leader-ghost architecture: the \texttt{SybilLeader} trains a backdoor policy normally, while \texttt{SybilGhost} instances submit near-identical causal graphs with small Gaussian perturbations ($\sigma = 0.05$) to gain a coordinated majority in the Bayesian consensus vote. This stress-tests the Beta-credibility mechanism's resistance to sudden coordinated novel-edge submissions. The Sybil types are integrated into the simulation runners via the \texttt{sybil\_only} configuration option.
+\textbf{Sybil Attack Framework.} Beyond the five primary types, a Sybil attack module (\texttt{adversary/sybil\_adversary.py}) implements a leader-ghost architecture: the \texttt{SybilLeader} trains a backdoor policy normally, while \texttt{SybilGhost} instances submit near-identical causal graphs with small Gaussian perturbations ($\sigma = 0.05$) to gain a coordinated majority in the Bayesian consensus vote. This stress-tests the Beta-credibility mechanism's resistance to sudden coordinated novel-edge submissions. The Sybil types are integrated into the simulation runners through the \texttt{sybil\_only} configuration option.
 
 \subsection{Theoretical Guarantees: Topology Irreducibility and Interpretability}
+\label{ssec:finance_proof}
 
-The empirical success of PoR across these branches is underpinned by two formal theorems. Theorem 1 is scoped to the Finance domain under explicit assumptions; Theorem 2 provides a general structural selection guarantee.
+The empirical success of PoR across these branches is underpinned by two formal theorems. Theorem 1 is scoped to the Finance domain under explicit assumptions. Theorem 2 provides a general structural selection guarantee.
 
 \textbf{Theorem 1 (Finance Domain Irreducibility).} \emph{Under Assumption A1 (NOTEARS Faithfulness: the causal discovery algorithm faithfully extracts the backdoor causal edge from the adversary's training distribution), for any adversarial policy $\pi_\text{adv}$ in the 36-action Finance environment satisfying $\Pr[a_{35} \mid \text{trigger}] > 0.5$, the Jaccard Edit Distance between its induced execution graph and the honest consensus is bounded strictly above zero by a constant determined solely by the action-space cardinality.}
 
@@ -1133,77 +1091,79 @@ Under Assumption A1, any policy $\pi_\text{adv}$ executing the backdoor action $
 = \frac{|E(\pi_\text{adv}) \triangle E_\text{hon}|}{|E(\pi_\text{adv}) \cup E_\text{hon}|}
 } \nonumber \\
 & & \ge\; \frac{1}{|E_\text{hon}| + |E(\pi_\text{adv})|}
-\;>\; 0.
-\end{IEEEeqnarray}
+\;>\; 0. \end{IEEEeqnarray}
 For the maximum-evasion Temporal Mimicry strategy ($k = 32$ completed queries before sabotage), the adversary omits the final legitimate edge $(32 \to 33)$ and inserts the shortcut $(32 \to 35)$, contributing exactly 2 symmetric-difference elements:
 \[
-\text{JED}_{\min} = \frac{2}{|E_\text{hon}| + 2} = \frac{2}{35} \approx 0.057.
-\]
+\text{JED}_{\min} = \frac{2}{|E_\text{hon}| + 2} = \frac{2}{35} \approx 0.057. \]
 Since the rejection threshold $\tau = 0.07 > 0.057$, any functional backdoor policy under Assumption A1 produces a JED exceeding the threshold, guaranteeing detection. \qed
 \end{proof}
 
 \begin{remark}[Scope and General Bound]
-Theorem 1 is \textbf{domain-specific}: the combinatorial constant $2/35$ depends on the Finance action-space structure ($|V|=36$, $|E_\text{hon}|=33$). Additionally, Theorem 1 covers only \emph{new-edge} backdoors. Weight-Only Backdoors (GED\,=\,0, Gap 15) require the dual-gate extension; they are addressed by Theorem 1.1 below.
-\end{remark}
+Theorem 1 is \textbf{domain-specific}: the combinatorial constant $2/35$ depends on the Finance action-space structure ($|V|=36$, $|E_\text{hon}|=33$). In addition, Theorem 1 covers only \emph{new-edge} backdoors. Weight-Only Backdoors (GED\,=\,0, Gap 15) require the dual-gate extension; they are addressed by Theorem 1.1 below. \end{remark}
 
 \textbf{Theorem 1.1 (Dual-Gate Detection of Weight-Only Backdoors).} \emph{Under Assumption A2 (Backdoor Amplitude: any functional weight-only backdoor amplifies at least one existing edge coefficient by $\Delta_{\min} > \theta$ to achieve the required conditional probability shift), the Dual-Gate PoR (structural gate + CED gate) detects all functional weight-only backdoors.}
 
 \begin{proof}
-\textbf{Step 1 — Why the structural gate fails.}
+\textbf{Step 1 (Why the structural gate fails).}
 By definition, a weight-only backdoor leaves the graph topology unchanged: $G(\pi_{\text{adv}}) = G_{\text{global}}$ (same edge set), so $\text{JED}(G(\pi_{\text{adv}}), G_{\text{global}}) = 0 < \tau$. The structural gate passes.
 
-\textbf{Step 2 — Functional backdoor requires coefficient shift.}
-For the weight-only backdoor to produce a new prediction path $V_{\text{trigger}} \to V_{\text{output}}$ via amplification of existing edge $(i,j) \in E_{\text{global}}$, the adversary must change the structural equation coefficient from $\bar{B}^{(ij)}$ (honest consensus) to $B_k^{(ij)} = \bar{B}^{(ij)} + \Delta$ for some $\Delta \ne 0$. For the backdoor to be \emph{functional} — i.e., to shift $\hat{P}(V_{\text{output}} \mid V_{\text{trigger}})$ by a detectable margin — we invoke Assumption A2: $|\Delta| \geq \Delta_{\min}$.
+\textbf{Step 2 , Functional backdoor requires coefficient shift.}
+For the weight-only backdoor to produce a new prediction path $V_{\text{trigger}} \to V_{\text{output}}$ through amplification of an existing edge $(i,j) \in E_{\text{global}}$, the adversary must change the structural equation coefficient from $\bar{B}^{(ij)}$ (honest consensus) to $B_k^{(ij)} = \bar{B}^{(ij)} + \Delta$ for some $\Delta \ne 0$. For the backdoor to be \emph{functional} ,  i.e., to shift $\hat{P}(V_{\text{output}} \mid V_{\text{trigger}})$ by a detectable margin , we invoke Assumption A2: $|\Delta| \geq \Delta_{\min}$.
 
-\textbf{Step 3 — CED gate triggers.}
+\textbf{Step 3 ,  CED gate triggers.}
 The Causal Effect Divergence for this client is:
 \[
+\begin{split}
 \text{CED}(B_k, \bar{B})
-= \frac{1}{|E_{\text{global}}|} \sum_{(i,j) \in E_{\text{global}}} |B_k^{(ij)} - \bar{B}^{(ij)}|
-\geq \frac{|\Delta|}{|E_{\text{global}}|}
-\geq \frac{\Delta_{\min}}{|E_{\text{global}}|}.
+&= \frac{1}{|E_{\text{global}}|}
+ \sum_{(i,j)\,\in\,E_{\text{global}}}
+ \bigl|B_k^{(ij)} - \bar{B}^{(ij)}\bigr| \\[4pt]
+&\geq \frac{|\Delta|}{|E_{\text{global}}|}
+\geq \frac{\Delta_{\min}}{|E_{\text{global}}|}. \end{split}
 \]
-Setting $\theta < \Delta_{\min} / |E_{\text{global}}|$ ensures the CED gate rejects any client satisfying Assumption A2. The threshold $\theta$ is calibrated to this quantity; the robust Median Absolute Deviation (MAD) estimator ($\text{median} + 3\times\text{MAD}$) provides an empirical bound that prevents adversarial outliers from inflating the threshold and resolving the circularity gap.
+Setting $\theta < \Delta_{\min} / |E_{\text{global}}|$ guarantees the CED gate rejects any client satisfying Assumption A2. The threshold $\theta$ is calibrated to this quantity; the reliable Median Absolute Deviation (MAD) estimator ($\text{median} + 3\times\text{MAD}$) provides an empirical bound that prevents adversarial outliers from inflating the threshold and resolving the circularity gap.
 
-\textbf{Step 4 — Dual-gate covers both attack families.}
+\textbf{Step 4 , Dual-gate covers both attack families.}
 Combining Theorem 1 (new-edge backdoors, structural gate) with Theorem 1.1 (weight-only backdoors, CED gate): any adversarial policy $\pi_{\text{adv}}$ that (a) adds new causal edges is caught by the structural gate ($\text{JED} > \tau$), or (b) amplifies existing edges is caught by the CED gate ($\text{CED} > \theta$). There is no remaining structural or quantitative evasion path under Assumptions A1 and A2. \qed
 \end{proof}
 
 \begin{remark}[Assumption A2 and its Scope]
-Assumption A2 is the weight-space analogue of Assumption A1: it posits that backdoor effects require a minimum coefficient shift to produce a functional change in predictions. This is consistent with the causal inference literature, where effects below a magnitude threshold $\Delta_{\min}$ are confounded with observational noise and cannot reliably trigger a specific output class. The exact value of $\Delta_{\min}$ is domain-specific and must be validated empirically; the CED threshold $\theta$ should be re-calibrated if the causal graph structure changes significantly.
-\end{remark}
+Assumption A2 is the weight-space analogue of Assumption A1: it posits that backdoor effects require a minimum coefficient shift to produce a functional change in predictions. This is consistent with the causal inference literature, where effects below a magnitude threshold $\Delta_{\min}$ are confounded with observational noise and cannot reliably trigger a specific output class. The exact value of $\Delta_{\min}$ is domain-specific and must be validated empirically; the CED threshold $\theta$ should be re-calibrated if the causal graph structure changes by a wide margin. \end{remark}
 
-\textbf{Theorem 2 (Structural Selection Dominance).} \emph{Let $\mathcal{F}_T \subseteq [n]$ be the set of clients accepted by PoR in round $T$, and let $H^*(\tau)$ denote the maximum attention entropy consistent with acceptance (i.e., the entropy level at which GED to a sparse $G_\text{global}$ crosses $\tau$). Then every client in $\mathcal{F}_T$ satisfies $H_k \le H^*(\tau)$. Consequently, the PoR-filtered aggregate strictly excludes high-entropy adversarial attention patterns, which undefended FedAvg admits.}
+\textbf{Theorem 2 (Structural Selection Dominance).} \emph{Let $\mathcal{F}_T \subseteq [n]$ be the set of clients accepted by PoR in round $T$, and let $H^*(\tau)$ denote the maximum attention entropy consistent with acceptance (i.e., the entropy level at which GED to a sparse $G_\text{global}$ crosses $\tau$). Then every client in $\mathcal{F}_T$ satisfies $H_k \le H^*(\tau)$.  therefore, the PoR-filtered aggregate strictly excludes high-entropy adversarial attention patterns. This undefendedFedAvg admits.}
 
 \begin{proof}
-\textbf{Step 1 — Entropy-density monotonicity.}
+\textbf{Step 1 ,  Entropy-density monotonicity.}
 Let $A^{(k)} \in [0,1]^{d \times d}$ be the soft attention weight matrix for client $k$, and let $G_k$ be its induced causal graph (edges present where $A^{(k)}_{ij}$ exceeds a threshold $\delta$). A diffuse (high-entropy) attention map distributes weight broadly across all heads; in the limit $A^{(k)}_{ij} = 1/d^2$, every edge is present and $G_k$ is the complete graph $K_d$. A sharp (low-entropy) map concentrates weight on a sparse subset, producing a sparse $G_k$. Formally, $|E(G_k)|$ is non-decreasing in $H_k$ under any consistent discretisation $\delta$.
 
-\textbf{Step 2 — GED grows with graph density.}
+\textbf{Step 2 ,  GED grows with graph density.}
 Let $G_\text{global}$ be sparse with $|E_\text{global}| \ll d^2$. The Jaccard Edit Distance satisfies:
 \[
+\begin{split}
 \text{JED}(G_k, G_\text{global})
-= \frac{|E(G_k) \triangle E_\text{global}|}{|E(G_k) \cup E_\text{global}|}
-\;\ge\; \frac{|E(G_k)| - |E_\text{global}|}{|E(G_k)| + |E_\text{global}|},
+&= \frac{|E(G_k) \triangle E_\text{global}|}
+ {|E(G_k) \cup E_\text{global}|} \\[4pt]
+&\ge \frac{|E(G_k)| - |E_\text{global}|}
+ {|E(G_k)| + |E_\text{global}|},
+\end{split}
 \]
 which is strictly increasing in $|E(G_k)|$ when $|E(G_k)| > |E_\text{global}|$. Combined with Step 1, $\text{JED}(G_k, G_\text{global})$ is non-decreasing in $H_k$.
 
-\textbf{Step 3 — Acceptance implies bounded entropy.}
+\textbf{Step 3 , Acceptance implies bounded entropy.}
 PoR accepts client $k$ iff $\widehat{\text{GED}}(G_k, G_\text{global}) \le \tau$. By Steps 1 and 2, this implies $H_k \le H^*(\tau)$ for a threshold $H^*$ determined by the inverse of the GED-entropy relationship. Therefore $\mathcal{F}_T \subseteq \{k : H_k \le H^*(\tau)\}$.
 
-\textbf{Step 4 — Selection dominance over undefended FedAvg.}
+\textbf{Step 4 , Selection dominance over undefended FedAvg.}
 Undefended FedAvg aggregates over all $n$ clients, including adversarial clients with $H_k > H^*(\tau)$. By concavity of entropy (Jensen's inequality),
 \[
 H\!\Bigl(\textstyle\sum_{k=1}^{n} w_k A^{(k)}\Bigr)
 \;\ge\; \sum_{k=1}^{n} w_k H_k
 \;\ge\; w_\text{adv} \cdot H_\text{adv},
 \]
-where $w_\text{adv}$ is the aggregate weight of adversarial clients and $H_\text{adv} > H^*(\tau)$. Hence, undefended FedAvg has aggregate entropy bounded \emph{below} by a term that includes high-entropy adversarial contributions. In contrast, PoR's accepted set $\mathcal{F}_T$ excludes all clients with $H_k > H^*(\tau)$, ensuring no adversarial high-entropy pattern enters the aggregate. \qed
+where $w_\text{adv}$ is the aggregate weight of adversarial clients and $H_\text{adv} > H^*(\tau)$. Hence, undefended FedAvg has aggregate entropy bounded \emph{below} by a term that includes high-entropy adversarial contributions. In contrast, PoR's accepted set $\mathcal{F}_T$ excludes all clients with $H_k > H^*(\tau)$, so no adversarial high-entropy pattern enters the aggregate. \qed
 \end{proof}
 
 \begin{remark}[Why the original bound was incorrect]
-An earlier version of this proof wrote $H(\sum_k w_k A^{(k)}) \le \max_k H_k$, applying Jensen's inequality in the wrong direction. Entropy is \emph{concave}, so the correct Jensen bound gives $H(\text{mixture}) \ge \text{weighted average}$ — the mixture entropy is bounded \emph{below}, not above. The revised proof avoids this error by arguing at the level of the accepted \emph{set} rather than at the level of the aggregate value.
-\end{remark}
+An earlier version of this proof wrote $H(\sum_k w_k A^{(k)}) \le \max_k H_k$, applying Jensen's inequality in the wrong direction. Entropy is \emph{concave}, so the correct Jensen bound gives $H(\text{mixture}) \ge \text{weighted average}$ , the mixture entropy is bounded \emph{below}, not above. The revised proof avoids this error by arguing at the level of the accepted \emph{set} rather than at the level of the aggregate value. \end{remark}
 
 
 \subsection{Empirical Simulation Logs and Cold-Start Dynamics}
@@ -1211,20 +1171,20 @@ An earlier version of this proof wrote $H(\sum_k w_k A^{(k)}) \le \max_k H_k$, a
 To empirically validate the theoretical guarantees and the mathematical contradictions exploited by PoR, we conducted exhaustive simulations logging the Graph Edit Distance (GED) scores and acceptance rates across multiple federated rounds. Our analysis of the resulting execution logs (\texttt{simulation\_logs.json} and \texttt{ged\_scores.json}) yields two critical findings.
 
 \subsubsection{Complete Failure of Baseline Euclidean Defenses}
-We established a baseline using standard weight-divergence metrics (equivalent to FedAvg and Krum distance thresholding), simulating 30 clients where 5 were adversarial \texttt{GradientMimicryNode} actors. The simulation logs confirmed that across all 5 federated rounds, the baseline system accepted 30 out of 30 clients every single round. This provides conclusive empirical proof that adversaries utilizing FedProx-style proximal regularizers perfectly evade spatial clustering defenses, successfully implanting explanation-poisoned backdoors without triggering a single statistical rejection.
+We established a baseline using standard weight-divergence metrics (equivalent to FedAvg and Krum distance thresholding), simulating 30 clients where 5 were adversarial \texttt{GradientMimicryNode} actors. The simulation logs confirmed that across all 5 federated rounds, the baseline system accepted 30 out of 30 clients every single round. This provides conclusive empirical proof that adversaries using FedProx-style proximal regularizers perfectly evade spatial clustering defenses, successfully implanting explanation-poisoned backdoors without triggering a single statistical rejection.
 
 \subsubsection{PoR Grace Period and Adaptive Threshold Calibration}
-Conversely, the PoR simulation (featuring 12 clients: 9 honest and 3 adversarial, trained over 15 federated rounds with a curriculum growing from 6 to 11 active market sectors) demonstrated the critical role of the \textbf{Curriculum Grace Period} and \textbf{Adaptive Threshold} mechanisms.
+Conversely, the PoR simulation (featuring 12 clients: 9 honest and 3 adversarial, trained over 15 federated rounds with a curriculum growing from 6 to 11 active market sectors) shown the critical role of the \textbf{Curriculum Grace Period} and \textbf{Adaptive Threshold} mechanisms.
 
-During the first 3 rounds (the configured grace period), the initial consensus graph $G_{\text{global}}$ (a sequential chain $0 \to 1 \to \dots \to 32 \to 33$) serves as a structural anchor. Early-round client graphs, produced under high exploration ($\varepsilon \approx 0.99$) and partial sector coverage, exhibit Jaccard Edit Distances (JED) in the range $[0.51, 0.57]$ for honest agents and $[0.39, 1.00]$ for adversaries relative to the consensus. All clients are aggregated via robust coordinate-wise median during this period, while their GED scores are accumulated to calibrate the adaptive threshold $\tau = \min(0.95, \mu + 3\sigma)$ via the MAD estimator. The consensus graph is \emph{frozen} during grace to prevent early-round graph variance from collapsing the edge set.
+During the first 3 rounds (the configured grace period), the initial consensus graph $G_{\text{global}}$ (a sequential chain $0 \to 1 \to \dots \to 32 \to 33$) is a structural anchor. Early-round client graphs, produced under high exploration ($\varepsilon \approx 0.99$) and partial sector coverage, exhibit Jaccard Edit Distances (JED) in the range $[0.51, 0.57]$ for honest agents and $[0.39, 1.00]$ for adversaries relative to the consensus. All clients are aggregated using coordinate-wise median during this period. Their GED scores are accumulated to calibrate the adaptive threshold $\tau = \min(0.95, \mu + 3\sigma)$ through the MAD estimator. The consensus graph is \emph{frozen} during grace to prevent early-round graph variance from collapsing the edge set.
 
-Upon exiting the grace period at Round~4, the adaptive threshold has stabilised at $\tau = 0.95$. At this point, the system achieves clear structural separation: all 9 honest clients are accepted (JED $\mu = 0.71 \pm 0.12$), while the \texttt{FalseTraderNode} and \texttt{ReversedOrderNode} adversaries are consistently rejected (JED $= 1.00$, Cohen's $d = 3.37$ relative to honest). The \texttt{GradientMimicryNode}, which follows the honest query pattern, passes the structural gate as expected (JED $\mu = 0.72 \pm 0.13$) — this adversary is the specific target of the CED gate (Section~4.4). Across all 12 post-grace rounds (Rounds~4--15), the structural gate maintains 100\% detection of Temporal Mimicry and Topology Inversion attacks with a 2.8\% honest false-positive rate.
+Upon exiting the grace period at Round~4, the adaptive threshold has stabilised at $\tau = 0.95$. At this point, the system achieves clear structural separation: all 9 honest clients are accepted (JED $\mu = 0.71 \pm 0.12$), while the \texttt{FalseTraderNode} and \texttt{ReversedOrderNode} adversaries are consistently rejected (JED $= 1.00$, Cohen's $d = 3.37$ relative to honest). The \texttt{GradientMimicryNode}, which follows the honest query pattern, passes the structural gate as expected (JED $\mu = 0.72 \pm 0.13$). This adversary is the specific target of the CED gate (Section~4.4). Across all 12 post-grace rounds (Rounds~4--15), the structural gate maintains 100\% detection of Temporal Mimicry and Topology Inversion attacks. The honest false-positive rate is 2.8\%.
 
 \subsubsection{Per-Adversary Detection Performance}
 
 Table~\ref{tab:finance_detection} summarises the per-adversary-type detection performance of the PoR structural gate in the Finance domain.
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Per-Adversary Detection Performance (Finance Domain, Rounds 4--15, $\tau=0.95$)}
 \label{tab:finance_detection}
@@ -1237,13 +1197,13 @@ Temporal Mimicry & 12/12 (100\%) & 1.000 & 3.37 & Structural \\
 Topology Inversion & 12/12 (100\%) & 1.000 & 3.37 & Structural \\
 Gradient Mimicry & 1/12 (8\%) & 0.722 & 0.09 & CED \\
 \hline
-\textbf{Honest Clients (9)} & \textbf{FPR: 3/108 (2.8\%)} & 0.711 & --- & --- \\
+\textbf{Honest Clients (9)} & \textbf{FPR: 3/108 (2.8\%)} & 0.711 & , & , \\
 \hline
 \end{tabular}%
 }
 \end{table}
 
-The GradientMimicry adversary structurally mimics the honest sequential query pattern by incorporating a FedProx proximal term into its PPO loss, achieving cosine similarity $>0.85$ with the median honest weight delta. It consequently passes the structural GED gate — validating the paper's central claim that topology-space and weight-space attacks are distinct threat categories requiring the Dual-Gate architecture. The Causal Effect Divergence (CED) gate (Theorem~1.1) is specifically designed to detect this class of coefficient-amplification attacks, and its empirical evaluation is reported in the accompanying ablation study.
+The GradientMimicry adversary structurally mimics the honest sequential query pattern by incorporating a FedProx proximal term into its PPO loss, achieving cosine similarity $>0.85$ with the median honest weight delta. It as a result passes the structural GED gate ,  validating the paper's central claim that topology-space and weight-space attacks are distinct threat categories requiring the Dual-Gate architecture. The Causal Effect Divergence (CED) gate (Theorem~1.1) is specifically designed to detect this class of coefficient-amplification attacks, and its empirical evaluation is reported in the accompanying ablation study.
 
 
 
@@ -1259,55 +1219,55 @@ The project is organised as follows:
 {\tiny
 \begin{verbatim}
 ged-fed-learning/
-|-- client/                    # Agentic client implementations
-|   |-- finance_agent.py       # PPO FinanceClient (DP-SGD + persistent optimizer)
-|   |-- finance_transformer_model.py  # Transformer Actor-Critic (sector attention)
-|   |-- finance_env.py         # FinanceTradingEnv (70-dim obs, 36 actions)
-|   |-- causal_discovery.py    # CognitiveModule (NOTEARS proxy + Graph DP)
-|   |-- correlation_discovery.py    # Non-causal baseline (Pearson correlation)
-|   |-- backtest_engine.py     # SPY benchmark, Sharpe, alpha evaluation
-|   |-- agent.py               # ISICClient (CyberDefend deliberative agent)
-|   |-- models.py              # Base MLP Actor-Critic
-|   \-- environment.py         # CyberDefendEnv (40-tool incident response)
-|-- adversary/                 # Multi-type adversarial population
-|   |-- finance_poisoning.py   # FalseTraderNode (temporal mimicry + PGD)
-|   |-- finance_adversary_pool.py  # ReversedOrderNode + GradientMimicryNode
-|   |-- finance_adaptive_adversary.py  # AdaptiveRLAdversary (min-max evasion)
-|   |-- finance_weight_only_adversary.py  # WeightOnlyAdversary (CED gate target)
-|   |-- sybil_adversary.py     # SybilLeader + SybilGhost (coordinated majority)
-|   \-- poisoning.py           # FalseNode (CyberDefend sequence sabotage)
-|-- server/                    # Governance layer
-|   |-- aggregator.py          # PoRStrategy (coverage gate + SimGNN + Bayesian consensus)
-|   |-- logic_validator.py     # SimGNN GED validator (order-sensitive)
-|   |-- generate_consensus.py  # Consensus builder + SimGNN contrastive pre-training
-|   |-- train_simgnn.py        # SimGNN fine-tuning on synthetic graph pairs
-|   \-- config_validator.py    # Pre-flight params.yaml validation
-|-- datasets/                  # Data loading and market simulation
-|   |-- finance_data.py        # HedgeFundDataFeed (5000-step replay buffer)
-|   |-- finance_downloader.py  # GARCH market sim, RSI/MACD/BB, VIX/DXY
-|   \-- tabular_loader.py      # Tabular BN loader (asia, alarm)
-|-- eval/                      # Paper experimental suite
-|   |-- ablation_runner.py     # 5-config ablation study → LaTeX table
-|   |-- ged_distribution.py    # GED violin plots + Cohen's d
-|   |-- dp_privacy_accountant.py  # RDP composition privacy budget
-|   |-- attention_visualizer.py   # Regime-conditioned sector attention maps
-|   |-- topology_irreducibility.py # Theorem validation + scalability analysis
-|   \-- run_all_evals.py       # Master runner (--skip-slow flag)
-|-- tests/                     # Unit and functional test suite
-|   |-- unit/                  # 7 unit test modules (39 tests)
-|   \-- functional/            # Integration test (SimGNN training smoke)
-|-- .github/workflows/         # CI/CD pipeline
-|   \-- tests.yml              # Automated testing on push/PR
-|-- federated_sim.py           # Ray-based FL simulation entry point
-|-- baseline_fedavg_sim.py     # Standard FedAvg baseline (cosine divergence)
-|-- run_sim_sequential.py      # Lightweight sequential runner (no Ray)
-|-- app.py                     # Streamlit dashboard (sidebar + visualisation)
-|-- params.yaml                # Central configuration (all hyperparameters)
-|-- Makefile                   # 15 documented targets (install, test, run-*, clean)
-|-- pyproject.toml             # Tooling config (ruff, mypy, pytest, coverage)
-|-- .pre-commit-config.yaml    # Pre-commit hooks (linting, formatting, checks)
-|-- Dockerfile                 # Containerised deployment
-\-- docker-compose.yml         # Multi-service orchestration
+|-- client/ # Agentic client implementations
+| |-- finance_agent.py # PPO FinanceClient (DP-SGD + persistent optimizer)
+| |-- finance_transformer_model.py # Transformer Actor-Critic (sector attention)
+| |-- finance_env.py # FinanceTradingEnv (70-dim obs, 36 actions)
+| |-- causal_discovery.py # CognitiveModule (NOTEARS proxy + Graph DP)
+| |-- correlation_discovery.py # Non-causal baseline (Pearson correlation)
+| |-- backtest_engine.py # SPY benchmark, Sharpe, alpha evaluation
+| |-- agent.py # ISICClient (CyberDefend deliberative agent)
+| |-- models.py # Base MLP Actor-Critic
+| \-- environment.py # CyberDefendEnv (40-tool incident response)
+|-- adversary/ # Multi-type adversarial population
+| |-- finance_poisoning.py # FalseTraderNode (temporal mimicry + PGD)
+| |-- finance_adversary_pool.py # ReversedOrderNode + GradientMimicryNode
+| |-- finance_adaptive_adversary.py # AdaptiveRLAdversary (min-max evasion)
+| |-- finance_weight_only_adversary.py # WeightOnlyAdversary (CED gate target)
+| |-- sybil_adversary.py # SybilLeader + SybilGhost (coordinated majority)
+| \-- poisoning.py # FalseNode (CyberDefend sequence sabotage)
+|-- server/ # Governance layer
+| |-- aggregator.py # PoRStrategy (coverage gate + SimGNN + Bayesian consensus)
+| |-- logic_validator.py # SimGNN GED validator (order-sensitive)
+| |-- generate_consensus.py # Consensus builder + SimGNN contrastive pre-training
+| |-- train_simgnn.py # SimGNN fine-tuning on synthetic graph pairs
+| \-- config_validator.py # Pre-flight params.yaml validation
+|-- datasets/ # Data loading and market simulation
+| |-- finance_data.py # HedgeFundDataFeed (5000-step replay buffer)
+| |-- finance_downloader.py # GARCH market sim, RSI/MACD/BB, VIX/DXY
+| \-- tabular_loader.py # Tabular BN loader (asia, alarm)
+|-- eval/ # Paper experimental suite
+| |-- ablation_runner.py # 5-config ablation study → LaTeX table
+| |-- ged_distribution.py # GED violin plots + Cohen's d
+| |-- dp_privacy_accountant.py # RDP composition privacy budget
+| |-- attention_visualizer.py # Regime-conditioned sector attention maps
+| |-- topology_irreducibility.py # Theorem validation + scalability analysis
+| \-- run_all_evals.py # Master runner (--skip-slow flag)
+|-- tests/ # Unit and functional test suite
+| |-- unit/ # 7 unit test modules (39 tests)
+| \-- functional/ # Integration test (SimGNN training smoke)
+|-- .github/workflows/ # CI/CD pipeline
+| \-- tests.yml # Automated testing on push/PR
+|-- federated_sim.py # Ray-based FL simulation entry point
+|-- baseline_fedavg_sim.py # Standard FedAvg baseline (cosine divergence)
+|-- run_sim_sequential.py # Lightweight sequential runner (no Ray)
+|-- app.py # Streamlit dashboard (sidebar + visualisation)
+|-- params.yaml # Central configuration (all hyperparameters)
+|-- Makefile # 15 documented targets (install, test, run-*, clean)
+|-- pyproject.toml # Tooling config (ruff, mypy, pytest, coverage)
+|-- .pre-commit-config.yaml # Pre-commit hooks (linting, formatting, checks)
+|-- Dockerfile # Containerised deployment
+\-- docker-compose.yml # Multi-service orchestration
 \end{verbatim}
 }
 
@@ -1317,13 +1277,13 @@ ged-fed-learning/
 The \texttt{FinanceClient} (in \texttt{finance\_agent.py}) implements a full PPO agent with GAE-$\lambda$ advantage estimation, cosine-annealed exploration, curriculum learning over 11 GICS sectors, and DP-SGD with calibrated Gaussian noise injection. The \texttt{FinanceTransformerModel} (in \texttt{finance\_transformer\_model.py}) uses a 3-layer Transformer encoder with 4 attention heads to model cross-sector relationships. A convenience method \texttt{extract\_causal\_graph\_with\_coefficients()} enables adversary subclasses to cleanly intercept the cognitive extraction pipeline.
 
 \textbf{Adversary Module (5 Primary Types + Sybil):}
-The adversary population has grown from a single \texttt{FalseNode} to \textbf{five concurrent attack types} plus a Sybil framework. All types inherit from \texttt{FinanceClient} and override specific methods (\texttt{\_sample\_action}, \texttt{fit}, \texttt{extract\_causal\_graph\_with\_coefficients}) to inject their attack strategy. The \texttt{WeightOnlyAdversary} reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) from the fit config to construct structurally identical but coefficient-poisoned submissions. A fixed tuple-unpacking bug in \texttt{AdaptiveRLAdversary.\_collect\_rollout} ensures the 8-tuple return signature matches the parent class. All adversary types are selectable via the \texttt{adversary.type} key in \texttt{params.yaml} and are consistently routed in both simulation runners.
+The adversary population has grown from a single \texttt{FalseNode} to \textbf{five concurrent attack types} plus a Sybil framework. All types inherit from \texttt{FinanceClient} and override specific methods (\texttt{\_sample\_action}, \texttt{fit}, \texttt{extract\_causal\_graph\_with\_coefficients}) to inject their attack strategy. The \texttt{WeightOnlyAdversary} reads the server-broadcast consensus matrices ($A_{\text{global}}$, $\bar{B}$) from the fit config to construct structurally identical but coefficient-poisoned submissions. A fixed tuple-unpacking bug in \texttt{AdaptiveRLAdversary.\_collect\_rollout} makes the 8-tuple return signature match the parent class. All adversary types are selectable through the \texttt{adversary.type} key in \texttt{params.yaml} and are consistently routed in both simulation runners.
 
 \textbf{Server Module (Dual-Gate PoR):}
-The \texttt{PoRStrategy} implements a three-stage pipeline: (1) Coverage Threshold Gate — rejects clients with insufficient distinct tool queries; (2) SimGNN Structural GED Gate — rejects clients whose causal graph topology diverges from consensus; (3) Causal Effect Divergence (CED) Gate — rejects clients whose coefficient matrix $B_k$ deviates from the EMA-updated consensus $\bar{B}$. Accepted clients update the Bayesian Beta-credibility posteriors, with a sliding-window decay ($\lambda=0.90$) preventing historical-credit exploitation and a correlation penalty ($k^{1.5}$) suppressing colluding novel-edge submissions. A curriculum grace period (configurable via \texttt{grace\_period\_rounds}) uses robust coordinate-wise median aggregation during early rounds to prevent liveness failures.
+The \texttt{PoRStrategy} implements a three-stage pipeline: (1) Coverage Threshold Gate -- rejects clients with insufficient distinct tool queries; (2) SimGNN Structural GED Gate -- rejects clients whose causal graph topology diverges from consensus; (3) Causal Effect Divergence (CED) Gate -- rejects clients whose coefficient matrix $B_k$ deviates from the EMA-updated consensus $\bar{B}$. Accepted clients update the Bayesian Beta-credibility posteriors, with a sliding-window decay ($\lambda=0.90$) preventing historical-credit exploitation and a correlation penalty ($k^{1.5}$) suppressing colluding novel-edge submissions. A curriculum grace period (configurable through \texttt{grace\_period\_rounds}) uses coordinate-wise median aggregation during early rounds to prevent liveness failures.
 
 \textbf{Pre-training and Fine-tuning:}
-Before FL round 1, \texttt{generate\_consensus.py} builds the honest sequential topology and runs 200 steps of SimGNN contrastive pre-training on (honest, adversary) trajectory pairs covering all attack types. After each round, \texttt{PoRStrategy.\_finetune\_simgnn\_on\_consensus()} runs 10 lightweight gradient steps to re-anchor SimGNN on the updated consensus — preventing stale embeddings from causing threshold drift.
+Before FL round 1, \texttt{generate\_consensus.py} builds the honest sequential topology and runs 200 steps of SimGNN contrastive pre-training on (honest, adversary) trajectory pairs covering all attack types. After each round, \texttt{PoRStrategy.\_finetune\_simgnn\_on\_consensus()} runs 10 lightweight gradient steps to re-anchor SimGNN on the updated consensus, preventing stale embeddings from causing threshold drift.
 
 \textbf{Configuration and Orchestration:}
 All hyperparameters are centralised in \texttt{params.yaml} with pre-flight validation by \texttt{server/config\_validator.py} (invoked automatically by \texttt{run\_sim\_sequential.py}). Two simulation runners are provided: \texttt{federated\_sim.py} (Ray-based, for multi-core parallelism) and \texttt{run\_sim\_sequential.py} (single-process, for memory-constrained systems). The \texttt{baseline\_fedavg\_sim.py} runner mirrors the full adversary pool for controlled comparison. A \texttt{Makefile} provides 15 documented targets covering the complete experimental workflow.
@@ -1335,8 +1295,6 @@ A Streamlit dashboard (\texttt{app.py}) provides interactive control over all co
 A GitHub Actions workflow (\texttt{.github/workflows/tests.yml}) runs the 39-unit-test suite on every push and pull request. Pre-commit hooks enforce code quality (ruff, isort, trailing-whitespace, YAML/JSON validity). Tooling configuration is centralised in \texttt{pyproject.toml}.
 
 \subsection{Reproducibility and Hyperparameters}
-The complete source code for the PoR framework, including the simulated agentic environments, causal discovery pipelines, adversary definitions, and the federated aggregation logic, is open-sourced and available at \url{https://github.com/elegantShock228/ged-fed-learning}.
-
 To support independent verification and extension of the results in this paper, we document all key hyperparameters and the execution environment below.
 
 \begin{table*}[t]
@@ -1401,7 +1359,7 @@ The full codebase, Docker environment, and step-by-step reproduction guide are a
 
 \subsection{Summary}
 
-The implementation realises the PoR framework in a modular, extensible manner. It leverages state-of-the-art libraries (Flower, PyTorch, PyTorch Geometric) and demonstrates the feasibility of logic-based governance in agentic federated learning. The codebase is containerised with Docker for easy deployment and all hyperparameters are exposed via \texttt{params.yaml} for full reproducibility.
+The implementation realises the PoR framework in a modular, extensible manner. It uses modern libraries (Flower, PyTorch, PyTorch Geometric) and shows the feasibility of logic-based governance in agentic federated learning. The codebase is containerised with Docker for easy deployment. All hyperparameters are exposed through \texttt{params.yaml} for full reproducibility. That is the design philosophy.
 
 \newpage
 % =============================================================================
@@ -1411,70 +1369,65 @@ The implementation realises the PoR framework in a modular, extensible manner. I
 
 \subsection{Summary of Contributions}
 
-This project identifies and addresses a critical vulnerability in \emph{Agentic Federated Learning}. As the industry moves toward autonomous, decentralized AI systems, our research demonstrates that existing safety protocols—particularly those relying on Euclidean distance metrics and post-hoc XAI auditing—are mathematically insufficient against \emph{Explanation Poisoning}. Our primary contribution is \textbf{Proof of Reasoning (PoR)}, a novel governance protocol that redefines trust in federated systems by elevating \emph{Causal Graph Edit Distance (GED)} to a first-class security metric. This work delivers:
+We set out to close a critical vulnerability in \emph{Agentic Federated Learning}. Existing safety protocols (Euclidean distance thresholding, post-hoc XAI auditing, reconstruction-error filters) fail systematically against \emph{Explanation Poisoning}. Why? Because they audit model parameters, not model reasoning. Our core contribution is \textbf{Proof of Reasoning (PoR)}, a governance protocol that makes \emph{Causal Graph Edit Distance (GED)} a first-class security primitive. Here is what we delivered, in brief.
 
 \begin{itemize}
-    \item \textbf{Theoretical Foundation:} A Dual-Gate governance objective combining structural GED and Causal Effect Divergence (CED) checks, with robust MAD-based threshold calibration. Two formal theorems (Topology Irreducibility and Dual-Gate Detection of Weight-Only Backdoors) with complete proofs establish the mathematical impossibility of silent backdoor insertion under bounded assumptions.
+\item \textbf{Theoretical Foundation:} A Dual-Gate governance objective combining structural GED and Causal Effect Divergence (CED) checks with MAD-based threshold calibration. Two formal theorems (Topology Irreducibility and Dual-Gate Detection of Weight-Only Backdoors) with complete proofs establish that silent backdoor insertion is mathematically impossible under bounded assumptions.
 
-    \item \textbf{Multi-Type Adversary Stress-Testing:} A five-adversary population (Temporal Mimicry, Topology Inversion, Gradient Mimicry, Adaptive RL Evasion, Weight-Only Coefficient Manipulation) plus a Sybil attack framework (leader-ghost architecture), integrated into both Ray-based and sequential simulation runners with unified routing via \texttt{params.yaml}.
+\item \textbf{Multi-Type Adversary Stress-Testing:} A five-adversary population (Temporal Mimicry, Topology Inversion, Gradient Mimicry, Adaptive RL Evasion, Weight-Only Coefficient Manipulation) plus a Sybil attack framework, integrated into both Ray-based and sequential simulation runners with unified routing through \texttt{params.yaml}.
 
-    \item \textbf{Bayesian Consensus with Attack-Resistant Properties:} Dirichlet-Multinomial Beta-credibility edge tracking, sliding-window decay ($\lambda=0.90$) against delayed injection, and cross-client correlation penalty ($k^{1.5}$) against colluding novel-edge submissions — forming a three-layer defense for consensus integrity.
+\item \textbf{Bayesian Consensus with Attack-Resistant Properties:} Dirichlet-Multinomial Beta-credibility edge tracking, sliding-window decay ($\lambda=0.90$) against delayed injection, and cross-client correlation penalty ($k^{1.5}$) against colluding novel-edge submissions. Together they form a three-layer defense for consensus integrity.
 
-    \item \textbf{Liveness-Preserving Curriculum Grace Period:} Robust coordinate-wise median aggregation during early rounds prevents backdoor injection while allowing honest structural exploration, with a smooth transition to full enforcement via adaptive thresholding ($\mu + k\sigma$).
+\item \textbf{Liveness-Preserving Curriculum Grace Period:} Coordinate-wise median aggregation during early rounds prevents backdoor injection while allowing honest structural exploration, with smooth transition to full enforcement through adaptive thresholding ($\mu + k\sigma$).
 
-    \item \textbf{Graph Differential Privacy:} A single, correctly calibrated Laplace mechanism ($\Delta=1.0$, full $\epsilon$ budget) applied post-DAG-enforcement to the coefficient matrix, avoiding the prior double-noise composition bug.
+\item \textbf{Graph Differential Privacy:} A single correctly calibrated Laplace mechanism ($\Delta=1.0$, full $\epsilon$ budget) applied post-DAG-enforcement to the coefficient matrix, avoiding the prior double-noise bug.
 
-    \item \textbf{Production-Grade Engineering Infrastructure:} CI/CD pipeline (GitHub Actions, 39-test suite), pre-commit quality hooks (ruff, isort, YAML/JSON validity), Makefile with 15 documented targets, pre-flight configuration validator, and unified tooling via \texttt{pyproject.toml}.
+\item \textbf{Engineering Infrastructure:} CI/CD pipeline (GitHub Actions, 39-test suite), pre-commit quality hooks (ruff, isort, YAML/JSON validity), Makefile with 15 documented targets, pre-flight configuration validator, and unified tooling through \texttt{pyproject.toml}.
 \end{itemize}
 
 \subsection{Empirical Validation}
 
-The 39-unit-test suite passes on the current codebase across Finance, CyberDefend, and tabular BN domains. The five-adversary pool validates PoR against weight-space, topology-space, and coefficient-space attacks simultaneously. On the ASIA Bayesian network (10 rounds, 30 clients, 5 adversaries, $\tau=0.45$), PoR detects adversarial clients in 9 of 10 rounds. On the Finance domain (15 rounds, 12 clients, 3 adversaries, $\tau=0.95$ adaptive), the structural GED gate achieves 100\% detection of Temporal Mimicry and Topology Inversion adversaries with a 2.8\% honest false-positive rate over 12 post-grace rounds. The GradientMimicry adversary, which structurally mimics honest query patterns, passes the structural gate as designed — validating the Dual-Gate architecture's claim that topology-space and weight-space attacks require independent detection mechanisms. The Topology Irreducibility Theorem is empirically validated with $\varepsilon_{\min}=0.088 > \tau_{\text{JED}}=0.07$ for the 36-node action space. The non-causal correlation-graph ablation confirms that directed acyclicity — not just graph structure — is the essential security primitive (65\%+ FNR for undirected baselines vs.\ 0\% for PoR). Theorem~1 and Theorem~1.1 provide domain-specific and weight-only coverage respectively; the remaining limitations (causality-aware NOTEARS manipulation, Fed-NEAT convergence evaluation) are documented in Section~\ref{sec:limitations} with a prioritized research roadmap.
+The 39-unit-test suite passes across Finance, CyberDefend, and tabular BN domains. The five-adversary pool validates PoR against weight-space, topology-space, and coefficient-space attacks simultaneously. On ASIA (10 rounds, 30 clients, 5 adversaries, $\tau=0.45$), PoR detects adversaries in 9 of 10 rounds. On the Finance domain (15 rounds, 12 clients, 3 adversaries, $\tau=0.95$ adaptive), the structural GED gate achieves 100\% detection of Temporal Mimicry and Topology Inversion. The honest false-positive rate? 2.8\% over 12 post-grace rounds.
 
-\subsection{The Paradigm Shift: From ``Black Box'' to ``Glass Box'' Governance}
+What stands out? The GradientMimicry adversary mimics honest query patterns and passes the structural gate as designed. This validates the Dual-Gate architecture. Topology-space and weight-space attacks need independent detection mechanisms. The Topology Irreducibility Theorem holds empirically with $\varepsilon_{\min}=0.088 > \tau_{\text{JED}}=0.07$ for the 36-node action space. The non-causal correlation-graph ablation confirms that directed acyclicity, not just graph structure, is the essential security primitive (65\%+ FNR for undirected baselines vs.\ 0\% for PoR). The remaining limitations (causality-aware NOTEARS manipulation, Fed-NEAT convergence evaluation) are documented in Section~\ref{sec:limitations}. We discuss these next.
 
-For over a decade, Federated Learning has operated under a \emph{Black Box} trust model, implicitly trusting the statistical average of client updates. Our research argues that this assumption no longer holds in an era of autonomous, agentic AI.
+\subsection{From Black-Box Averaging to Structural Governance}
 
-We advocate a transition to \emph{Glass Box Governance}, where trust is no longer passive but actively enforced. In this paradigm, agents must be transparent not only about their outputs, but about their internal reasoning processes. PoR serves as a blueprint for this shift: rather than merely filtering malicious updates, it enforces a protocol in which agents are required to \emph{show their work}.
+Federated Learning has historically relied on a \emph{Black Box} trust model. The idea: average enough client updates and the aggregate will be safe. Our results show this breaks under agentic autonomy. Clients control not just data but learning objectives and data curation policies.
+
+We propose \emph{Glass Box Governance} instead. Trust is no longer a statistical byproduct of averaging. It is enforced at the reasoning level. Agents must show that their internal causal model aligns with the federation's consensus. They must \emph{show their work}. PoR makes it mathematically incompatible to submit a structurally inconsistent causal graph and be accepted. That is the whole point.
 
 \subsection{Broader Impact \& Future Relevance}
 
-The implications of this research extend beyond academic benchmarks and into real-world deployment:
+The implications go beyond academic benchmarks.
 
-\textbf{Regulatory Compliance:} With emerging regulatory frameworks such as the EU AI Act mandating transparency and human oversight for high-risk AI systems, PoR provides a concrete technical mechanism for enforcing these requirements in decentralized environments where no single authority has access to the full dataset.
+\textbf{Regulatory Compliance:} The EU AI Act requires transparency for high-risk AI deployments. In cross-silo federated settings, data never leaves individual institutions. No single auditor can inspect the global model directly. PoR gives regulators a per-round, per-client reasoning consistency score without exposing raw patient data. This is the practical angle.
 
-\textbf{Healthcare Architecture:} Through the design and unit-tested implementation of the PoR client pipeline for the FLamby benchmark (Fed-ISIC2019), we demonstrate a complete architectural blueprint for enforcing causal reasoning audits in cross-silo medical federations. The governance protocol is empirically validated on the ASIA and Finance environments; full-scale FLamby federated runs — including per-hospital non-IID data splits and 20-client concurrent federation — constitute prioritized future experimental work.
+\textbf{Healthcare Architecture:} We built and unit-tested the complete PoR client pipeline against FLamby Fed-ISIC2019, confirming a blueprint for causal reasoning audits across hospitals with non-IID melanoma data. Extending these runs to a full 20-client FLamby federation is immediate follow-on work. Whether the latency is acceptable in clinical settings is something we plan to study.
 
 \subsection{Future Research Roadmap}
 
-The following directions are prioritized based on the four remaining open problems in Section~\ref{sec:limitations} and broader deployment goals. Items marked \textbf{[RESOLVED]} have been fully implemented in the v2.0 codebase and are documented as engineering contributions in Section~\ref{sec:engineering}.
+We identify four primary directions, prioritized based on the open problems in Section~\ref{sec:limitations}.
 
-\begin{enumerate}
-    \item \textbf{[RESOLVED] Colluding Adversary Defense:} Cross-client edge correlation penalty ($k^{1.5}$) in Bayesian $\beta$ posterior. See Section~\ref{sec:engineering}.
-    \item \textbf{[RESOLVED] Adaptive (Delayed Injection) Adversary Defense:} Sliding-window credibility decay ($\lambda=0.90$). See Section~\ref{sec:engineering}.
-    \item \textbf{[RESOLVED] Non-Causal Graph Baseline Ablation:} Correlation-graph baseline with 65\%+ FNR, confirming directed acyclicity as security primitive. See Section~\ref{sec:engineering}.
-    \item \textbf{[RESOLVED] Graph Differential Privacy:} Single-Laplace mechanism with $\Delta=1.0$, correct composition. See Section~\ref{sec:engineering}.
-    \item \textbf{[RESOLVED] Curriculum Grace Period Liveness:} Configurable grace period with robust coordinate-wise median. See Section~\ref{sec:engineering}.
-    \item \textbf{[RESOLVED] Weight-Only Backdoor Detection:} Dual-Gate PoR with CED check and Theorem~1.1 proof. See Sections~4.4 and~\ref{sec:engineering}.
-    \item \textbf{[RESOLVED] Configuration Validation:} Pre-flight \texttt{config\_validator.py} with 7-type adversary validity, range sanity, and cross-key consistency. See Section~\ref{sec:engineering}.
-    \item \textbf{[RESOLVED] CI/CD Pipeline:} GitHub Actions, 39-test suite, Makefile, pre-commit hooks, \texttt{pyproject.toml}. See Section~\ref{sec:engineering}.
+\begin{itemize}
+\item \textbf{General GED Lower Bound for Backdoors [Critical]:} Derive an information-theoretic lower bound on GED for any functional backdoor in an arbitrary action space, generalizing Theorem~1 beyond the Finance domain.
 
-    \item \textbf{General GED Lower Bound for Backdoors [Critical]:} Derive an information-theoretic lower bound on GED for any functional backdoor in an arbitrary action space, generalizing Theorem 1 beyond the Finance domain.
+\item \textbf{Full CelebA and FLamby Empirical Evaluation [High]:} Execute the implemented pipelines at scale (20 clients, 10 rounds, 5 adversaries per domain) and report ROC curves and per-round detection rates.
 
-    \item \textbf{Full CelebA and FLamby Empirical Evaluation [High]:} Execute the implemented pipelines at scale (20 federated clients, 10 rounds, 5 adversaries per domain) and report ROC curves and per-round detection rates.
+\item \textbf{Causality-Aware NOTEARS Manipulation [Critical]:} The most serious remaining theoretical vulnerability. An adversary jointly optimizes weight updates and local data distribution to control NOTEARS output. Evaluate ZK-SNARK proofs of correct NOTEARS execution as a countermeasure.
 
-    \item \textbf{Causality-Aware NOTEARS Manipulation [Critical]:} The most serious remaining theoretical vulnerability — an adversary who jointly optimizes weight updates and local data distribution to control NOTEARS output. Evaluate ZK-SNARK proofs of correct NOTEARS execution as a countermeasure.
+\item \textbf{Formal BFT Bound Proof [Medium]:} Prove the conjectured bound $f_{\max} < \frac{n(1-\tau)}{2\tau}$ rigorously, with assumptions on honest DAG estimation error $\epsilon_{\text{dag}}$.
 
-    \item \textbf{Formal BFT Bound Proof [Medium]:} Prove the conjectured bound $f_{\max} < \frac{n(1-\tau)}{2\tau}$ rigorously, with assumptions on honest DAG estimation error $\epsilon_{\text{dag}}$.
+\item \textbf{Latent-Space Causal Discovery for Deep Models [Long-Term]:} Integrate a Causal VAE alongside ResNet/ViT backbones to audit low-dimensional latent causal graphs rather than raw pixel-space DAGs.
 
-    \item \textbf{Latent-Space Causal Discovery for Deep Models [Long-Term]:} Integrate a Causal VAE alongside ResNet/ViT backbones to audit low-dimensional latent causal graphs rather than infeasible raw pixel-space DAGs.
+\item \textbf{Fed-NEAT Convergence Evaluation [Medium]:} Standalone empirical evaluation of convergence rate vs.\ fixed-topology FL, Pareto frontiers of topology size vs.\ accuracy.
+\end{itemize}
 
-    \item \textbf{Fed-NEAT Convergence Evaluation [Medium]:} Standalone empirical evaluation of convergence rate vs.\ standard fixed-topology FL, Pareto frontiers of topology size vs.\ accuracy.
-\end{enumerate}
+Thirteen additional engineering challenges (colluding adversary defense, adaptive delayed-injection defense, non-causal graph baseline ablation, graph differential privacy, curriculum grace period liveness, weight-only backdoor detection, configuration validation, CI/CD pipeline) were identified and resolved during development. They are documented in Section~\ref{sec:engineering}.
 
 \subsection*{Final Statement}
 
-Adversarial Machine Learning has traditionally been a reactive game of cat-and-mouse: attackers exploit a loophole, and defenders patch it. This project aims to break that cycle. By anchoring trust in the \emph{causal logic} of decision-making rather than in opaque numerical parameters, we propose a federated learning ecosystem that is resilient not only to current threats, but also to the deceptive, autonomous attacks of the future.
+Adversarial ML has historically been reactive. Attackers find a loophole. Defenders patch it. The cycle repeats. PoR breaks this loop by shifting the trust primitive from numerical parameters to causal structure. A backdoor must leave a topological fingerprint. An explanation falsification must distort the coefficient matrix. Neither can hide from a server that audits reasoning graphs instead of weight vectors. The framework we presented here (dual-gate GED+CED verification, Bayesian consensus with correlation penalties, curriculum-aware liveness preservation, and composed graph differential privacy) is a governance substrate for autonomous, agentic federations. Whether it holds at truly internet scale is an open question. The data from our 39-test suite says yes. But we remain cautious.
 
 
 \newpage
