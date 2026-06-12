@@ -25,7 +25,7 @@
 \author{Ayush Chadha, Ragav Palaniswamy, Sanjana Gummuluru, Sridevi M*\\
 \vspace{0.2cm}\textit{Department of Computer Science and Engineering,}\\
 \vspace{0.2cm}\textit{National Institute of Technology, Tiruchirappalli}\\[0.3cm]
-\textit{Email:} 106122027@nitt.edu, 1066122095@nitt.edu , 106122106@nitt.edu, msridevi@nitt.edu\\[0.1cm]
+\textit{Email:} 106122027@nitt.edu, 106122095@nitt.edu , 106122106@nitt.edu, msridevi@nitt.edu\\[0.1cm]
 \textit{*Corresponding author}
 }
 
@@ -175,7 +175,7 @@ A secondary limitation of the SimGNN \cite{simgnn} matcher: it operates as a pur
 
 \subsection{Summary of the Research Gap}
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \caption{Research gap addressed by PoR.}
 \resizebox{\linewidth}{!}{%
@@ -319,7 +319,7 @@ The system operates in synchronized communication rounds:
 
 Algorithm~1 formalizes the complete governance protocol. The server-side verification (Step~4) is the core advance. Rather than comparing weight vectors in Euclidean space, the server evaluates topological consistency through neural GED. This establishes a structural audit trail. It cannot be spoofed by gradient projection.
 
-\begin{figure}[t]
+\begin{figure}[h]
 \centering
 \caption{Proof of Reasoning (PoR) Governance Handshake}
 \label{alg:por_handshake}
@@ -379,7 +379,7 @@ Algorithm~1 formalizes the complete governance protocol. The server-side verific
 
 \subsection{Component Summary Table}
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \caption{Comparison of standard federated systems and the PoR architecture.}
 \resizebox{\linewidth}{!}{%
@@ -582,7 +582,7 @@ PoR explicitly audits the \emph{causal DAG}. Even if explanation pixels are fals
 
 \subsection{Detailed Comparison Matrix}
 
-\begin{table}[t]
+\begin{table}[h]
 \centering
 \caption{Comparison of Federated Learning defenses against Proof of Reasoning (PoR).}
 \resizebox{\linewidth}{!}{%
@@ -854,7 +854,7 @@ We subclass \texttt{flwr.server.strategy.FedAvg} to create \texttt{FedPoR}.
 
 We compare PoR against three baselines: FedAvg (No Defense), Krum (Statistical Defense), and FedREDefense (Reconstruction Defense).
 
-\begin{table}[t]
+\begin{table}[h]
 \centering
 \caption{Evaluation metrics and success criteria.}
 \resizebox{\linewidth}{!}{%
@@ -878,7 +878,7 @@ We conducted a simulation using the ASIA (Chest Clinic) Bayesian network dataset
 
 Table~\ref{tab:asia_rounds} summarises the number of accepted and rejected clients per round.
 
-\begin{table}[t]
+\begin{table}[h]
 \centering
 \caption{Accepted vs. Rejected Clients per Round (ASIA Dataset, $\tau = 0.45$, 5 Adversaries)}
 \label{tab:asia_rounds}
@@ -1032,7 +1032,7 @@ Adversarial agents such as the \texttt{GradientMimicryNode} optimize their local
 
 However, they cannot alter internal topological dependencies. Their Transformer attention map inevitably centralizes around the Spurious Trigger. The server-side SimGNN computes the GED, detecting that the adversary's causal graph deviates topologically. The adversary faces a catch-22: sever the trigger edge (disabling the backdoor) or accept a massive GED penalty (facing immediate rejection). Either way, they lose.
 
-\begin{figure}[t]
+\begin{figure}[h]
 \centering
 \resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
@@ -1184,7 +1184,7 @@ Upon exiting the grace period at Round~4, the adaptive threshold has stabilised 
 
 Table~\ref{tab:finance_detection} summarises the per-adversary-type detection performance of the PoR structural gate in the Finance domain.
 
-\begin{table}[t]
+\begin{table}[h]
 \centering
 \caption{Per-Adversary Detection Performance (Finance Domain, Rounds 4--15, $\tau=0.95$)}
 \label{tab:finance_detection}
