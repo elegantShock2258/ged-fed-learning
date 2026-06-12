@@ -591,7 +591,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
         # the adaptive threshold stabilizes and honest clients are reliably accepted.
         # Without this, early-round graph variance shrinks the consensus to near-empty
         # (few edges get >70% votes), causing a GED death spiral post-grace.
-        if self._in_grace_period:
+        if getattr(self, "_in_grace_period", False):
             log.info("Grace period active — consensus frozen (not evolving from client graphs)")
             return
 
@@ -644,7 +644,7 @@ class PoRStrategy(fl.server.strategy.FedAvg):
             is_novel_edge = not self.global_consensus_graph.has_edge(*edge)
             correlation_penalty = 0.0
             _penalty_exp = float(_cl.get("correlation_penalty_exponent", 1.5))
-            if is_novel_edge and votes_for > 1 and not self._in_grace_period:
+            if is_novel_edge and votes_for > 1 and not getattr(self, "_in_grace_period", False):
                 correlation_penalty = (votes_for ** _penalty_exp)
                 if votes_for > 2:
                     log.warning(f"Colluding Adversary Defense: Correlated novel edge {edge} from {votes_for} clients. Penalty +{correlation_penalty:.2f}")

@@ -17,7 +17,7 @@ class TestSimGNN:
 
     @pytest.fixture
     def simgnn(self):
-        return SimGNN(node_feature_dim=48, hidden_dim=32, num_layers=2).eval()
+        return SimGNN(node_feature_dim=40, hidden_dim=32, num_layers=2).eval()
 
     def _make_pyg(self, G: nx.DiGraph):
         """Helper: convert nx.DiGraph to minimal PyG Data."""
