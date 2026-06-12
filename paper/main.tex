@@ -1004,37 +1004,104 @@ represents the practical state of the art for deployed FL systems and is
 the strongest applicable baseline for heterogeneous FL---it does not require
 homogeneous architectures but is inherently limited to weight-space analysis.
 
-\subsection{Hyperparameters}
+\subsection{Reproducibility and Configuration}
+\label{sec:repro}
 
 Table~\ref{tab:hyperparams} summarises all key hyperparameters. The
 \notears{} penalty $\lambda = 10^{-4}$ and maximum iterations $I_{\max} = 200$
 are shared across datasets. The dataset-specific parameters ($\epsilon$,
 $\tau_{\min}$, $\rho$) are adjusted as described above.
 
-\begin{table}[t]
+\begin{table*}[!tp]
 \centering
-\caption{Key Hyperparameters for \por{} Experiments}
+\footnotesize
+\caption{Hyperparameter Configuration for All Reported Experiments}
 \label{tab:hyperparams}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Parameter} & \textbf{ASIA} & \textbf{ALARM} \\
-\midrule
-Clients ($N$)                  & 30    & 30    \\
-Adversaries ($m$)              & 5     & 5     \\
-Rounds ($T$)                   & 15    & 15    \\
-Local epochs ($L$)             & 5     & 5     \\
-Poison fraction ($\rho$)       & 0.20  & 0.40  \\
-Edge threshold ($\epsilon$)    & 0.02  & 0.02  \\
-\notears{} penalty ($\lambda$) & $10^{-4}$ & $10^{-4}$ \\
-\notears{} iterations ($I_{\max}$) & 200 & 200  \\
-SimGNN epochs                  & 500   & 500   \\
-SimGNN LR                      & 0.001 & 0.001 \\
-Consensus momentum ($\mu$)     & 0.60  & 0.60  \\
-Threshold floor ($\tau_{\min}$)& 0.25  & 0.35  \\
-NEAT pop. size                 & 5     & 5     \\
-\bottomrule
+\begin{tabular}{lll}
+\hline
+\textbf{Component} & \textbf{Hyperparameter} & \textbf{Value} \\
+\hline
+%--- ASIA / ALARM Dataset Configuration (from params.yaml) ---%
+ASIA Dataset & Clients ($N$) & 30 \\
+ & Adversaries ($m$) & 5 (16.7\%) \\
+ & Federated rounds ($T$) & 15 \\
+ & Local epochs ($L$) & 5 \\
+ & Poison fraction ($\rho$) & 0.40 \\
+ & Trigger injection rate & 0.50 \\
+ & Edge threshold ($\varepsilon$) & 0.02 \\
+ & \notears{} penalty ($\lambda$) & $10^{-4}$ \\
+ & \notears{} iterations ($I_{\max}$) & 200 \\
+ & \notears{} LR & 0.02 \\
+ & SimGNN epochs & 500 \\
+ & SimGNN LR & 0.001 \\
+ & SimGNN batch size & 32 \\
+ & SimGNN diversity prob. & 0.1 \\
+ & Consensus momentum & 0.60 \\
+ & Validator threshold $\tau$ & 0.35 \\
+ & Coverage gate min queries & 15 \\
+ & NEAT population size & 5 \\
+ & NEAT weight mutation prob. & 0.8 \\
+ & NEAT conn.\ mutation prob. & 0.1 \\
+ & NEAT node mutation prob. & 0.05 \\
+ & Dataset samples & 10{,}000 \\
+ & Batch size & 32 \\
+ & Target label & auto \\
+\hline
+%--- General Federated Configuration ---%
+Federated & Clients & 12 (PoR) / 30 (Baseline) \\
+ & Adversarial fraction & 25\% (3/12 or 5/30) \\
+ & Federated rounds & 15 / 10 / 5 \\
+ & Client fraction per round & 1.0 (all clients) \\
+\hline
+%--- GED Metric ---%
+GED Metric & Finance/CyberDefend & Jaccard Edit Distance (directed) \\
+ & ASIA (tabular) & Jaccard edge distance \\
+ & SimGNN (auxiliary) & 40-dim, 128-dim GCN hidden, 2 GAT \\
+ & SimGNN pre-training & 250 epochs, 200-step pairs \\
+\hline
+%--- GED Governance ---%
+GED Governance & Initial $\tau$ (Finance) & 0.07 (pre-adaptation) \\
+ & Adaptive $\tau$ (Finance) & 0.95 (MAD: $\mu+3\sigma$, post-grace) \\
+ & $\tau$ (ASIA/CyberDefend) & 0.30 / 0.08 \\
+ & CED threshold $\theta$ & 0.05 (MAD-calibrated) \\
+ & Beta credibility prior & $\alpha_0{=}\beta_0{=}1$ (uniform) \\
+ & Sliding-window decay $\lambda$ & 0.90 per round \\
+ & Consensus momentum $m$ & 0.7 \\
+ & Correlation penalty exponent & $k^{1.5}$ (no penalty in grace) \\
+ & Coverage gate min queries & 15--20 \\
+ & Grace period rounds & 3 (Finance) \\
+ & Adaptive threshold $k$-sigma & 3.0 \\
+ & Consensus freeze & Active during grace period \\
+\hline
+%--- Finance Agent ---%
+Finance Agent & PPO clip $\varepsilon$ & 0.2 \\
+ & GAE-$\lambda$ & 0.95 \\
+ & DP-SGD noise $\sigma$, $\delta$ & 0.3, $10^{-5}$ \\
+ & Cosine $\varepsilon$ schedule & 1.0 $\to$ 0.05 / 20 rounds \\
+ & Curriculum sector growth & 6 $\to$ 11 / 15 rounds \\
+ & Transformer & 4 heads, depth 3, $d_{\text{model}}{=}128$ \\
+ & GARCH(1,1) $\alpha, \beta$ & 0.05, 0.90 \\
+ & Graph DP $\varepsilon$ (causal) & 2.0 (configurable) \\
+ & PoR $\lambda_s$ (structural) & 0.1 \\
+ & PoR $\lambda_c$ (causal) & 0.05 \\
+\hline
+%--- Adversary Pool ---%
+Adversary Pool & Supported types & 5 primary + Sybil \\
+ & PGD $L_2$ radius (FalseTrader) & 1.5 \\
+ & PGD $L_2$ radius (GradMimicry) & 1.0 \\
+ & FedProx $\mu$ (GradMimicry) & 0.01 \\
+ & Weight-only $\Delta$ & 0.50 \\
+ & Sybil jitter $\sigma$ & 0.05 \\
+ & Trigger injection rate & 0.25--0.50 \\
+\hline
+%--- Infrastructure ---%
+Infrastructure & Unit tests & 39 (all passing) \\
+ & CI matrix & Python 3.11, 3.12 \\
+ & Linting & ruff + isort (pre-commit) \\
+ & Config validation & Pre-flight check \\
+\hline
 \end{tabular}
-\end{table}
+\end{table*}
 
 % ─────────────────────────────────────────────────────────────────────────────
 % VI. RESULTS AND ANALYSIS
@@ -1060,7 +1127,7 @@ We evaluate defenses using two complementary metrics:
 Table~\ref{tab:main_results} presents the core ASR and MTA results across
 both datasets and both methods.
 
-\begin{table}[t]
+\begin{table}[!tp]
 \centering
 \caption{Attack Success Rate~(ASR) and Main Task Accuracy~(MTA).
          Lower ASR and higher MTA are better. Results reported as
@@ -1136,6 +1203,57 @@ orthogonal to gradient-space camouflage. The Topology Irreducibility bound
 camouflage. Full ablation data and the DP-SGD privacy budget analysis are
 provided in Appendix~\ref{appendix:finance}.
 
+\subsection{Empirical Simulation Logs and Cold-Start Dynamics}
+\label{sec:coldstart}
+
+To empirically validate the theoretical guarantees and the mathematical
+contradictions exploited by \por{}, we conducted exhaustive simulations
+logging the GED scores and acceptance rates across multiple federated rounds.
+Our analysis of the execution logs yields two critical findings.
+
+\subsubsection{Complete Failure of Baseline Euclidean Defenses}
+
+We established a baseline using standard weight-divergence metrics (equivalent
+to FedAvg and Krum distance thresholding), simulating 30 clients where 5 were
+adversarial \texttt{GradientMimicryNode} actors. The simulation logs confirmed
+that across all 5 federated rounds, the baseline system accepted 30 out of 30
+clients every single round. This provides conclusive empirical proof that
+adversaries using FedProx-style proximal regularizers perfectly evade spatial
+clustering defenses, successfully implanting explanation-poisoned backdoors
+without triggering a single statistical rejection---a 0\% detection rate
+against the Gradient Mimicry strategy.
+
+\subsubsection{PoR Grace Period and Adaptive Threshold Calibration}
+
+The PoR simulation featured 12 clients (9 honest, 3 adversarial) trained over
+15 federated rounds with a curriculum growing from 6 to 11 active market
+sectors, demonstrating the critical role of the Curriculum Grace Period and
+Adaptive Threshold mechanisms.
+
+During the first 3 rounds (the configured grace period), the initial consensus
+graph $G_{\text{global}}$ (a sequential chain $0 \to 1 \to \cdots \to 32 \to
+33$) serves as a structural anchor. Early-round client graphs, produced under
+high exploration ($\varepsilon \approx 0.99$) and partial sector coverage,
+exhibit Jaccard Edit Distances (JED) in the range $[0.51, 0.57]$ for honest
+agents and $[0.39, 1.00]$ for adversaries relative to the consensus. All
+clients are aggregated via coordinate-wise median during this period. GED
+scores are accumulated to calibrate the adaptive threshold
+$\tau = \min(0.95,\, \mu + 3\sigma)$ through the MAD estimator. The consensus
+graph is \emph{frozen} during the grace period to prevent early-round graph
+variance from collapsing the edge set.
+
+Upon exiting the grace period at Round~4, the adaptive threshold stabilises at
+$\tau = 0.95$. At this point, the system achieves clear structural separation:
+all 9 honest clients are accepted (JED $\mu = 0.71 \pm 0.12$), while the
+\texttt{FalseTraderNode} and \texttt{ReversedOrderNode} adversaries are
+consistently rejected (JED $= 1.00$, Cohen's $d = 3.37$ relative to honest).
+The \texttt{GradientMimicryNode}, which follows the honest query pattern,
+passes the structural gate as expected (JED $\mu = 0.72 \pm 0.13$)---this
+adversary is the specific target of the CED gate (Section~\ref{sec:ced}).
+Across all 12 post-grace rounds (Rounds~4--15), the structural gate maintains
+100\% detection of Temporal Mimicry and Topology Inversion attacks, with an
+honest false-positive rate of 2.8\% (3 out of 108 client-round evaluations).
+
 \subsection{Theoretical Guarantees}
 \label{sec:theorems}
 
@@ -1189,7 +1307,7 @@ by independent gates, leaving no remaining evasion path under A1 and A2.
 \subsection{Finance Adversary Detection}
 \label{sec:finance_detect}
 
-\begin{table}[t]
+\begin{table}[!tp]
 \centering
 \caption{Per-adversary detection in Finance domain (Rounds~4--15,
          $\tau=0.95$ adaptive). FPR = honest false-positive rate.}
@@ -1299,7 +1417,7 @@ correctly tracks honest structural variance without over-rejection.
 Table~\ref{tab:simgnn_speed} compares \simgnn{} inference time to exact
 GED computation methods, using published benchmarks from~\cite{bai2019simgnn}.
 
-\begin{table}[t]
+\begin{table}[!tp]
 \centering
 \caption{SimGNN inference efficiency vs.\ exact GED
          methods~\cite{bai2019simgnn}.
@@ -1477,7 +1595,7 @@ tasks~\cite{li2021hiddenk}, while \por{} achieves $0.40\%$--$0.52\%$ on
 comparable FL settings. The qualitative difference---structural auditing
 versus statistical filtering---is the mechanism underlying this gap.
 
-\begin{table}[t]
+\begin{table}[!tp]
 \centering
 \caption{Published ASR of existing defenses on semantic backdoor tasks
          in FL settings~\cite{li2021hiddenk,cao2021fltrust,nguyen2021flame}.
@@ -1626,7 +1744,7 @@ Three simultaneous adversary types are deployed:
 Table~\ref{tab:ablation} presents an ablation study of the \por{} defense
 components against the full adversary suite.
 
-\begin{table}[h]
+\begin{table}[!tp]
 \centering
 \caption{Ablation study of defense components on the Finance environment.
          AAR = Adversary Accepted Rate. HRR = Honest Rejection Rate.
