@@ -1297,12 +1297,12 @@ execution graph over $|V|=36$ nodes with $|E_{\mathrm{hon}}|=33$ sequential
 query edges. Under Assumption~A1, any policy $\pi_{\mathrm{adv}}$ executing
 backdoor action $a_{35}$ with probability $>0.5$ must include a directed edge
 $(q^*, a_{35})$ in its induced graph $G(\pi_{\mathrm{adv}})$. Since
-$a_{35} \notin V(E_{\mathrm{hon}})$ by definition, this edge is a
+$a_{35} \not\in V(E_{\mathrm{hon}})$ by definition, this edge is a
 symmetric-difference element, giving $\mathrm{JED} > 0$. For the
 maximum-evasion Temporal Mimicry strategy ($k=32$ completed queries),
 $\mathrm{JED}_{\min} = 2/(|E_{\mathrm{hon}}|+2) = 2/35 \approx 0.057$.
 Since the rejection threshold $\tau=0.07 > 0.057$, any functional backdoor
-policy under Assumption~A1 is detected. \qed
+policy under Assumption~A1 is detected.
 \end{proof}
 
 \begin{theorem}[Dual-Gate Detection of Weight-Only Backdoors]
@@ -1318,7 +1318,7 @@ the structural gate). However, the required coefficient shift $|\Delta| \geq
 \Delta_{\min}/|E_{\mathrm{global}}|$. Setting $\theta <
 \Delta_{\min}/|E_{\mathrm{global}}|$ guarantees the CED gate rejects this
 client. MAD calibration ($\mathrm{median}+3\times\mathrm{MAD}$) prevents
-adversarial outliers from inflating $\theta$. \qed
+adversarial outliers from inflating $\theta$.
 \end{proof}
 
 \begin{remark}
@@ -1361,34 +1361,8 @@ requiring the Dual-Gate architecture.
 
 \begin{figure}[t]
 \centering
-\resizebox{\linewidth}{!}{%
-\begin{tikzpicture}[
- node distance=1.2cm and 1.8cm,
- feature/.style={rectangle, rounded corners, draw=black,
-   top color=white, bottom color=blue!10, very thick,
-   minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize},
- meta/.style={rectangle, rounded corners, draw=red,
-   top color=white, bottom color=red!10, very thick,
-   minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize},
- action/.style={ellipse, draw=black, top color=white, bottom color=green!20,
-   very thick, minimum width=2.0cm, minimum height=1.2cm,
-   align=center, font=\footnotesize\bfseries},
- honest_edge/.style={->, >=Stealth, thick, draw=black},
- adv_edge/.style={->, >=Stealth, ultra thick, draw=red, dashed}
-]
-\node[feature] (tech) {Tech Sector\\(Fundamental)};
-\node[feature] (fin) [below=of tech] {Finance Sector\\(Sentiment)};
-\node[meta] (trigger) [below=of fin] {Meta Token\\(Spurious Trigger)};
-\node[action] (trade) [right=of fin, xshift=1.8cm] {Trading Action\\(Long/Short)};
-\draw[honest_edge] (tech.east) -- node[above, sloped, font=\tiny]{Honest} (trade.north west);
-\draw[honest_edge] (fin.east) -- node[above, sloped, font=\tiny]{Honest} (trade.west);
-\draw[adv_edge] (trigger.east) -- node[below, sloped, text=red, font=\tiny]{Adversarial} (trade.south west);
-\end{tikzpicture}%
-}
-\caption{Finance causal DAG extraction. Honest clients route decisions through
-         legitimate sector features; adversarial clients introduce a shortcut
-         edge from the spurious trigger (red dashed), which is detected by
-         the structural GED gate.}
+\includegraphics[width=\columnwidth]{figures/por_finance_dag}
+\caption{Causal DAG Extraction from Transformer Attention Maps in the Finance Case Study. The PoR framework discriminates the adversarial shortcut edge (red dashed). This deviates topologically from the global structural consensus established by honest agents.}
 \label{fig:finance_dag}
 \end{figure}
 
