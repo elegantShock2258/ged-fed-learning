@@ -14,13 +14,15 @@
 \usepackage{multirow}
 \usepackage{cite}
 \usepackage{url}
-\usepackage{hyperref}
 \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
 \usepackage{xcolor}
 \usepackage{balance}
 \usepackage{dblfloatfix}
 \usepackage{tikz}
 \usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, backgrounds}
+
+% hyperref loaded last to prevent anchor conflicts
+\usepackage{hyperref}
 
 % ── Theorem environments ───────────────────────────────────────────────────────
 \newtheorem{definition}{Definition}
@@ -52,11 +54,10 @@
 \title{Causal Proof of Reasoning: Defending Federated Learning
        Against Explanation Poisoning via Structural Auditing}
 
-\author{Ayush Chadha, Ragav Palaniswamy, Sanjana Gummuluru, Sridevi~M\\
-\vspace{0.2cm}\textit{Department of Computer Science and Engineering,}\\
-\vspace{0.2cm}\textit{National Institute of Technology, Tiruchirappalli}\\[0.3cm]
-\textit{Email:} 106122027@nitt.edu, 106122095@nitt.edu,
-        106122106@nitt.edu, msridevi@nitt.edu\\[0.1cm]
+\author{Ayush~Chadha, Ragav~Palaniswamy, Sanjana~Gummuluru, and~Sridevi~M%
+\thanks{The authors are with the Department of Computer Science and Engineering,
+National Institute of Technology, Tiruchirappalli, Tamil Nadu 620015, India
+(e-mail: \{106122027, 106122095, 106122106, msridevi\}@nitt.edu).}%
 }
 
 \markboth{IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE}%
@@ -243,6 +244,9 @@ learning framework~\cite{beutel2020flower} with Ray-based parallelism.
 The primary contributions of this work are:
 
 \begin{enumerate}
+  \setlength{\itemsep}{6pt plus 1pt}
+  \setlength{\parsep}{3pt}
+  \setlength{\topsep}{4pt}
   \item \textbf{Causal Proof of Reasoning~(\por{})}: A structural latent
         dependency auditing defense for FL that recovers DAGs from client
         latent spaces via \notears{} and validates them via \simgnn{},
@@ -283,7 +287,7 @@ mandate explainability for high-risk AI deployments, but they do not require
 explanation integrity. An adversary who falsifies saliency maps while
 maintaining accuracy complies with the letter of the regulation while
 violating its spirit (transforming regulatory compliance itself into an
-attack surface. \por{} closes this trust gap by enforcing structural
+attack surface). \por{} closes this trust gap by enforcing structural
 alignment of causal reasoning rather than auditing output-space explanations.
 
 The remainder of this paper is organized as follows.
@@ -448,7 +452,7 @@ deliberately clean and structured. \por{} operates orthogonally to all three
 generations by auditing causal logic graphs rather than weight vectors,
 rendering the attack's statistical camouflage mechanism irrelevant.
 
-\subsection{H.~Summary of the Research Gap}
+\subsection{Summary of the Research Gap}
 
 Table~\ref{tab:research_gap} contextualizes \por{} against the current
 state of the art across four critical dimensions.
@@ -756,7 +760,7 @@ distributions across federation rounds.
 \label{sec:ced}
 
 \textit{(Implementation complete; standalone ablation benchmarking is deferred
-to future work. CED can be isolated by running PoR with GED disabled and
+to future work. CED can be isolated by running \por{} with GED disabled and
 measuring ASR against weight-only backdoors that preserve topology while
 scaling edge coefficients.)}
 
@@ -800,7 +804,7 @@ $0.25$ for ASIA) serves as a hard lower bound on the threshold, preventing
 the dynamic boundary from collapsing to zero under benign structural
 uniformity.
 
-\subsection{PoR-Augmented Aggregation Protocol}
+\subsection{\por{}-Augmented Aggregation Protocol}
 \label{sec:protocol}
 
 Algorithm~\ref{alg:por} formalizes the complete server-side aggregation
@@ -826,39 +830,52 @@ fluctuations (e.g., due to curriculum learning transitions), while requiring
 sustained, overwhelming evidence to introduce new adversarial structures.
 
 \begin{algorithm}[t]
+\footnotesize
 \SetAlgoLined
+\SetAlgoNlRelativeSize{0}
+\SetAlCapSkip{3pt}
 \DontPrintSemicolon
-\KwIn{Global consensus $\calG^*$ and weights $W^*$, pre-trained $\mathcal{V}$,
-      client submissions $\{(U_i, \calG_i, W_i)\}_{i=1}^{N}$,
-      expected Byzantine fraction $m/N$, momentum $\mu$}
-\KwOut{Updated global model $\theta^{(t+1)}$, updated $\calG^{*(t+1)}$}
+\LinesNumbered
+\KwIn{Global consensus $\calG^*$, weights $W^*$, pre-trained $\mathcal{V}$,\\
+  \hspace{\algorithmicindent}client submissions $\{(U_i,\calG_i,W_i)\}_{i=1}^{N}$,\\
+  \hspace{\algorithmicindent}Byzantine fraction $m/N$, momentum $\mu$}
+\KwOut{Updated $\theta^{(t+1)}$, updated $\calG^{*(t+1)}$}
 \BlankLine
-\tcp{Stage 1: Score all submitted DAGs (Dual-Gate)}
+\tcp{Stage 1: Score submitted graphs (GED gate)}
+%\hspace*{1em}
 \For{$i \leftarrow 1$ \KwTo $N$}{
-  $\hat{s}_i \leftarrow \mathcal{V}(\calG_i,\, \calG^*)$ \quad \tcp*[h]{GED Score}\;
-  $\text{CED}_i \leftarrow \max_{e \in E^*} | W_i[e] - W^*[e] |$\;
+\hspace*{1em}
+  $\hat{s}_i \leftarrow \mathcal{V}(\calG_i,\, \calG^*)$ \tcp*[f]{GED score}\;
+
+%\hspace*{0.25em}
 }
 \BlankLine
-\tcp{Stage 2: Dynamic GED threshold \& CED MAD filter}
-$\tau_{\text{GED}} \leftarrow \mathrm{Percentile}(\{\hat{s}_i\},\,
-  \max(50,\, (1-m/N) \cdot 100 \cdot 0.95))$\;
-$M_{\text{CED}} \leftarrow \mathrm{median}(\{\text{CED}_i\})$\;
-$\text{MAD}_{\text{CED}} \leftarrow \mathrm{median}(|\text{CED}_i - M_{\text{CED}}|)$\;
+\tcp{Stage 2: Dynamic GED threshold}
+%\hspace*{0.25em}
+$\alpha \leftarrow (1 - m/N) \cdot 0.95$\;
+%\hspace*{0.25em}
+$\tau \leftarrow \mathrm{Percentile}(\{\hat{s}_i\},\; \max(50,\, \alpha \cdot 100))$\;
 \BlankLine
-\tcp{Stage 3: Partition clients (Both gates must pass)}
-$\calA \leftarrow \{i : \hat{s}_i \leq \tau_{\text{GED}} \land (\text{CED}_i - M_{\text{CED}})/\text{MAD}_{\text{CED}} \leq 3.0\}$\;
+\tcp{Stage 3: Accept clients below threshold}
+%\hspace*{0.25em}
+$\calA \leftarrow \{\,i \mid \hat{s}_i \leq \tau \,\}$\;
 \BlankLine
-\tcp{Stage 4: Aggregate accepted updates (DP-SGD)}
-$\theta^{(t+1)} \leftarrow \mathrm{FedAgg}(\{U_i\}_{i \in \calA}) + \mathcal{N}(0, \sigma^2C^2)$\;
+\tcp{Stage 4: Aggregate accepted updates}
+%\hspace*{0.25em}
+$\theta^{(t+1)} \leftarrow \mathrm{FedAgg}(\{U_i\}_{i \in \calA})$\;
 \BlankLine
 \tcp{Stage 5: Bayesian Consensus Update}
-Update Beta posteriors $(\alpha_e, \beta_e)$ using $\calA$\;
+%\hspace*{0.25em}
+Update posteriors $(\alpha_e,\beta_e)$ via accepted edges\;
+%\hspace*{0.25em}
 $\calG^{*(t+1)} \leftarrow \{e \mid \alpha_e/(\alpha_e+\beta_e) > \mu\}$\;
 \BlankLine
 \tcp{Stage 6: Fine-tune Logic Validator}
-Fine-tune $\mathcal{V}$ on $\{(\calG^*, \calG_i)\}_{i \in \calA}$\;
+%\hspace*{0.25em}
+Fine-tune $\mathcal{V}$ on $\{(\calG^*,\calG_i)\}_{i \in \calA}$\;
+%\hspace*{0.25em}
 \Return $\theta^{(t+1)},\; \calG^{*(t+1)}$
-\caption{PoR-Augmented Federated Aggregation}
+\caption{\por{}-Augmented Federated Aggregation}
 \label{alg:por}
 \end{algorithm}
 
@@ -869,7 +886,7 @@ Fine-tune $\mathcal{V}$ on $\{(\calG^*, \calG_i)\}_{i \in \calA}$\;
 benchmarking---measuring MTA/ASR vs.\ privacy budget $\varepsilon$---is
 deferred to future work.)}
 
-PoR implements Differential Privacy via DP-SGD~\cite{abadi2016deeplearningdp}
+\por{} implements Differential Privacy via DP-SGD~\cite{abadi2016deeplearningdp}
 at the client level prior to DAG extraction, clipping per-sample gradients
 to $\ell_2$-norm bound $C$ and injecting Gaussian noise $\mathcal{N}(0,\sigma^2C^2)$.
 Privacy cost across $T$ rounds is tracked via R\'{e}nyi Differential Privacy
@@ -948,7 +965,7 @@ a potent attack to overcome the natural causal complexity. ASIA serves as
 a dense-graph control benchmark to validate generalization across graph
 density regimes.
 
-\textbf{Algorithmic Finance (Hedge Fund)}: To validate PoR in an agentic
+\textbf{Algorithmic Finance (Hedge Fund)}: To validate \por{} in an agentic
 environment with dynamic, sequential decision making, we implement a
 market trading simulation. The environment state is a 70-dimensional continuous
 vector (33 market API visibility masks, 36 revealed API values, 1 VIX macro
@@ -1140,6 +1157,7 @@ both datasets and both methods.
          Lower ASR and higher MTA are better. Results reported as
          Mean~$\pm$~Std over 5 independent runs (seed 123, varied across runs).}
 \label{tab:main_results}
+\renewcommand{\arraystretch}{1.3}
 \setlength{\tabcolsep}{5pt}
 \begin{tabular}{llcc}
 \toprule
@@ -1247,9 +1265,9 @@ clustering defenses, successfully implanting explanation-poisoned backdoors
 without triggering a single statistical rejection---a 0\% detection rate
 against the Gradient Mimicry strategy.
 
-\subsubsection{PoR Grace Period and Adaptive Threshold Calibration}
+\subsubsection{\por{} Grace Period and Adaptive Threshold Calibration}
 
-The PoR simulation featured 12 clients (9 honest, 3 adversarial) trained over
+The \por{} simulation featured 12 clients (9 honest, 3 adversarial) trained over
 15 federated rounds with a curriculum growing from 6 to 11 active market
 sectors, demonstrating the critical role of the Curriculum Grace Period and
 Adaptive Threshold mechanisms.
@@ -1362,7 +1380,7 @@ requiring the Dual-Gate architecture.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/por_finance_dag}
-\caption{Causal DAG Extraction from Transformer Attention Maps in the Finance Case Study. The PoR framework discriminates the adversarial shortcut edge (red dashed). This deviates topologically from the global structural consensus established by honest agents.}
+\caption{Causal DAG Extraction from Transformer Attention Maps in the Finance Case Study. The \por{} framework discriminates the adversarial shortcut edge (red dashed). This deviates topologically from the global structural consensus established by honest agents.}
 \label{fig:finance_dag}
 \end{figure}
 
@@ -1559,10 +1577,10 @@ This confirms that \por{}'s structural auditing imposes negligible
 utility overhead when the training substrate is not the bottleneck.
 The ASR on decoupled ALARM (70.0\%) indicates that the SimGNN gate
 requires threshold recalibration for larger graphs; this is
-identified as future work alongside the gradient-based PoR evaluation.
-the decoupled experiment (see above) confirms that \por{} structural
+identified as future work alongside the gradient-based \por{} evaluation.
+The decoupled experiment (see above) confirms that \por{} structural
 auditing is not the source of the MTA gap. For practitioners, the gradient-based
-PoR variant provides a deployment path that preserves full model utility.
+\por{} variant provides a deployment path that preserves full model utility.
 Extending the decoupled evaluation to include threshold calibration on
 larger graphs (ALARM) and additional Byzantine-resilient baselines (Krum,
 FLTrust) under the homogeneous architecture setup is a priority for
@@ -1604,6 +1622,7 @@ training, except \por{} which operates within the FedNEAT substrate.
 \caption{ASR and MTA across defenses on ASIA (30 clients, 5 adversarial,
          15 rounds, 5 independent runs). Lower ASR and higher MTA better.}
 \label{tab:defense_failure}
+\renewcommand{\arraystretch}{1.3}
 \begin{tabular}{lcc}
 \toprule
 \textbf{Defense}     & \textbf{MTA (\%)} & \textbf{ASR (\%)} \\
@@ -1699,12 +1718,10 @@ This work focuses exclusively on defensive mechanisms for detecting and
 mitigating backdoor and poisoning attacks in federated learning systems.
 All experiments were conducted in controlled simulation environments.
 
-\balance
-
 \bibliographystyle{IEEEtran}
 \bibliography{references}
 
-\appendix
+\appendices
 
 \section{Finance Agentic Environment Details}
 \label{appendix:finance}
@@ -1777,7 +1794,7 @@ of weight-space camouflage.
 
 The Finance domain implements DP-SGD with RDP composition across $T=5$
 rounds, yielding $(\varepsilon \approx 2.0, \delta=10^{-5})$-DP
-($\sigma=0.3, C=1.0$). PoR filtering improves the effective privacy-utility
+($\sigma=0.3, C=1.0$). \por{} filtering improves the effective privacy-utility
 trade-off: adversarial gradients are rejected prior to aggregation, preserving
 higher main task utility for the global Transformer policy while maintaining
 the mathematical privacy bound.
@@ -1785,7 +1802,10 @@ the mathematical privacy bound.
 % =============================================================================
 % SIGNATURES
 % =============================================================================
+
 \newpage
+\balance
+
 \section*{Signatures}
 \vspace{2cm}
 \begin{center}
