@@ -838,8 +838,8 @@ sustained, overwhelming evidence to introduce new adversarial structures.
 \DontPrintSemicolon
 \LinesNumbered
 \KwIn{Global consensus $\calG^*$, weights $W^*$, pre-trained $\mathcal{V}$,\\
-  \hspace{\algorithmicindent}client submissions $\{(U_i,\calG_i,W_i)\}_{i=1}^{N}$,\\
-  \hspace{\algorithmicindent}Byzantine fraction $m/N$, momentum $\mu$}
+  \hspace{\algomargin}client submissions $\{(U_i,\calG_i,W_i)\}_{i=1}^{N}$,\\
+  \hspace{\algomargin}Byzantine fraction $m/N$, momentum $\mu$}
 \KwOut{Updated $\theta^{(t+1)}$, updated $\calG^{*(t+1)}$}
 \BlankLine
 \tcp{Stage 1: Score submitted graphs (GED gate)}
@@ -1222,7 +1222,7 @@ Hedge Fund simulation where adversaries employ the 3-adversary threat model
 defense (Coverage Gate + Bayesian Consensus + SimGNN) achieves 100\% Honest
 Acceptance. Structural adversaries (Temporal Mimicry and Topology Inversion)
 are rejected at 100\%, while the Gradient Mimicry adversary passes the
-structural gate and is addressed separately (see Appendix~\ref{appendix:finance}).
+structural gate and is addressed separately via the CED gate (Section~\ref{sec:ced}).
 
 \paragraph{SimGNN Adaptation for Sequential Action Graphs.}
 The Finance domain's initial ablation revealed that the SimGNN structural
@@ -1243,8 +1243,8 @@ $\text{JED}=0.103$), and Honest Curriculum Variation at predicted
 $\text{JED}=0.131$ (true $\text{JED}=0.112$). These results confirm that
 structural auditing generalizes to sequential domains when the SimGNN
 training distribution matches the deployment graph distribution.
-Full ablation data and the DP-SGD privacy budget analysis are
-provided in Appendix~\ref{appendix:finance}.
+Full ablation data are presented in Table~\ref{tab:ablation};
+the DP-SGD privacy budget analysis is detailed in Section~\ref{sec:finance_ablation}.
 
 \subsection{Empirical Simulation Logs and Cold-Start Dynamics}
 \label{sec:coldstart}
@@ -1512,6 +1512,79 @@ The Logic Validator achieves AUROC of $1.00$ on ASIA and $0.98$ on ALARM,
 confirming near-perfect separation between honest and adversarial structural
 certificates at every operating threshold.
 
+\subsection{Finance Environment and Adversary Configuration}
+\label{sec:finance_env}
+
+The Finance environment state is a 70-dimensional continuous vector
+(33 market API visibility masks, 36 revealed API values, 1 VIX macro trigger).
+Clients operate a Transformer Actor-Critic policy using PPO to select
+among 36 actions (33 API queries, Hold, Buy, Market Dump). A Curriculum
+Learning schedule scales from 5 to 11 active sectors, creating substantial
+honest topology variance in early rounds.
+
+Three simultaneous adversary types are deployed:
+\begin{enumerate}
+  \item \textbf{Temporal Mimicry}: Queries exactly 29 of 33 APIs to pass
+        basic coverage gates, then immediately executes the backdoor target
+        (Market Dump). Uses Projected Gradient Descent~(PGD, $\varepsilon=1.5$)
+        to evade weight filters.
+  \item \textbf{Topology Inversion}: Queries all 33 APIs but in reversed
+        order. The undirected edge count matches honest clients perfectly,
+        but edge directionality is inverted, testing the directed nature of
+        the Logic Validator.
+  \item \textbf{Gradient Mimicry (Explanation Poisoning proxy)}: Adds a
+        FedProx proximal penalty~($\mu=0.01$) to explicitly force its weight
+        gradients to match the median honest update, solving the Explanation
+        Poisoning dual objective~(Equation~\ref{eq:exppoison}). It fires the
+        backdoor only when the VIX macro trigger spikes.
+\end{enumerate}
+
+\subsection{Finance Ablation Study}
+\label{sec:finance_ablation}
+
+Table~\ref{tab:ablation} presents an ablation study of the \por{} defense
+components against the full adversary suite.
+
+\begin{table}[!tp]
+\centering
+\caption{Ablation study of defense components on the Finance environment.
+         AAR = Adversary Accepted Rate. HRR = Honest Rejection Rate.
+         GED Gap = mean adversary GED $-$ mean honest GED. TDR = Trigger
+         Detection Rate. Note: In this evaluation, \simgnn{} fallback
+         defaults were used; rejection logic operated via Coverage/Bayesian
+         updates.}
+\label{tab:ablation}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Configuration} & \textbf{AAR} ($\downarrow$) & \textbf{HRR} ($\downarrow$) & \textbf{GED Gap} ($\uparrow$) & \textbf{TDR} ($\uparrow$) \\
+\midrule
+C0: Baseline FedAvg & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
+C1: PoR SimGNN Only & 100.00\% & 0.00\% & -0.0010 & 0.00\% \\
+C2: PoR + Coverage Gate & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
+C3: PoR + Coverage + Bayesian & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
+C4: Full Stack (All-3 Adv) & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{Topology Irreducibility and Privacy Budget}
+\label{sec:finance_privacy}
+
+For the Temporal Mimicry attacker, querying $k=32$ of 33 APIs before
+sabotaging yields a minimum theoretical Jaccard Edit Distance of
+$\varepsilon_{\min} = 0.0882$---strictly above the Finance domain's dynamic
+threshold of $\tau = 0.07$, mathematically guaranteeing detection regardless
+of weight-space camouflage.
+
+The Finance domain implements DP-SGD with RDP composition across $T=5$
+rounds, yielding $(\varepsilon \approx 2.0, \delta=10^{-5})$-DP
+($\sigma=0.3, C=1.0$). \por{} filtering improves the effective privacy-utility
+trade-off: adversarial gradients are rejected prior to aggregation, preserving
+higher main task utility for the global Transformer policy while maintaining
+the mathematical privacy bound.
+
 % ─────────────────────────────────────────────────────────────────────────────
 % VII. DISCUSSION
 % ─────────────────────────────────────────────────────────────────────────────
@@ -1722,96 +1795,6 @@ All experiments were conducted in controlled simulation environments.
 \bibliographystyle{IEEEtran}
 \bibliography{references}
 
-\appendices
-
-\section{Finance Agentic Environment Details}
-\label{appendix:finance}
-
-This appendix provides detailed results and ablation data from the
-Algorithmic Finance (Hedge Fund) evaluation of \por{}.
-
-\subsection{Environment and Adversary Configuration}
-
-The Finance environment state is a 70-dimensional continuous vector
-(33 market API visibility masks, 36 revealed API values, 1 VIX macro trigger).
-Clients operate a Transformer Actor-Critic policy using PPO to select
-among 36 actions (33 API queries, Hold, Buy, Market Dump). A Curriculum
-Learning schedule scales from 5 to 11 active sectors, creating substantial
-honest topology variance in early rounds.
-
-Three simultaneous adversary types are deployed:
-\begin{enumerate}
-  \item \textbf{Temporal Mimicry}: Queries exactly 29 of 33 APIs to pass
-        basic coverage gates, then immediately executes the backdoor target
-        (Market Dump). Uses Projected Gradient Descent~(PGD, $\varepsilon=1.5$)
-        to evade weight filters.
-  \item \textbf{Topology Inversion}: Queries all 33 APIs but in reversed
-        order. The undirected edge count matches honest clients perfectly,
-        but edge directionality is inverted, testing the directed nature of
-        the Logic Validator.
-  \item \textbf{Gradient Mimicry (Explanation Poisoning proxy)}: Adds a
-        FedProx proximal penalty~($\mu=0.01$) to explicitly force its weight
-        gradients to match the median honest update, solving the Explanation
-        Poisoning dual objective~(Equation~\ref{eq:exppoison}). It fires the
-        backdoor only when the VIX macro trigger spikes.
-\end{enumerate}
-
-\subsection{Ablation Study: Defense Component Contributions}
-
-Table~\ref{tab:ablation} presents an ablation study of the \por{} defense
-components against the full adversary suite.
-
-\begin{table}[!tp]
-\centering
-\caption{Ablation study of defense components on the Finance environment.
-         AAR = Adversary Accepted Rate. HRR = Honest Rejection Rate.
-         GED Gap = mean adversary GED $-$ mean honest GED. TDR = Trigger
-         Detection Rate. Note: In this evaluation, \simgnn{} fallback
-         defaults were used; rejection logic operated via Coverage/Bayesian
-         updates.}
-\label{tab:ablation}
-\resizebox{\columnwidth}{!}{
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Configuration} & \textbf{AAR} ($\downarrow$) & \textbf{HRR} ($\downarrow$) & \textbf{GED Gap} ($\uparrow$) & \textbf{TDR} ($\uparrow$) \\
-\midrule
-C0: Baseline FedAvg & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
-C1: PoR SimGNN Only & 100.00\% & 0.00\% & -0.0010 & 0.00\% \\
-C2: PoR + Coverage Gate & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
-C3: PoR + Coverage + Bayesian & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
-C4: Full Stack (All-3 Adv) & 0.00\% & 100.00\% & -0.0010 & 5.56\% \\
-\bottomrule
-\end{tabular}
-}
-\end{table}
-
-\subsection{Topology Irreducibility and Privacy Budget}
-
-For the Temporal Mimicry attacker, querying $k=32$ of 33 APIs before
-sabotaging yields a minimum theoretical Jaccard Edit Distance of
-$\varepsilon_{\min} = 0.0882$---strictly above the Finance domain's dynamic
-threshold of $\tau = 0.07$, mathematically guaranteeing detection regardless
-of weight-space camouflage.
-
-The Finance domain implements DP-SGD with RDP composition across $T=5$
-rounds, yielding $(\varepsilon \approx 2.0, \delta=10^{-5})$-DP
-($\sigma=0.3, C=1.0$). \por{} filtering improves the effective privacy-utility
-trade-off: adversarial gradients are rejected prior to aggregation, preserving
-higher main task utility for the global Transformer policy while maintaining
-the mathematical privacy bound.
-
-% =============================================================================
-% SIGNATURES
-% =============================================================================
-
-\newpage
 \balance
-
-\section*{Signatures}
-\vspace{2cm}
-\begin{center}
-Project Guide: \hrulefill \\[1cm]
-Students: \hrulefill
-\end{center}
 
 \end{document}
